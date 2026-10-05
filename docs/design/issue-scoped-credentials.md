@@ -239,7 +239,7 @@ it would modify that recurrence or materialize an outside-scope occurrence.
 Evaluate this in the same transaction as completion; no close event, recurrence
 update, or next issue may survive the refusal. Do not silently skip recurrence
 materialization, attach its next occurrence to the granted root, or treat it as
-implicitly authorized automation. A recurrence path proven to have no such
+implicitly authorized background work. A recurrence path proven to have no such
 effects may proceed. The trusted coordinator handles completion that exceeds
 the fixed permission set. Apply the same all-effects check to other mutations
 that can create or modify additional domain records.

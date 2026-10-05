@@ -544,6 +544,65 @@ state. A spoke whose pull cursor is below that boundary receives
 push-enabled spoke refuses to reset while it has unaccepted local-origin events
 or an active quarantine. `kata federation status` reports these reset blockers.
 
+## Native Cron Replay And Compatibility
+
+Native jobs and flows replicate as complete documents, including deletion and
+restoration. The existing total HLC order chooses one whole document; concurrent
+edits never combine fields from different versions. Baseline snapshots retain
+the original winning definition event UID and HLC. Enabling federation,
+adopting a project, joining a second peer, and rebuilding after a purge all carry
+pre-existing cron definitions and portable run history.
+
+Upgrade hubs before publishing cron. Federation clients advertise
+`X-Kata-Event-Features: cron_v1`. Successful metadata, event-poll, and
+ingest responses advertise server support in that same header. A project's
+`X-Kata-Required-Event-Features: cron_v1` header instead means that its
+history requires the feature. This requirement latches after the first native
+cron and survives deletion of its definitions. Missing support causes
+HTTP 409 `unsupported_event_features` before returning events or a reset cursor,
+or accepting a push. An unknown required response feature stops the new client
+before it accepts any response cursor. An empty requirement from an unused old
+hub does not prove support: cron publication first fetches metadata and
+requires the server's positive support advertisement.
+
+Wire envelope compatibility is independent of database schema upgrades.
+`db.FederationEventWireVersion` explicitly maps the supported legacy publication
+events to envelope version 30 and cron events to version 31 plus
+`cron_v1`. Future event types require a new mapping before publication;
+a future storage version does not automatically change existing wire contents.
+This keeps ordinary traffic compatible with actual schema30 daemons, whose
+ingest handler refuses newer envelope versions before inspecting their events.
+
+`Storage.ReadFederation(ctx, db.FederationReadParams)` captures the project,
+binding, required feature latch, purge boundary, baseline and event cursor in one
+backend transaction. It also checks the features of the actual event page.
+The result is a consistent read. Scheduling and execution remain local to the
+plugin; this read grants no execution permission.
+
+Run observations contain bounded evidence: the run UID, job and flow definition
+references, occurrence, issue binding, actor and teammate, timestamps, reported
+status and summary. Event HLC and event UID order observations, while baseline
+envelopes preserve their original observation clocks. Separate executions of
+one occurrence have distinct run UIDs and are accepted independently. Retries
+of the same observation use the existing run identity and idempotency behavior.
+Raw logs, secrets, filesystem paths and process or session handles stay local.
+
+Ordinary spoke pushes publish definitions and run observations. Adoption,
+replica reset and backup/restore preserve portable definitions and history
+through the existing federation and snapshot mechanisms. Run history does not
+reserve an issue, grant execution permission or create local process state.
+Definition author handling follows the existing enrolled-actor and adoption
+snapshot policy.
+
+Pages may contain a job before its flow or a run before its definition. These
+records remain visible. `db.CheckCronDependencies(ctx, query, projectID,
+jobDefinition)` returns descriptive errors for missing, tombstoned or
+cross-project flow/issue dependencies and preserves database errors. Local
+definition writes use the same helper. The plugin owns activation, overlap,
+catchup, retries, recovery and process/session management, using ordinary Kata
+notify for exact-recipient inbox delivery. This replay layer introduces no
+scheduler or process launcher.
+
 ## Recurrences, Merge, And Other Boundaries
 
 Recurrences remain hub-owned for federated projects. Spoke recurrence mutation

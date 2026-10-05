@@ -82,14 +82,14 @@ func checkAPITokensAndSystemProject(t *testing.T, store db.Storage) error {
 	name := "  laptop  "
 	token, created, err := store.CreateAPIToken(ctx, db.CreateAPITokenParams{
 		PlaintextToken: "secret-token",
-		Actor:          "  automation  ",
+		Actor:          "  cron  ",
 		Name:           &name,
 		AdminActor:     db.BootstrapActor,
 	})
 	if err != nil {
 		return fmt.Errorf("create api token: %w", err)
 	}
-	assert.Equal(t, "automation", token.Actor)
+	assert.Equal(t, "cron", token.Actor)
 	require.NotNil(t, token.Name)
 	assert.Equal(t, "laptop", *token.Name)
 	assert.Nil(t, token.LastUsedAt)

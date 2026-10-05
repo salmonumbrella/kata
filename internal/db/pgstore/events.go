@@ -114,9 +114,15 @@ func eventsAfterTx(ctx context.Context, tx *sql.Tx, afterID int64) ([]db.Event, 
 
 // EventsByUIDs resolves the requested event identities in caller order.
 func (s *Store) EventsByUIDs(ctx context.Context, projectID int64, uids []string) ([]db.Event, error) {
+	return eventsByUIDs(ctx, s, projectID, uids)
+}
+
+func eventsByUIDs(ctx context.Context, q interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}, projectID int64, uids []string) ([]db.Event, error) {
 	events := make([]db.Event, 0, len(uids))
 	for _, uid := range uids {
-		event, err := scanEvent(s.QueryRowContext(ctx,
+		event, err := scanEvent(q.QueryRowContext(ctx,
 			eventSelect+` WHERE e.project_id = $1 AND e.uid = $2`, projectID, uid))
 		if err != nil {
 			return nil, err
@@ -174,7 +180,7 @@ func (s *Store) MaxLocalOriginEventID(ctx context.Context, projectID int64) (int
 func (s *Store) MaxFederationBaselineEventID(ctx context.Context, projectID, sinceEventID int64) (int64, error) {
 	var value sql.NullInt64
 	if err := s.QueryRowContext(ctx, `SELECT MAX(id) FROM events
-      WHERE project_id = $1 AND type = 'issue.snapshot' AND id >= $2`, projectID, sinceEventID).Scan(&value); err != nil {
+      WHERE project_id = $1 AND type IN ('issue.snapshot','cron.job.snapshot','cron.flow.snapshot','cron.run.snapshot') AND id >= $2`, projectID, sinceEventID).Scan(&value); err != nil {
 		return 0, mapSQLError(err, nil)
 	}
 	return value.Int64, nil

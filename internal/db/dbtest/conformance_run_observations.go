@@ -1,0 +1,198 @@
+package dbtest
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+	"go.kenn.io/kata/internal/cron"
+	"go.kenn.io/kata/internal/db"
+	"go.kenn.io/kata/internal/uid"
+)
+
+// Variable-width RFC3339 fractions must not reverse history or split an
+// equal-instant tie differently between the first page and its cursor.
+func checkRunHistoryInstants(t *testing.T, store db.Storage) error {
+	project, err := store.CreateProject(t.Context(), "example-project")
+	require.NoError(t, err)
+	definition, err := cron.ParseJob([]byte(`{"version":1,"kind":"job","trigger":{"kind":"manual"},"action":{"kind":"execute","prompt":"Review"},"issue":{"kind":"per-run","title":"Review"},"overlap":"forbid","catchup":"skip"}`))
+	require.NoError(t, err)
+	job, _, err := store.PutCronJob(t.Context(), db.PutCronJob{ProjectID: project.ID, Name: "Review", Actor: "worker", Definition: definition})
+	require.NoError(t, err)
+	times := []string{"2026-10-06T09:00:00Z", "2026-10-06T09:00:00.001Z", "2026-10-06T09:00:00.001000001Z", "2026-10-06T09:00:00.01Z", "2026-10-06T09:00:00.1Z", "2026-10-06T09:00:00.100000000Z", "2026-10-06T09:00:00.100000001Z"}
+	ids := []string{"01ARZ3NDEKTSV4RRFFQ69G5FA0", "01ARZ3NDEKTSV4RRFFQ69G5FA1", "01ARZ3NDEKTSV4RRFFQ69G5FA2", "01ARZ3NDEKTSV4RRFFQ69G5FA3", "01ARZ3NDEKTSV4RRFFQ69G5FA4", "01ARZ3NDEKTSV4RRFFQ69G5FA5", "01ARZ3NDEKTSV4RRFFQ69G5FA6"}
+	q := store.(interface {
+		ExecContext(context.Context, string, ...any) (sql.Result, error)
+	})
+	for i, timestamp := range times {
+		_, err := store.ObserveCronRun(t.Context(), db.ObserveCronRun{ProjectID: project.ID, UID: ids[i], JobUID: &job.UID, DefinitionEventUID: &job.DefinitionEventUID, Actor: "worker", Status: "unknown", Summary: cron.Summary{Version: 1}})
+		require.NoError(t, err)
+		_, err = q.ExecContext(t.Context(), "UPDATE cron_runs SET created_at=$1 WHERE uid=$2", timestamp, ids[i])
+		require.NoError(t, err)
+	}
+	want := []string{ids[6], ids[5], ids[4], ids[3], ids[2], ids[1], ids[0]}
+	for _, size := range []int{1, 2, 3, 100} {
+		var got []string
+		cursor := ""
+		for pages := 0; pages < len(ids)+1; pages++ {
+			page, err := store.ListCronRuns(t.Context(), db.CronRunList{ProjectID: project.ID, Limit: size, BeforeUID: cursor})
+			require.NoError(t, err)
+			if len(page) == 0 {
+				break
+			}
+			for _, run := range page {
+				got = append(got, run.UID)
+				for i, id := range ids {
+					if id == run.UID {
+						instant, err := time.Parse(time.RFC3339Nano, times[i])
+						require.NoError(t, err)
+						require.True(t, run.CreatedAt.Equal(instant), "nanosecond evidence survives the read")
+					}
+				}
+			}
+			cursor = page[len(page)-1].UID
+		}
+		require.Equal(t, want, got, "page size %d", size)
+	}
+	return nil
+}
+
+func checkIndependentRunObservations(t *testing.T, store db.Storage) error {
+	ctx := t.Context()
+	project, err := store.CreateProject(ctx, "example-project")
+	require.NoError(t, err)
+	other, err := store.CreateProject(ctx, "other-project")
+	require.NoError(t, err)
+	issue, _, err := store.CreateIssue(ctx, db.CreateIssueParams{ProjectID: project.ID, Title: "Review", Author: "worker"})
+	require.NoError(t, err)
+	definition, err := cron.ParseJob([]byte(`{"version":1,"kind":"job","trigger":{"kind":"manual"},"action":{"kind":"execute","prompt":"Review"},"issue":{"kind":"per-run","title":"Review"},"overlap":"forbid","catchup":"skip"}`))
+	require.NoError(t, err)
+	job, _, err := store.PutCronJob(ctx, db.PutCronJob{ProjectID: project.ID, Name: "Review", Definition: definition, Actor: "worker"})
+	require.NoError(t, err)
+	occurrence := "daily:2026-10-06"
+	inputs := []db.ObserveCronRun{}
+	for range 2 {
+		id, err := uid.New()
+		require.NoError(t, err)
+		in := db.ObserveCronRun{UID: id, ProjectID: project.ID, JobUID: &job.UID, DefinitionEventUID: &job.DefinitionEventUID, OccurrenceKey: &occurrence, IssueUID: &issue.UID, Actor: "worker", Status: "running", Summary: cron.Summary{Version: 1}}
+		result, err := store.ObserveCronRun(ctx, in)
+		require.NoError(t, err)
+		require.Len(t, result.Events, 1)
+		require.Equal(t, int64(1), result.Run.Revision)
+		replay, err := store.ObserveCronRun(ctx, in)
+		require.NoError(t, err)
+		require.True(t, replay.Replayed)
+		require.Empty(t, replay.Events)
+		require.Equal(t, result.Run, replay.Run)
+		inputs = append(inputs, in)
+	}
+	in := inputs[0]
+	in.Status = "succeeded"
+	in.ExpectedRevision = 1
+	updated, err := store.ObserveCronRun(ctx, in)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), updated.Run.Revision)
+	in.ExpectedRevision = 0
+	replay, err := store.ObserveCronRun(ctx, in)
+	require.NoError(t, err)
+	require.True(t, replay.Replayed)
+	in.Summary.Message = "Changed"
+	_, err = store.ObserveCronRun(ctx, in)
+	require.ErrorIs(t, err, db.ErrCronConflict)
+	in = inputs[0]
+	in.Actor = "other"
+	in.ExpectedRevision = 2
+	_, err = store.ObserveCronRun(ctx, in)
+	require.ErrorIs(t, err, db.ErrCronConflict)
+	_, err = store.CronRun(ctx, other.ID, inputs[0].UID)
+	require.ErrorIs(t, err, db.ErrNotFound)
+	in = inputs[0]
+	in.ProjectID = other.ID
+	_, err = store.ObserveCronRun(ctx, in)
+	require.ErrorIs(t, err, db.ErrCronConflict)
+	first, err := store.ListCronRuns(ctx, db.CronRunList{ProjectID: project.ID, Limit: 1})
+	require.NoError(t, err)
+	require.Len(t, first, 1)
+	second, err := store.ListCronRuns(ctx, db.CronRunList{ProjectID: project.ID, Limit: 1, BeforeUID: first[0].UID})
+	require.NoError(t, err)
+	require.Len(t, second, 1)
+	require.NotEqual(t, first[0].UID, second[0].UID)
+	_, err = store.ListCronRuns(ctx, db.CronRunList{ProjectID: other.ID, BeforeUID: first[0].UID})
+	require.Error(t, err)
+	runs := []db.CronRunExport{}
+	for run, err := range store.ExportCronRuns(ctx, db.ExportFilter{ProjectID: &project.ID}) {
+		require.NoError(t, err)
+		runs = append(runs, run)
+	}
+	require.Len(t, runs, 2)
+	jobs := []db.CronJobExport{}
+	for job, err := range store.ExportCronJobs(ctx, db.ExportFilter{ProjectID: &project.ID}) {
+		require.NoError(t, err)
+		jobs = append(jobs, job)
+	}
+	require.Len(t, jobs, 1)
+	flow, _, err := store.PutCronFlow(ctx, db.PutCronFlow{ProjectID: project.ID, Name: "Review flow", Actor: "worker", Definition: cron.FlowDefinition{Version: 1, Steps: []cron.FlowStep{{Key: "review", Kind: "command", Command: "git status"}}}})
+	require.NoError(t, err)
+	flows := []db.CronFlowExport{}
+	for value, err := range store.ExportCronFlows(ctx, db.ExportFilter{ProjectID: &project.ID}) {
+		require.NoError(t, err)
+		flows = append(flows, value)
+	}
+	require.Len(t, flows, 1)
+	require.Equal(t, flow.UID, flows[0].UID)
+	flowRunUID, err := uid.New()
+	require.NoError(t, err)
+	flowRun, err := store.ObserveCronRun(ctx, db.ObserveCronRun{ProjectID: project.ID, UID: flowRunUID, FlowUID: &flow.UID, FlowDefinitionEventUID: &flow.DefinitionEventUID, Actor: "worker", Status: "unknown", Summary: cron.Summary{Version: 1}})
+	require.NoError(t, err)
+	require.Nil(t, flowRun.Run.JobUID)
+	require.Equal(t, &flow.UID, flowRun.Run.FlowUID)
+
+	return nil
+}
+func checkIssuePlanningDates(t *testing.T, store db.Storage) error {
+	project, err := store.CreateProject(t.Context(), "example-project")
+	require.NoError(t, err)
+	issue, _, err := store.CreateIssue(t.Context(), db.CreateIssueParams{ProjectID: project.ID, Title: "Review", Author: "worker", Metadata: map[string]jsontext.Value{"scheduled_on": []byte(`"2026-10-06"`), "deadline_on": []byte(`"2026-10-07T13:00:00Z"`)}})
+	require.NoError(t, err)
+	before, err := store.MaxEventID(t.Context())
+	require.NoError(t, err)
+	dates, err := store.IssuePlanningDates(t.Context(), db.IssuePlanningDatesIn{ProjectID: project.ID, IssueID: issue.ID, DefaultTimezone: "Europe/Paris"})
+	require.NoError(t, err)
+	require.Equal(t, issue.UID, dates.IssueUID)
+	require.Equal(t, issue.Revision, dates.Revision)
+	require.Equal(t, "Europe/Paris", dates.ScheduledOn.Timezone)
+	require.Equal(t, "2026-10-05T22:00:00Z", dates.ScheduledOn.Instant.Format("2006-01-02T15:04:05Z"))
+	require.Equal(t, "UTC", dates.DeadlineOn.Timezone)
+	after, err := store.MaxEventID(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, before, after)
+	_, err = store.IssuePlanningDates(t.Context(), db.IssuePlanningDatesIn{ProjectID: project.ID + 100, IssueID: issue.ID})
+	require.ErrorIs(t, err, db.ErrNotFound)
+
+	scheduled, _, err := store.CreateIssue(t.Context(), db.CreateIssueParams{ProjectID: project.ID, Title: "Recurring review", Author: "worker"})
+	require.NoError(t, err)
+	_, err = store.CreateRecurrenceForIssue(t.Context(), db.CreateRecurrenceForIssueIn{IssueID: scheduled.ID, Recurrence: db.CreateRecurrenceIn{ProjectID: project.ID, Actor: "worker", Rule: "FREQ=DAILY", DTStart: "2026-03-07", Timezone: "America/New_York", Template: db.RecurrenceTemplate{Title: "Recurring review"}}})
+	require.NoError(t, err)
+	for _, tc := range []struct{ value, instant string }{{"2026-03-08T02:30", "2026-03-08T07:00:00Z"}, {"2026-11-01T01:30", "2026-11-01T05:30:00Z"}} {
+		raw, err := json.Marshal(tc.value)
+		require.NoError(t, err)
+		patched, err := store.PatchIssueMetadata(t.Context(), db.PatchIssueMetadataIn{IssueID: scheduled.ID, Actor: "worker", Patch: map[string]jsontext.Value{"timezone": []byte(`null`), "scheduled_on": raw, "deadline_on": []byte(`"2026-10-07"`)}})
+		require.NoError(t, err)
+		cursor, err := store.MaxEventID(t.Context())
+		require.NoError(t, err)
+		dates, err := store.IssuePlanningDates(t.Context(), db.IssuePlanningDatesIn{ProjectID: project.ID, IssueID: scheduled.ID, DefaultTimezone: "Europe/Paris"})
+		require.NoError(t, err)
+		require.Equal(t, patched.Issue.Revision, dates.Revision)
+		require.Equal(t, "America/New_York", dates.ScheduledOn.Timezone)
+		require.Equal(t, tc.instant, dates.ScheduledOn.Instant.Format("2006-01-02T15:04:05Z"))
+		require.Equal(t, "Europe/Paris", dates.DeadlineOn.Timezone, "deadline never inherits recurrence timezone")
+		after, err := store.MaxEventID(t.Context())
+		require.NoError(t, err)
+		require.Equal(t, cursor, after)
+	}
+	return nil
+}

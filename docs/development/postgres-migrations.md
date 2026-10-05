@@ -77,3 +77,37 @@ exclusive lock on `import_mappings`; schedule the operation while imports are
 stopped. Existing table grants cover the new columns. Validation-only runtime
 credentials cannot perform this upgrade. Schema 29 binaries cannot reopen
 schema 30; rollback requires the pre-upgrade backup and matching older binary.
+
+
+## Schema 31: dormant shared definitions and run evidence
+
+The 30→31 migration adds exactly `cron_jobs`, `cron_flows`, and
+`cron_runs`, with three identity sequences and four named indexes.
+Definitions and attributed run evidence have bounded versioned JSON. Distinct
+run UIDs may share an occurrence key or issue. An upgraded database starts with
+all three tables empty. No scheduler, executor grant, claim, issue holder,
+checkpoint, receipt, frozen execution snapshot, or authority metadata is created.
+Existing native issue due notifications remain unchanged.
+
+Stop serving daemons and imports, back up the database, and run the migration
+with schema-owner credentials. New tables and the version stamp are committed
+atomically under the existing migration lock. Reapply the runtime role grants
+in [PostgreSQL operations](../operations/postgres.md) for the new tables and
+sequences. Validation-only credentials cannot migrate. Fresh installations and
+30→31 upgrades must have the same physical schema; startup validates it.
+Versions 25–30 use the existing immutable chain followed by migration 31.
+
+Migration 31 is feature-only and unissued on main; this branch replaces its
+rejected experimental five-table design without changing the allocated version.
+Migrations 26–30 remain immutable. An existing experimental schema 31 is
+rejected without repair or restamp, including occurrence-exclusive run shapes.
+Retain its backup and matching old binary for inspection/export; rebuilding it
+requires an explicitly authorized isolated plan. Legacy authority exports are
+not automatically converted into the reduced contract.
+
+Use the matching schema 31 binary. Older binaries cannot open schema 31.
+Rollback requires a pre-upgrade backup and matching older binary; there is no
+down migration. Ordinary JSONL restore preserves shared definitions and run
+evidence without epochs or reconciliation. SQLite retains its normal JSONL
+30→31 rebuild/cutover and backup/swap protections, and rejects incompatible
+experimental schema 31 before changing the database.

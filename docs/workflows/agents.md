@@ -227,7 +227,7 @@ user installation at a terminal can ask once to forward the required variable
 names. Muse passes the user-wide `managed_hooks_env_vars` allowlist to every
 managed hook, including hooks installed by other tools; it includes
 `KATA_AUTH_TOKEN` when set. Review all managed hooks before granting.
-`--managed-attention` supplies that grant for automation and implies attention.
+`--managed-attention` supplies that grant for cron and implies attention.
 A valid existing managed path and sufficient allowlist can be reused without
 another grant. Automatic discovery, project setup, JSON, agent output, and
 noninteractive runs never prompt or expand user policy; they report `partial`
@@ -506,7 +506,7 @@ kata mcp serve \
 ```
 
 The server starts with 16 section loaders. An agent loads only the detailed
-issue, project, administration, automation, or event tools needed for its task.
+issue, project, administration, cron, or event tools needed for its task.
 Pass `--workspace` or `--project` for an explicit project, `--projects` for a
 fixed allowlist, or `--all` to use every project visible to the
 selected daemon. The actor stays fixed at startup. See the [MCP

@@ -112,7 +112,7 @@ func TestAdministrationToolsRoundTripAgainstDaemon(t *testing.T) {
 	require.NotEmpty(t, federation["enrollments"])
 	require.NotContains(t, federation["enrollments"].([]any)[0].(map[string]any), "token")
 	callAdministrationTool(t, session, "kata.federation_enrollment_revoke", map[string]any{"id": enrollmentID})
-	token := callAdministrationTool(t, session, "kata.token_create", map[string]any{"token_actor": "automation-agent", "name": "automation"})
+	token := callAdministrationTool(t, session, "kata.token_create", map[string]any{"token_actor": "cron-agent", "name": "cron"})
 	require.NotEmpty(t, token["token"])
 	tokenID := token["record"].(map[string]any)["id"]
 	tokens := callAdministrationTool(t, session, "kata.tokens", map[string]any{})

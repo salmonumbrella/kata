@@ -262,7 +262,7 @@ func TestFederationCredentialManagedMetadataRoundTripsAndRedactsToken(t *testing
 			ManagedByConfig:  true,
 			HubCatalog:       "primary",
 			HubProjectName:   "spoke-project",
-			RequestedActor:   "automation-user",
+			RequestedActor:   "cron-user",
 			SpokeProjectName: "example-project",
 		}))
 
@@ -272,7 +272,7 @@ func TestFederationCredentialManagedMetadataRoundTripsAndRedactsToken(t *testing
 	assert.True(t, got.ManagedByConfig)
 	assert.Equal(t, "primary", got.HubCatalog)
 	assert.Equal(t, "spoke-project", got.HubProjectName)
-	assert.Equal(t, "automation-user", got.RequestedActor)
+	assert.Equal(t, "cron-user", got.RequestedActor)
 	assert.Equal(t, "example-project", got.SpokeProjectName)
 	assert.Equal(t, token, got.Token)
 
@@ -290,7 +290,7 @@ func TestFederationCredentialManagedMetadataRoundTripsAndRedactsToken(t *testing
 	assert.True(t, metadata.ManagedByConfig)
 	assert.Equal(t, "primary", metadata.HubCatalog)
 	assert.Equal(t, "spoke-project", metadata.HubProjectName)
-	assert.Equal(t, "automation-user", metadata.RequestedActor)
+	assert.Equal(t, "cron-user", metadata.RequestedActor)
 	assert.Equal(t, "example-project", metadata.SpokeProjectName)
 	assert.NotContains(t, fmt.Sprintf("%+v", metadata), token)
 }

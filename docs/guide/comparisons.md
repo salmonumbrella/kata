@@ -23,7 +23,7 @@ auditable, and agent-friendly.
 | Primary job | Durable local issue ledger for humans and agents. | Shared online planning, triage, reporting, and collaboration system. |
 | Operating model | Local-first daemon, CLI, TUI, and SQLite database under `KATA_HOME`. | Hosted web application backed by the vendor's service and workspace model. |
 | User experience | Instant local UX with terminal-native commands; no browser session required for normal work. | Browser-first workflow optimized for teams, dashboards, notifications, and integrations. |
-| Agent ergonomics | Agent-first ergonomics: stable refs, `--agent` and `--json` output, idempotency keys, claim flow, evidence-based closes, and predictable failure modes. | Human-first product surface with APIs or integrations layered on top for automation. |
+| Agent ergonomics | Agent-first ergonomics: stable refs, `--agent` and `--json` output, idempotency keys, claim flow, evidence-based closes, and predictable failure modes. | Human-first product surface with APIs or integrations layered on top for scripts. |
 | Workspace fit | Resolves from the current repo, clone, worktree, or non-git directory through a small `.kata.toml` binding. | Usually organized around vendor workspaces, teams, projects, and remote issue URLs. |
 | State location | Operational state stays local unless you opt into a remote daemon, backup, import/export, or federation workflow. | Issue state lives in the hosted service by default. |
 | Offline and private work | Works locally without a network for ordinary issue operations. | Depends on network access to the hosted service for normal operation. |
@@ -45,7 +45,7 @@ Choose kata when the work needs to stay close to the machine doing it:
 
 kata is especially useful when the issue tracker is part of the development
 runtime. The daemon, database, CLI, TUI, and agent output formats are designed
-for automation first, with human review over the same state.
+for agent workflows first, with human review over the same state.
 
 ## When to choose a SaaS tracker
 

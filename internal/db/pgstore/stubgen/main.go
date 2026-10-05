@@ -43,6 +43,21 @@ const (
 // *sql.DB. Each method that lands a real query gets added here, and
 // the generator's output for that method disappears on the next regenerate.
 var alreadyImplemented = map[string]bool{
+	"ObserveCronRun":     true,
+	"IssuePlanningDates": true,
+	"CronRun":            true,
+	"ListCronRuns":       true,
+	"ReadFederation":     true, // federation_read.go
+	"PutCronJob":         true,
+	"PutCronFlow":        true,
+	"CronJob":            true,
+	"CronFlow":           true,
+	"ListCronJobs":       true,
+	"ListCronFlows":      true,
+	"ExportCronJobs":     true,
+	"ExportCronFlows":    true,
+	"ExportCronRuns":     true,
+
 	"ApplyExternalFieldProjection":         true, // external_roots.go
 	"ActiveFederationQuarantine":           true, // federation_quarantine.go
 	"ActiveFederationQuarantinesByProject": true, // federation_quarantine.go

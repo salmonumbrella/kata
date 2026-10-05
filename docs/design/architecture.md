@@ -169,7 +169,7 @@ issue is done. Inferring closure from git history recreates what the design note
 call the "beads gravity well": commit-message conventions, orphan checks, branch
 heuristics, and workflow linting that drift out of sync with reality.
 
-Instead, closing is an explicit API mutation. CI or merge automation that knows
+Instead, closing is an explicit API mutation. CI or a merge pipeline that knows
 which issues a change resolves calls the close endpoint directly and can attach
 source metadata (provider, repository, pull request, commit) in the event
 payload. This supports merge-driven closure without turning kata into a git
@@ -178,7 +178,7 @@ status flip (a reason, a substantive message, and typed evidence) so a reviewer
 can later verify the claim. The user-facing rules are in
 [close discipline](../guide/concepts.md#close-discipline).
 
-## Hooks: local automation with a hard boundary
+## Hooks: local commands with a hard boundary
 
 Hooks run local commands in response to `issue.*` events. They are deliberately
 constrained:

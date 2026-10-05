@@ -8,7 +8,7 @@ last_edited: 2026-10-02
 
 Kata includes a native Model Context Protocol (MCP) server for coding agents
 and other MCP clients. It supports stdio and Streamable HTTP transport and
-gives typed access to Kata issue data, administration, automation, and event
+gives typed access to Kata issue data, administration, cron, and event
 workflows.
 
 ```sh

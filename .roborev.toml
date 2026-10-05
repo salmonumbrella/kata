@@ -39,7 +39,7 @@ question, not a Medium/High "fix".
 Repository write access is a trusted operator boundary. Do not model a hostile
 party who can push branches or tags, replace generated asset branches, or edit
 workflow definitions: that authority can already change product source,
-release automation, and published artifacts directly. Findings whose exploit
+release processes, and published artifacts directly. Findings whose exploit
 requires malicious repository-writer access are out of scope and must not drive
 extra approval inputs or operator ceremony.
 

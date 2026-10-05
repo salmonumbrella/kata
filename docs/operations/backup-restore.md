@@ -93,8 +93,23 @@ The target must not exist unless `--force` is set. To use the restored
 database, stop the daemon, point `KATA_DSN` or `KATA_DB` at the restored file,
 or move it into `KATA_HOME` as `kata.db`, then restart.
 
-Without `--merge`, `kata import` creates a target database from the input
+Without `--merge`, `kata import` replaces the target contents with the input
 snapshot. It does not add records to an existing database.
+
+For SQLite, `--force` replaces an existing current-schema database in one
+transaction while keeping its file identity. It refuses a legacy or unknown
+existing target without upgrading or modifying it. Restore to a fresh path
+with the command above, or explicitly upgrade the existing target separately
+before retrying. Orphan `-wal` or `-shm` files also cause refusal: recover or
+remove that file set explicitly, or choose a fresh destination. A destination
+that appears after import starts is never overwritten, even with `--force`.
+
+Shared definitions and independent run observations are portable backup data.
+Running or unknown evidence does not grant ownership or prevent an explicitly
+requested replacement. Legacy experimental cron authority records are
+rejected before clearing a target. An incompatible experimental schema 31 also
+requires its matching old binary and an explicitly planned isolated rebuild;
+there is no automatic repair or legacy export conversion.
 
 For Postgres, pass a DSN as the target:
 

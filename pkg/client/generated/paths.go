@@ -101,6 +101,120 @@ type DetachProjectAliasPath struct {
 	AliasID   int64 `json:"alias_id"`
 }
 
+type GetCronCapabilitiesPath struct {
+	ProjectID int64 `json:"project_id"`
+}
+
+type ListCronFlowsPath struct {
+	ProjectID int64 `json:"project_id"`
+}
+
+type CreateCronFlowPath struct {
+	ProjectID int64 `json:"project_id"`
+}
+
+type ArchiveCronFlowPath struct {
+	ProjectID int64  `json:"project_id"`
+	CronUID   string `json:"cron_uid" validate:"required"`
+}
+
+func (a ArchiveCronFlowPath) Validate() error {
+	return runtime.ConvertValidatorError(typesValidator.Struct(a))
+}
+
+type ShowCronFlowPath struct {
+	ProjectID int64  `json:"project_id"`
+	CronUID   string `json:"cron_uid" validate:"required"`
+}
+
+func (s ShowCronFlowPath) Validate() error {
+	return runtime.ConvertValidatorError(typesValidator.Struct(s))
+}
+
+type ReplaceCronFlowPath struct {
+	ProjectID int64  `json:"project_id"`
+	CronUID   string `json:"cron_uid" validate:"required"`
+}
+
+func (r ReplaceCronFlowPath) Validate() error {
+	return runtime.ConvertValidatorError(typesValidator.Struct(r))
+}
+
+type RestoreCronFlowPath struct {
+	ProjectID int64  `json:"project_id"`
+	CronUID   string `json:"cron_uid" validate:"required"`
+}
+
+func (r RestoreCronFlowPath) Validate() error {
+	return runtime.ConvertValidatorError(typesValidator.Struct(r))
+}
+
+type ListCronJobsPath struct {
+	ProjectID int64 `json:"project_id"`
+}
+
+type CreateCronJobPath struct {
+	ProjectID int64 `json:"project_id"`
+}
+
+type ArchiveCronJobPath struct {
+	ProjectID int64  `json:"project_id"`
+	CronUID   string `json:"cron_uid" validate:"required"`
+}
+
+func (a ArchiveCronJobPath) Validate() error {
+	return runtime.ConvertValidatorError(typesValidator.Struct(a))
+}
+
+type ShowCronJobPath struct {
+	ProjectID int64  `json:"project_id"`
+	CronUID   string `json:"cron_uid" validate:"required"`
+}
+
+func (s ShowCronJobPath) Validate() error {
+	return runtime.ConvertValidatorError(typesValidator.Struct(s))
+}
+
+type ReplaceCronJobPath struct {
+	ProjectID int64  `json:"project_id"`
+	CronUID   string `json:"cron_uid" validate:"required"`
+}
+
+func (r ReplaceCronJobPath) Validate() error {
+	return runtime.ConvertValidatorError(typesValidator.Struct(r))
+}
+
+type RestoreCronJobPath struct {
+	ProjectID int64  `json:"project_id"`
+	CronUID   string `json:"cron_uid" validate:"required"`
+}
+
+func (r RestoreCronJobPath) Validate() error {
+	return runtime.ConvertValidatorError(typesValidator.Struct(r))
+}
+
+type ListCronRunsPath struct {
+	ProjectID int64 `json:"project_id"`
+}
+
+type ShowCronRunPath struct {
+	ProjectID int64  `json:"project_id"`
+	RunUID    string `json:"run_uid" validate:"required"`
+}
+
+func (s ShowCronRunPath) Validate() error {
+	return runtime.ConvertValidatorError(typesValidator.Struct(s))
+}
+
+type ObserveCronRunPath struct {
+	ProjectID int64  `json:"project_id"`
+	RunUID    string `json:"run_uid" validate:"required"`
+}
+
+func (o ObserveCronRunPath) Validate() error {
+	return runtime.ConvertValidatorError(typesValidator.Struct(o))
+}
+
 type DigestProjectPath struct {
 	ProjectID int64 `json:"project_id"`
 }
@@ -506,6 +620,15 @@ type PatchIssueMetadataPath struct {
 
 func (p PatchIssueMetadataPath) Validate() error {
 	return runtime.ConvertValidatorError(typesValidator.Struct(p))
+}
+
+type IssuePlanningDatesPath struct {
+	ProjectID int64  `json:"project_id"`
+	Ref       string `json:"ref" validate:"required"`
+}
+
+func (i IssuePlanningDatesPath) Validate() error {
+	return runtime.ConvertValidatorError(typesValidator.Struct(i))
 }
 
 type ListLabelsPath struct {

@@ -55,7 +55,7 @@ func DisplayCapabilities(apiCaps string) string {
 		seen[capability] = true
 	}
 	out := make([]string, 0, len(parts))
-	for _, capability := range []string{"pull", "push", "lease"} {
+	for _, capability := range []string{"pull", "push", "lease", "cron"} {
 		if seen[capability] {
 			out = append(out, capability)
 		}

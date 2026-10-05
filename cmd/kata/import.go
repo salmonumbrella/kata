@@ -139,6 +139,13 @@ func runKataJSONLImport(cmd *cobra.Command, input, target string, force, newInst
 	if merge {
 		return runSQLiteJSONLMerge(cmd, input, target)
 	}
+	// Remember whether the main file existed before opening the input. Force
+	// authorizes replacement of that target, not a concurrently created one.
+	_, mainErr := os.Stat(target)
+	mainExists := mainErr == nil
+	if mainErr != nil && !errors.Is(mainErr, os.ErrNotExist) {
+		return fmt.Errorf("stat import target: %w", mainErr)
+	}
 	targetExists, err := sqliteFileSetExists(target)
 	if err != nil {
 		return fmt.Errorf("stat import target: %w", err)
@@ -149,6 +156,9 @@ func runKataJSONLImport(cmd *cobra.Command, input, target string, force, newInst
 			Kind:     kindValidation,
 			ExitCode: ExitValidation,
 		}
+	}
+	if force && targetExists && !mainExists {
+		return fmt.Errorf("target appeared or has orphan SQLite sidecars; recover that file set or choose a fresh destination")
 	}
 	in, err := os.Open(input) //nolint:gosec // import path is user-provided CLI input
 	if err != nil {
@@ -179,7 +189,7 @@ func runKataJSONLImport(cmd *cobra.Command, input, target string, force, newInst
 	if err := d.Close(); err != nil {
 		return fmt.Errorf("close import target: %w", err)
 	}
-	if err := installImportedTarget(tmpTarget, target, force); err != nil {
+	if err := installPreparedSQLiteImport(cmd.Context(), tmpTarget, target, force && mainExists); err != nil {
 		return err
 	}
 	installed = true
@@ -365,7 +375,7 @@ func installImportedTarget(tmpTarget, target string, force bool) error {
 			return fmt.Errorf("stat import target before install: %w", err)
 		}
 		if targetExists {
-			return fmt.Errorf("target already exists; pass --force to replace it")
+			return fmt.Errorf("target already exists; refusing to overwrite a destination that appeared during import")
 		}
 		if _, err := moveSQLiteFileSet(tmpTarget, target); err != nil {
 			return fmt.Errorf("install import target: %w", err)

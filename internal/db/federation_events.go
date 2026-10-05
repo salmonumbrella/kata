@@ -126,7 +126,7 @@ func validateFederationTeammate(raw jsontext.Value, eventUID, eventType string) 
 // embedded authors to its bound actor and recomputes the portable hash.
 func CanonicalizeFederationSnapshotAuthors(event RemoteEvent, boundActor string) (RemoteEvent, error) {
 	boundActor = strings.TrimSpace(boundActor)
-	if event.Type != "issue.snapshot" || boundActor == "" {
+	if (event.Type != "issue.snapshot" && event.Type != "cron.job.snapshot" && event.Type != "cron.flow.snapshot") || boundActor == "" {
 		return event, nil
 	}
 	var payload map[string]jsontext.Value
@@ -188,7 +188,7 @@ func CanonicalizeFederationSnapshotAuthors(event RemoteEvent, boundActor string)
 // LocalEchoMatchesCanonicalSnapshot reports whether a pulled hash mismatch is
 // exactly the allowed canonical-author rewrite of one local adoption snapshot.
 func LocalEchoMatchesCanonicalSnapshot(existing Event, remote RemoteEvent) (bool, error) {
-	if existing.Type != "issue.snapshot" || remote.Type != "issue.snapshot" {
+	if existing.Type != remote.Type || (existing.Type != "issue.snapshot" && existing.Type != "cron.job.snapshot" && existing.Type != "cron.flow.snapshot") {
 		return false, nil
 	}
 	if existing.UID != remote.EventUID ||
@@ -222,4 +222,14 @@ func stringPointersEqual(left, right *string) bool {
 		return left == nil && right == nil
 	}
 	return *left == *right
+}
+
+// IsFederationSnapshotEvent identifies a baseline document, including dormant
+// cron history. It does not grant snapshot-author preservation.
+func IsFederationSnapshotEvent(kind string) bool {
+	switch kind {
+	case "issue.snapshot", "cron.job.snapshot", "cron.flow.snapshot", "cron.run.snapshot":
+		return true
+	}
+	return false
 }

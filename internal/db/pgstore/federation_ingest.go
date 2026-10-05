@@ -24,15 +24,34 @@ func (s *Store) IngestFederationEvents(
 	ctx context.Context,
 	params db.FederationIngestParams,
 ) (db.FederationIngestResult, error) {
-	if len(params.Events) == 0 {
-		return db.FederationIngestResult{}, nil
-	}
 	var result db.FederationIngestResult
 	err := s.withSerializableTx(ctx, func(tx *sql.Tx) error {
 		result = db.FederationIngestResult{}
+		if err := db.LockCronProject(ctx, tx, params.ProjectID); err != nil {
+			return err
+		}
 		projectUID, projectName, err := requireFederationIngestHub(ctx, tx, params.ProjectID)
 		if err != nil {
 			return err
+		}
+		required, err := db.ProjectRequiredEventFeatures(ctx, tx, projectUID)
+		if err != nil {
+			return err
+		}
+		if err := db.RequireEventFeatures(params.EventFeatures, required); err != nil {
+			return err
+		}
+		result.RequiredEventFeatures = required
+		if len(params.Events) == 0 {
+			return nil
+		}
+		for _, input := range params.Events {
+			if err := db.RequireEventFeatures(params.EventFeatures, db.EventRequiredFeatures(input.Event.Type)); err != nil {
+				return err
+			}
+			if feature := db.EventRequiredFeatures(input.Event.Type); feature != "" {
+				result.RequiredEventFeatures = feature
+			}
 		}
 		knownIssueUIDs, err := currentFederatedIssueUIDSet(ctx, tx, params.ProjectID)
 		if err != nil {
@@ -124,14 +143,14 @@ func (s *Store) IngestFederationEvents(
 			); err != nil {
 				return err
 			}
-			if freshSnapshotSeen && event.Type != "issue.snapshot" {
+			if freshSnapshotSeen && !db.IsFederationSnapshotEvent(event.Type) {
 				return fmt.Errorf("%w: non-snapshot event %s follows snapshot baseline in same batch",
 					db.ErrFederationIngestValidation, event.EventUID)
 			}
 			if err := rejectFreshCreateSnapshotForKnownIssue(event, knownIssueUIDs); err != nil {
 				return err
 			}
-			if event.Type == "issue.snapshot" {
+			if db.IsFederationSnapshotEvent(event.Type) {
 				freshSnapshotSeen = true
 			}
 			seenBatch[event.EventUID] = event.ContentHash
@@ -140,13 +159,24 @@ func (s *Store) IngestFederationEvents(
 				sourceEventID: input.SourceEventID, event: event,
 			})
 		}
+		cronValidator := db.NewCronReplayValidator(tx, true)
+		cronTargets := make([]db.RemoteEvent, 0, len(prepared))
+		for _, input := range prepared {
+			if !input.duplicate {
+				cronTargets = append(cronTargets, input.event)
+			}
+		}
+		if err := cronValidator.PrepareEvents(ctx, params.ProjectID, cronTargets); err != nil {
+			return err
+		}
+
 		linksAffected := false
 		for _, input := range prepared {
 			if input.duplicate {
 				continue
 			}
 			inserted, err := s.insertFederationEventTx(
-				ctx, tx, params.ProjectID, projectName, input.event,
+				ctx, tx, params.ProjectID, projectName, input.event, cronValidator,
 			)
 			if err != nil {
 				return err
@@ -166,6 +196,7 @@ func (s *Store) IngestFederationEvents(
 			if err != nil {
 				return err
 			}
+			result.Events = append(result.Events, auditEvents...)
 			for _, auditEvent := range auditEvents {
 				result.InsertedEventUIDs = append(result.InsertedEventUIDs, auditEvent.UID)
 			}
@@ -174,17 +205,24 @@ func (s *Store) IngestFederationEvents(
 			// The generated claim audit events are never link-bearing, so the
 			// accepted batch alone decides whether the binding-group link fold
 			// has any work to do.
-			if err := s.materializeFederatedProjectTx(ctx, tx, params.ProjectID, linksAffected, result.InsertedEventUIDs); err != nil {
+			if err := s.materializeFederatedProjectTx(ctx, tx, params.ProjectID, linksAffected, result.InsertedEventUIDs, cronValidator); err != nil {
 				return err
 			}
+
 			if !adoptionState.shouldDeferMarker {
-				return consumeFederationAdoptionSnapshotAuthorMarker(ctx, tx,
-					params.ProjectID, params.FederationEnrollmentID, params.SpokeInstanceUID)
+				err = consumeFederationAdoptionSnapshotAuthorMarker(ctx, tx, params.ProjectID, params.FederationEnrollmentID, params.SpokeInstanceUID)
+			} else {
+				err = recordFederationAdoptionBaselineProgress(ctx, tx, params.ProjectID, params.FederationEnrollmentID, params.SpokeInstanceUID, adoptionState.nextSourceEventID, adoptionState.endSourceEventID, adoptionState.deferAuthorPreservationGrant)
 			}
-			return recordFederationAdoptionBaselineProgress(ctx, tx,
-				params.ProjectID, params.FederationEnrollmentID, params.SpokeInstanceUID,
-				adoptionState.nextSourceEventID, adoptionState.endSourceEventID,
-				adoptionState.deferAuthorPreservationGrant)
+			if err != nil {
+				return err
+			}
+		}
+		result.InsertedEventUIDs, result.Events, err = db.RetainFederationEvents(ctx, result.InsertedEventUIDs, result.Events, func(ctx context.Context, ids []string) ([]db.Event, error) {
+			return eventsByUIDs(ctx, tx, params.ProjectID, ids)
+		})
+		if err != nil {
+			return err
 		}
 		return nil
 	})
@@ -197,7 +235,11 @@ func (s *Store) insertFederationEventTx(
 	projectID int64,
 	projectName string,
 	event db.RemoteEvent,
+	validator *db.CronReplayValidator,
 ) (bool, error) {
+	if err := validator.Validate(ctx, projectID, event); err != nil {
+		return false, err
+	}
 	storedProjectName := event.ProjectName
 	if storedProjectName == "" {
 		storedProjectName = projectName
@@ -265,6 +307,27 @@ func validateFederationBoundActorPayload(
 		return nil
 	}
 	switch event.Type {
+	case "cron.run.snapshot":
+		if allowSnapshotAuthorPreservation {
+			return nil
+		}
+		fallthrough
+	case "cron.run.observed":
+		var run db.CronRunObservation
+		if err := json.Unmarshal(event.Payload, &run); err != nil {
+			return err
+		}
+		if run.Actor != boundActor {
+			return fmt.Errorf("%w: run actor differs from bound actor", db.ErrFederationIngestValidation)
+		}
+		return nil
+	case "cron.job.snapshot", "cron.flow.snapshot":
+		if allowSnapshotAuthorPreservation {
+			return nil
+		}
+		return validateFederationPayloadAuthor(event, boundActor)
+	case "cron.job.created", "cron.flow.created":
+		return validateFederationPayloadAuthor(event, boundActor)
 	case "issue.snapshot":
 		if allowSnapshotAuthorPreservation {
 			return nil
@@ -361,6 +424,9 @@ func validateFederationProjectEvent(
 	if strings.HasPrefix(event.Type, "recurrence.") || event.Type == "issue.moved" {
 		return fmt.Errorf("%w: event type %s unsupported in phase 2",
 			db.ErrFederationIngestValidation, event.Type)
+	}
+	if strings.HasPrefix(event.Type, "cron.") {
+		return db.ValidateCronFederationEvent(event)
 	}
 	payload := db.PayloadMap(event.Payload)
 	if event.Type == "project.metadata_updated" {

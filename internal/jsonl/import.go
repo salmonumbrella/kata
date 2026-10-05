@@ -20,6 +20,7 @@ const eventReplayFieldsSchemaVersion = 12
 
 // ImportOptions controls optional import behaviors.
 type ImportOptions struct {
+
 	// RequireFreshTarget rejects replay if domain state appeared after the CLI
 	// observed an uninitialized target.
 	RequireFreshTarget bool
@@ -399,6 +400,24 @@ func toImportRecord(env Envelope, exportVersion int, localInstanceUID string, pr
 			return nil, err
 		}
 		if err := normalizePendingClaimRequestTimes(&rec); err != nil {
+			return nil, err
+		}
+		return &rec, nil
+	case KindCronJob:
+		var rec db.CronJobExport
+		if err := json.Unmarshal(env.Data, &rec, json.RejectUnknownMembers(true)); err != nil {
+			return nil, err
+		}
+		return &rec, nil
+	case KindCronFlow:
+		var rec db.CronFlowExport
+		if err := json.Unmarshal(env.Data, &rec, json.RejectUnknownMembers(true)); err != nil {
+			return nil, err
+		}
+		return &rec, nil
+	case KindCronRun:
+		var rec db.CronRunExport
+		if err := json.Unmarshal(env.Data, &rec, json.RejectUnknownMembers(true)); err != nil {
 			return nil, err
 		}
 		return &rec, nil

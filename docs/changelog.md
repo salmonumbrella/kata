@@ -826,7 +826,7 @@ strengthens machine-readable identity and semantic-search input validation.
 **Improvements**
 
 - Added the stable canonical identity `"name": "kata"` to `kata version
-  --json`, alongside the existing version and build fields, so automation can
+  --json`, alongside the existing version and build fields, so scripts can
   identify the binary without parsing human-readable output or contacting a
   daemon.
 - Rejected embedding responses with null components or zero-norm vectors before
@@ -943,7 +943,7 @@ terminal rendering.
 - Added documented `work.*` metadata conventions for branch orchestration
   workflows, including `work.branch`, `work.attention`, and
   `work.attention_msg`, plus an agent-orchestration runbook for launchers,
-  working agents, coordinators, and merge automation.
+  working agents, coordinators, and merge pipelines.
 
 **Improvements**
 
@@ -1145,7 +1145,7 @@ hosted release installer.
 kata 0.5.0 is the first versioned public preview release. It includes the core
 local-first issue tracker, a full terminal UI, agent-oriented workflows,
 hub-and-spoke federation, portable backup/import paths, and the first release
-automation for binary distribution.
+tooling for binary distribution.
 
 **New features**
 
@@ -1158,7 +1158,7 @@ automation for binary distribution.
   hierarchy, blockers, related links, cross-project links, and cross-project
   ready views.
 - BM25-ranked issue search, look-alike duplicate protection, create
-  idempotency keys, and safe retry behavior for automation.
+  idempotency keys, and safe retry behavior for scripts.
 - Interactive `kata tui` with project switching, nested and flat issue lists,
   issue detail pages, filters, search, inline issue creation, editor-backed
   body/comment editing, mutations, help, split-pane layout, and realtime event

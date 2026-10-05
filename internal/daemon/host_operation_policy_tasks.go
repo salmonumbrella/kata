@@ -1,9 +1,14 @@
 package daemon
 
 func registerTaskOperationPolicies(policies map[string]HostOperationPolicy) {
+	registerHostOperations(policies, HostOperationPolicy{Kind: hostOperationTaskRead, Capability: hostCapabilityRead}, "getCronCapabilities", "showCronRun", "listCronRuns")
+	registerHostOperations(policies, HostOperationPolicy{Kind: hostOperationTaskMutation, Capability: hostCapabilityWrite, Mutation: true}, "observeCronRun")
+	registerHostOperations(policies, HostOperationPolicy{Kind: hostOperationTaskRead, Capability: hostCapabilityRead}, "showCronJob", "listCronJobs", "showCronFlow", "listCronFlows")
+	registerHostOperations(policies, HostOperationPolicy{Kind: hostOperationTaskMutation, Capability: hostCapabilityWrite, Mutation: true}, "createCronJob", "replaceCronJob", "archiveCronJob", "restoreCronJob", "createCronFlow", "replaceCronFlow", "archiveCronFlow", "restoreCronFlow")
+
 	registerHostOperations(policies, HostOperationPolicy{
 		Kind: hostOperationTaskRead, Capability: hostCapabilityRead,
-	}, "listAllIssues", "listIssues", "showIssue", "showIssueByUID", "getIssueMetadata", "reachableIssueGraph",
+	}, "listAllIssues", "listIssues", "showIssue", "issuePlanningDates", "showIssueByUID", "getIssueMetadata", "reachableIssueGraph",
 		"listLabels", "listRecurrences", "showRecurrence", "readyIssues", "readyIssuesGlobal",
 		"searchIssues", "pollEvents", "pollProjectEvents", "auditCloses", "digestGlobal",
 		"digestProject", "getIssueLeaseStatus", "readUISnapshot", "readUIReferences",

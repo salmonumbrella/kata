@@ -28,6 +28,9 @@ type FoldClock struct {
 
 // FoldProjection is the folded state derived from a set of portable events.
 type FoldProjection struct {
+	CronRuns        map[string]FoldCronRun
+	CronJobs        map[string]FoldCronJob
+	CronFlows       map[string]FoldCronFlow
 	Issues          map[string]FoldIssue
 	Comments        map[string]FoldComment
 	Labels          map[FoldLabelKey]FoldElementState
@@ -35,6 +38,18 @@ type FoldProjection struct {
 	IssueMetadata   map[string]jsontext.Value
 	ProjectMetadata map[string]jsontext.Value
 	Warnings        []string
+}
+
+// FoldCronJob retains project identity alongside the winning job document.
+type FoldCronJob struct {
+	CronJob
+	ProjectUID string
+}
+
+// FoldCronFlow retains project identity alongside the winning flow document.
+type FoldCronFlow struct {
+	CronFlow
+	ProjectUID string
 }
 
 // FoldIssue is the replayed issue state keyed by stable issue UID.

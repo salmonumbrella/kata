@@ -11,7 +11,9 @@ import (
 )
 
 const federationPushEventTypeList = `(
-  'project.metadata_updated',
+  'cron.job.created','cron.job.updated','cron.job.deleted','cron.job.restored','cron.job.snapshot',
+ 'cron.flow.created','cron.flow.updated','cron.flow.deleted','cron.flow.restored','cron.flow.snapshot',
+ 'cron.run.observed','cron.run.snapshot','project.metadata_updated',
   'issue.created', 'issue.snapshot', 'issue.updated', 'issue.closed', 'issue.reopened',
   'issue.soft_deleted', 'issue.restored', 'issue.commented', 'issue.comment_edited',
   'issue.assigned', 'issue.unassigned', 'issue.assignment_renewed', 'issue.assignment_expired',
@@ -46,23 +48,23 @@ ORDER BY e.id ASC LIMIT $4`, projectID, originInstanceUID, afterID, limit)
 	if err != nil {
 		return nil, err
 	}
-	if len(output) == limit && len(output) > 0 && output[len(output)-1].Type == "issue.snapshot" {
+	if len(output) == limit && len(output) > 0 && db.IsFederationSnapshotEvent(output[len(output)-1].Type) {
 		runStartAfterID := afterID
 		for _, o := range slices.Backward(output) {
-			if o.Type != "issue.snapshot" {
+			if !db.IsFederationSnapshotEvent(o.Type) {
 				runStartAfterID = o.ID
 				break
 			}
 		}
 		extra, err := s.queryPendingFederationPushEvents(ctx, eventSelect+`
-WHERE e.project_id=$1 AND e.origin_instance_uid=$2 AND e.id>$3 AND e.type='issue.snapshot'
+WHERE e.project_id=$1 AND e.origin_instance_uid=$2 AND e.id>$3 AND e.type IN ('issue.snapshot','cron.job.snapshot','cron.flow.snapshot','cron.run.snapshot')
   AND NOT EXISTS (
     SELECT 1 FROM events barrier
      WHERE barrier.project_id=e.project_id
        AND barrier.origin_instance_uid=e.origin_instance_uid
        AND barrier.id>$4 AND barrier.id<e.id
        AND `+pgFederationPushEventTypeCondition("barrier.type")+`
-       AND barrier.type<>'issue.snapshot'
+       AND barrier.type NOT IN ('issue.snapshot','cron.job.snapshot','cron.flow.snapshot','cron.run.snapshot')
   )
 ORDER BY e.id ASC`, projectID, originInstanceUID, output[len(output)-1].ID, runStartAfterID)
 		if err != nil {
@@ -71,11 +73,11 @@ ORDER BY e.id ASC`, projectID, originInstanceUID, output[len(output)-1].ID, runS
 		output = append(output, extra...)
 	}
 	for index, event := range output {
-		if event.Type != "issue.snapshot" {
+		if !db.IsFederationSnapshotEvent(event.Type) {
 			continue
 		}
 		for next := index + 1; next < len(output); next++ {
-			if output[next].Type != "issue.snapshot" {
+			if !db.IsFederationSnapshotEvent(output[next].Type) {
 				return output[:next], nil
 			}
 		}
@@ -131,6 +133,21 @@ func (s *Store) InsertRemoteEvent(ctx context.Context, projectID int64, remote d
 	inserted := false
 	err = s.withSerializableTx(ctx, func(tx *sql.Tx) error {
 		inserted = false
+		if db.EventRequiredFeatures(remote.Type) != "" {
+			if err := db.ValidateCronFederationEvent(remote); err != nil {
+				return err
+			}
+			var targetUID string
+			if err := tx.QueryRowContext(ctx, `SELECT uid FROM projects WHERE id=$1`, projectID).Scan(&targetUID); err != nil {
+				return err
+			}
+			if targetUID != remote.ProjectUID {
+				return db.ErrFederationIngestValidation
+			}
+			if err := db.ValidateCronRunReplay(ctx, tx, projectID, remote, true); err != nil {
+				return err
+			}
+		}
 		var existingHash string
 		err := tx.QueryRowContext(ctx, `SELECT content_hash FROM events WHERE uid=$1 FOR UPDATE`,
 			remote.EventUID).Scan(&existingHash)

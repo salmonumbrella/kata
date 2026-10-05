@@ -57,7 +57,7 @@ tracking issues and reacts when they need attention or close. It reads, it does
 not write `work.*`. Commands: `kata wait`, `kata list --meta work.attention=...`,
 `kata events --tail`.
 
-**Merge automation.** The pipeline that verifies finished work and closes the
+**Merge pipeline.** The pipeline that verifies finished work and closes the
 tracking issue with evidence. It reads `work.branch` to know what to merge and
 closes the issue; it does not reset `work.*`. Commands: `kata show <ref>`,
 `kata close <ref> --done --commit <sha>`.
@@ -228,7 +228,7 @@ dashboard sees exactly when an attention level changes.
 
 ## Merge: verify and close
 
-Merge automation reads `work.branch` to know what to integrate, verifies the
+Merge pipeline reads `work.branch` to know what to integrate, verifies the
 work, and closes the tracking issue with typed evidence:
 
 ```sh
@@ -256,7 +256,7 @@ self-assertion alone.
 **Stale `work.branch` after force-push or rebase.** kata never validates
 `work.branch` against a repository, so a rewritten or deleted branch leaves the
 value pointing at history that no longer exists. This is informational only;
-kata cannot detect it. Merge automation should treat `work.branch` as a hint and
+kata cannot detect it. Merge pipeline should treat `work.branch` as a hint and
 verify the branch still resolves before acting on it.
 
 **Two agents on one tracking issue.** The ownership convention is one

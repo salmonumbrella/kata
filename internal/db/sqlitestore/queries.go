@@ -545,6 +545,22 @@ func (d *Store) CreateIssue(ctx context.Context, p db.CreateIssueParams) (db.Iss
 }
 
 func (d *Store) createIssue(ctx context.Context, p db.CreateIssueParams) (int64, db.Event, error) {
+	tx, err := d.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, db.Event{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	id, event, err := d.createIssueTx(ctx, tx, p)
+	if err != nil {
+		return 0, db.Event{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, db.Event{}, err
+	}
+	return id, event, nil
+}
+
+func (d *Store) createIssueTx(ctx context.Context, tx *sql.Tx, p db.CreateIssueParams) (int64, db.Event, error) {
 	// Normalize: a non-nil pointer to "" is treated as no owner. The payload
 	// already drops empty owner via omitempty; making the DB column NULL keeps
 	// the two views consistent and matches the unassigned semantic.
@@ -587,12 +603,6 @@ func (d *Store) createIssue(ctx context.Context, p db.CreateIssueParams) (int64,
 	if err != nil {
 		return 0, db.Event{}, err
 	}
-
-	tx, err := d.BeginTx(ctx, &sql.TxOptions{})
-	if err != nil {
-		return 0, db.Event{}, fmt.Errorf("begin: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
 
 	var (
 		projectName string
@@ -745,9 +755,6 @@ func (d *Store) createIssue(ctx context.Context, p db.CreateIssueParams) (int64,
 		return 0, db.Event{}, err
 	}
 
-	if err := tx.Commit(); err != nil {
-		return 0, db.Event{}, fmt.Errorf("commit: %w", err)
-	}
 	return issueID, evt, nil
 }
 

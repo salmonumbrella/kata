@@ -21,6 +21,7 @@ import (
 type Backend struct {
 	Name                           string
 	Open                           func(t *testing.T) db.Storage
+	OpenSame                       func(t *testing.T, store db.Storage) db.Storage
 	InstallExternalRootClock       func(db.Storage, func() time.Time) func()
 	SeedLegacyPendingClaim         func(context.Context, db.Storage, string) error
 	SeedClaimViolation             func(context.Context, db.Storage, db.Project, db.Issue, string, jsontext.Value) error
@@ -39,6 +40,20 @@ type scenario struct {
 }
 
 var storageScenarios = []scenario{
+	{name: "peer ingest committed events", methods: []string{"IngestFederationEvents"}, run: checkPeerIngestCommittedEvents},
+	{name: "independent run observations", methods: []string{"ObserveCronRun", "CronRun", "ListCronRuns", "ExportCronJobs", "ExportCronFlows", "ExportCronRuns"}, run: checkIndependentRunObservations},
+	{name: "run history instants", methods: []string{"ObserveCronRun", "ListCronRuns"}, run: checkRunHistoryInstants},
+	{name: "run reference restore", methods: []string{"ImportReplay"}, runWithBackend: checkRunReferenceRestore},
+	{name: "run reference federation", methods: []string{"InsertRemoteEvent", "IngestFederationEvents"}, run: checkRunReferenceFederation},
+	{name: "run compacted provenance", methods: []string{"ResetFederatedProject", "MaterializeFederatedProject"}, runWithBackend: checkRunCompactedProvenance},
+	{name: "issue planning dates", methods: []string{"IssuePlanningDates"}, run: checkIssuePlanningDates},
+	{name: "native cron remote validation", methods: []string{}, runWithBackend: checkNativeCronValidation},
+	{name: "native cron adoption author", methods: []string{}, runWithBackend: checkNativeCronAdoptionAuthor},
+	{name: "native cron federation", methods: []string{"ReadFederation"}, runWithBackend: checkNativeCronFederation},
+	{name: "native cron push", methods: []string{}, runWithBackend: checkNativeCronPush},
+	{name: "native cron definitions", methods: []string{"PutCronJob", "PutCronFlow", "CronJob", "CronFlow", "ListCronJobs", "ListCronFlows"}, run: checkNativeCronDefinitions},
+	{name: "native cron constraints", methods: []string{}, run: checkNativeCronConstraints},
+	{name: "native cron dormant storage", methods: []string{}, run: checkNativeCronDormancy},
 	{name: "external import derived status", methods: []string{"CreateProject", "ImportBatch", "ImportMappingBySource", "IssueByID", "EditIssue"}, run: checkImportDerivedStatus},
 	{name: "issue status federation intent", methods: []string{"IngestFederationEvents", "MaterializeFederatedProject", "CreateIssue", "UpsertIssueSyncBinding"}, run: checkIssueStatusFederationIntent},
 	{name: "issue status native intent", methods: []string{"CloseIssueWithEvents", "ReopenIssue", "CreateIssue", "UpsertIssueSyncBinding"}, runWithBackend: checkIssueStatusNativeIntent},

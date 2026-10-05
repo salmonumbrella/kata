@@ -39,18 +39,37 @@ func (d *Store) ingestFederationEventsOnce(
 	ctx context.Context,
 	p db.FederationIngestParams,
 ) (db.FederationIngestResult, error) {
-	if len(p.Events) == 0 {
-		return db.FederationIngestResult{}, nil
-	}
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		return db.FederationIngestResult{}, fmt.Errorf("begin federation ingest: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if err := db.LockCronProject(ctx, tx, p.ProjectID); err != nil {
+		return db.FederationIngestResult{}, err
+	}
 	projectUID, projectName, err := requireFederationIngestHub(ctx, tx, p.ProjectID)
 	if err != nil {
 		return db.FederationIngestResult{}, err
+	}
+	required, err := db.ProjectRequiredEventFeatures(ctx, tx, projectUID)
+	if err != nil {
+		return db.FederationIngestResult{}, err
+	}
+	if err := db.RequireEventFeatures(p.EventFeatures, required); err != nil {
+		return db.FederationIngestResult{}, err
+	}
+	result := db.FederationIngestResult{RequiredEventFeatures: required}
+	if len(p.Events) == 0 {
+		return result, nil
+	}
+	for _, input := range p.Events {
+		if err := db.RequireEventFeatures(p.EventFeatures, db.EventRequiredFeatures(input.Event.Type)); err != nil {
+			return db.FederationIngestResult{}, err
+		}
+		if feature := db.EventRequiredFeatures(input.Event.Type); feature != "" {
+			result.RequiredEventFeatures = feature
+		}
 	}
 	knownIssueUIDs, err := currentFederatedIssueUIDSet(ctx, tx, p.ProjectID)
 	if err != nil {
@@ -63,7 +82,6 @@ func (d *Store) ingestFederationEventsOnce(
 		return db.FederationIngestResult{}, err
 	}
 	prepared := make([]preparedFederationIngestEvent, 0, len(p.Events))
-	result := db.FederationIngestResult{}
 	seenBatch := map[string]string{}
 	freshSnapshotSeen := false
 	boundActor := strings.TrimSpace(p.BoundActor)
@@ -140,14 +158,14 @@ func (d *Store) ingestFederationEventsOnce(
 			adoptionSnapshotAuthorState.allowAuthorPreservation); err != nil {
 			return db.FederationIngestResult{}, err
 		}
-		if freshSnapshotSeen && ev.Type != "issue.snapshot" {
+		if freshSnapshotSeen && !db.IsFederationSnapshotEvent(ev.Type) {
 			return db.FederationIngestResult{}, fmt.Errorf("%w: non-snapshot event %s follows snapshot baseline in same batch",
 				db.ErrFederationIngestValidation, ev.EventUID)
 		}
 		if err := rejectFreshCreateSnapshotForKnownIssue(ev, knownIssueUIDs); err != nil {
 			return db.FederationIngestResult{}, err
 		}
-		if ev.Type == "issue.snapshot" {
+		if db.IsFederationSnapshotEvent(ev.Type) {
 			freshSnapshotSeen = true
 		}
 		seenBatch[ev.EventUID] = ev.ContentHash
@@ -158,13 +176,24 @@ func (d *Store) ingestFederationEventsOnce(
 		})
 	}
 
+	cronValidator := db.NewCronReplayValidator(tx)
+	cronTargets := make([]db.RemoteEvent, 0, len(prepared))
+	for _, input := range prepared {
+		if !input.Duplicate {
+			cronTargets = append(cronTargets, input.Event)
+		}
+	}
+	if err := cronValidator.PrepareEvents(ctx, p.ProjectID, cronTargets); err != nil {
+		return db.FederationIngestResult{}, err
+	}
+
 	linksAffected := false
 	for _, in := range prepared {
 		if in.Duplicate {
 			continue
 		}
 		ev := in.Event
-		inserted, err := insertFederationEventTx(ctx, tx, p.ProjectID, projectName, ev)
+		inserted, err := insertFederationEventTx(ctx, tx, p.ProjectID, projectName, ev, cronValidator)
 		if err != nil {
 			return db.FederationIngestResult{}, err
 		}
@@ -184,6 +213,7 @@ func (d *Store) ingestFederationEventsOnce(
 			linksAffected = true
 		}
 		result.InsertedEventUIDs = append(result.InsertedEventUIDs, ev.EventUID)
+		result.Events = append(result.Events, auditEvents...)
 		for _, auditEvent := range auditEvents {
 			result.InsertedEventUIDs = append(result.InsertedEventUIDs, auditEvent.UID)
 		}
@@ -192,7 +222,7 @@ func (d *Store) ingestFederationEventsOnce(
 		// The generated claim audit events are never link-bearing, so the
 		// accepted batch alone decides whether the binding-group link fold has
 		// any work to do.
-		if err := d.materializeFederatedProjectTx(ctx, tx, p.ProjectID, linksAffected, result.InsertedEventUIDs); err != nil {
+		if err := d.materializeFederatedProjectTx(ctx, tx, p.ProjectID, linksAffected, result.InsertedEventUIDs, cronValidator); err != nil {
 			return db.FederationIngestResult{}, err
 		}
 		if !adoptionSnapshotAuthorState.shouldDeferMarker {
@@ -207,6 +237,13 @@ func (d *Store) ingestFederationEventsOnce(
 			adoptionSnapshotAuthorState.deferAuthorPreservationGrant); err != nil {
 			return db.FederationIngestResult{}, err
 		}
+	}
+
+	result.InsertedEventUIDs, result.Events, err = db.RetainFederationEvents(ctx, result.InsertedEventUIDs, result.Events, func(ctx context.Context, ids []string) ([]db.Event, error) {
+		return eventsByUIDs(ctx, tx, p.ProjectID, ids)
+	})
+	if err != nil {
+		return db.FederationIngestResult{}, err
 	}
 	if err := federationFailpoint("before_federation_ingest_commit"); err != nil {
 		return db.FederationIngestResult{}, err
@@ -230,6 +267,27 @@ func validateFederationBoundActorPayload(
 		return nil
 	}
 	switch ev.Type {
+	case "cron.run.snapshot":
+		if allowSnapshotAuthorPreservation {
+			return nil
+		}
+		fallthrough
+	case "cron.run.observed":
+		var run db.CronRunObservation
+		if err := json.Unmarshal(ev.Payload, &run); err != nil {
+			return err
+		}
+		if run.Actor != boundActor {
+			return fmt.Errorf("%w: run actor differs from bound actor", db.ErrFederationIngestValidation)
+		}
+		return nil
+	case "cron.job.snapshot", "cron.flow.snapshot":
+		if allowSnapshotAuthorPreservation {
+			return nil
+		}
+		return validateFederationPayloadAuthor(ev, boundActor)
+	case "cron.job.created", "cron.flow.created":
+		return validateFederationPayloadAuthor(ev, boundActor)
 	case "issue.snapshot":
 		if allowSnapshotAuthorPreservation {
 			return nil
@@ -524,7 +582,7 @@ func federationIngestAdoptionBaselineShape(events []db.FederationIngestEvent) fe
 				shape.valid = false
 				return shape
 			}
-		case "issue.snapshot":
+		case "issue.snapshot", "cron.job.snapshot", "cron.flow.snapshot", "cron.run.snapshot":
 			shape.hasSnapshot = true
 		default:
 			shape.valid = false
@@ -550,7 +608,7 @@ func validateFederationIngestAdoptionBaselineBoundary(
 		  FROM events
 		 WHERE project_id = ?
 		   AND origin_instance_uid = ?
-		   AND type IN ('project.metadata_updated', 'issue.snapshot')
+		   AND type IN ('project.metadata_updated','issue.snapshot','cron.job.snapshot','cron.flow.snapshot','cron.run.snapshot')
 		 ORDER BY id ASC
 		 LIMIT 1`,
 		projectID, spokeInstanceUID).Scan(&hlcPhysicalMS, &hlcCounter)
@@ -773,7 +831,11 @@ func insertFederationEventTx(
 	projectID int64,
 	projectName string,
 	ev db.RemoteEvent,
+	validator *db.CronReplayValidator,
 ) (bool, error) {
+	if err := validator.Validate(ctx, projectID, ev); err != nil {
+		return false, err
+	}
 	storedProjectName := ev.ProjectName
 	if storedProjectName == "" {
 		storedProjectName = projectName
@@ -887,6 +949,9 @@ func validateFederationProjectEvent(
 	}
 	if strings.HasPrefix(ev.Type, "recurrence.") || ev.Type == "issue.moved" {
 		return fmt.Errorf("%w: event type %s unsupported in phase 2", db.ErrFederationIngestValidation, ev.Type)
+	}
+	if strings.HasPrefix(ev.Type, "cron.") {
+		return db.ValidateCronFederationEvent(ev)
 	}
 	payload := db.PayloadMap(ev.Payload)
 	if ev.Type == "project.metadata_updated" {

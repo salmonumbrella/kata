@@ -115,13 +115,19 @@ func eventsAfterTx(ctx context.Context, tx *sql.Tx, afterID int64) ([]db.Event, 
 // used by federation ingest to broadcast only fresh rows after an all-or-
 // nothing insert commits.
 func (d *Store) EventsByUIDs(ctx context.Context, projectID int64, uids []string) ([]db.Event, error) {
+	return eventsByUIDs(ctx, d, projectID, uids)
+}
+
+func eventsByUIDs(ctx context.Context, q interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}, projectID int64, uids []string) ([]db.Event, error) {
 	if len(uids) == 0 {
 		return nil, nil
 	}
 	out := make([]db.Event, 0, len(uids))
 	for _, uid := range uids {
 		var id int64
-		err := d.QueryRowContext(ctx,
+		err := q.QueryRowContext(ctx,
 			`SELECT id FROM events WHERE project_id = ? AND uid = ?`,
 			projectID, uid).Scan(&id)
 		if errors.Is(err, sql.ErrNoRows) {
@@ -130,7 +136,7 @@ func (d *Store) EventsByUIDs(ctx context.Context, projectID int64, uids []string
 		if err != nil {
 			return nil, fmt.Errorf("lookup event uid %s: %w", uid, err)
 		}
-		e, err := scanEvent(d.QueryRowContext(ctx, eventSelectByID, id))
+		e, err := scanEvent(q.QueryRowContext(ctx, eventSelectByID, id))
 		if err != nil {
 			return nil, fmt.Errorf("read event uid %s: %w", uid, err)
 		}
@@ -318,7 +324,7 @@ func (d *Store) MaxLocalOriginEventID(ctx context.Context, projectID int64) (int
 }
 
 // MaxFederationBaselineEventID returns the largest events.id row of type
-// 'issue.snapshot' whose id is at least sinceEventID, scoped to projectID.
+// federation snapshot whose id is at least sinceEventID, scoped to projectID.
 // Federation's status report uses this to declare "baseline materialized
 // through" the highest snapshot at or above the replay horizon. Returns 0 when
 // no matching snapshot exists.
@@ -328,7 +334,7 @@ func (d *Store) MaxFederationBaselineEventID(ctx context.Context, projectID, sin
 		SELECT MAX(id)
 		  FROM events
 		 WHERE project_id = ?
-		   AND type = 'issue.snapshot'
+		   AND type IN ('issue.snapshot','cron.job.snapshot','cron.flow.snapshot','cron.run.snapshot')
 		   AND id >= ?`,
 		projectID, sinceEventID).Scan(&n); err != nil {
 		return 0, fmt.Errorf("max federation baseline event id: %w", err)

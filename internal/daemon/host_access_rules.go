@@ -43,6 +43,7 @@ var hostAccessRules = buildHostAccessRules()
 
 func buildHostAccessRules() map[string]hostAccessRule {
 	rules := make(map[string]hostAccessRule)
+	registerHostAccessRules(rules, hostAccessRule{SelfAuthenticated: true})
 	registerHostAccessRules(rules, hostAccessRule{
 		SelfAuthenticated: true, AcceptsFederationBearer: true,
 	}, "getFederationProjectMetadata", "pollFederationProjectEvents",

@@ -38,7 +38,7 @@ type Storage interface { Only(context.Context) error }
 func TestStorageMethodInventoryClassifiesEveryMethod(t *testing.T) {
 	methods, err := CollectStorageMethodInventory("../../storage.go")
 	require.NoError(t, err)
-	require.Len(t, methods, 258)
+	require.Len(t, methods, 272)
 
 	var implemented []string
 	var stubbed []string
@@ -72,6 +72,9 @@ func TestStorageMethodInventoryClassifiesEveryMethod(t *testing.T) {
 		"ApplyExternalRootProjection",
 		"AttachAlias",
 		"AuthorizeFederationToken",
+		"CronFlow",
+		"CronJob",
+		"CronRun",
 		"BatchProjectStats",
 		"CheckClaimGate",
 		"ChildrenOfIssue",
@@ -129,6 +132,9 @@ func TestStorageMethodInventoryClassifiesEveryMethod(t *testing.T) {
 		"ExpireAssignments",
 		"ExpireTimedClaims",
 		"ExpireTimedClaimsForProject",
+		"ExportCronFlows",
+		"ExportCronJobs",
+		"ExportCronRuns",
 		"ExportComments",
 		"ExportEvents",
 		"ExportExternalFieldMappings",
@@ -180,6 +186,7 @@ func TestStorageMethodInventoryClassifiesEveryMethod(t *testing.T) {
 		"IssueByShortID",
 		"IssueByUID",
 		"IssueInScope",
+		"IssuePlanningDates",
 		"IssueQualifiersByUIDs",
 		"IssueScopedMembers",
 		"IssueScopedTokenTransactionFence",
@@ -199,6 +206,9 @@ func TestStorageMethodInventoryClassifiesEveryMethod(t *testing.T) {
 		"LinksByIssue",
 		"ListAPITokens",
 		"ListAllIssues",
+		"ListCronFlows",
+		"ListCronJobs",
+		"ListCronRuns",
 		"ListDueExternalRootBindings",
 		"ListDueIssueSyncBindings",
 		"ListDueNotificationIssueIDs",
@@ -225,6 +235,7 @@ func TestStorageMethodInventoryClassifiesEveryMethod(t *testing.T) {
 		"MaxLocalOriginEventID",
 		"MergeProjects",
 		"MoveIssueProject",
+		"ObserveCronRun",
 		"OpenChildrenOf",
 		"ParentOf",
 		"ParentShortIDsByIssues",
@@ -243,6 +254,9 @@ func TestStorageMethodInventoryClassifiesEveryMethod(t *testing.T) {
 		"PurgeIssue",
 		"PurgeProject",
 		"PurgeResetCheck",
+		"PutCronFlow",
+		"PutCronJob",
+		"ReadFederation",
 		"ReadyIssues",
 		"ReadyIssuesGlobal",
 		"ReassignAlias",

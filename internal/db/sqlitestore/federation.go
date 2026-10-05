@@ -63,6 +63,9 @@ func (d *Store) rebindFederationBinding(
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if err := db.LockCronProject(ctx, tx, p.ProjectID); err != nil {
+		return db.FederationBinding{}, err
+	}
 	current, err := federationBindingByProject(ctx, tx, p.ProjectID)
 	if err != nil {
 		return db.FederationBinding{}, err
@@ -73,13 +76,16 @@ func (d *Store) rebindFederationBinding(
 	if current.HubProjectID != p.HubProjectID || current.HubProjectUID != p.HubProjectUID {
 		return db.FederationBinding{}, db.ErrFederationRebindConflict
 	}
-	if current.HubURL == p.TargetHubURL && !current.AllowInsecure {
-		return current, nil
-	}
-	if current.HubURL != p.ExpectedHubURL || current.AllowInsecure != p.ExpectedAllowInsecure {
+	converged := current.HubURL == p.TargetHubURL && !current.AllowInsecure
+	if !converged && (current.HubURL != p.ExpectedHubURL || current.AllowInsecure != p.ExpectedAllowInsecure) {
 		return db.FederationBinding{}, db.ErrFederationRebindConflict
 	}
-
+	if converged {
+		if err := tx.Commit(); err != nil {
+			return db.FederationBinding{}, err
+		}
+		return current, nil
+	}
 	allowInsecure := 0
 	if p.ExpectedAllowInsecure {
 		allowInsecure = 1
@@ -569,6 +575,9 @@ func (d *Store) leaveFederationReplica(ctx context.Context, projectID int64) (db
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if err := db.LockCronProject(ctx, tx, projectID); err != nil {
+		return db.LeaveFederationResult{}, err
+	}
 	uid, err := projectUIDTx(ctx, tx, projectID)
 	if err != nil {
 		return db.LeaveFederationResult{}, err
@@ -718,6 +727,21 @@ func (d *Store) insertRemoteEvent(ctx context.Context, projectID int64, ev db.Re
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if db.EventRequiredFeatures(ev.Type) != "" {
+		if err := db.ValidateCronFederationEvent(ev); err != nil {
+			return false, err
+		}
+		var targetUID string
+		if err := tx.QueryRowContext(ctx, `SELECT uid FROM projects WHERE id=$1`, projectID).Scan(&targetUID); err != nil {
+			return false, err
+		}
+		if targetUID != ev.ProjectUID {
+			return false, db.ErrFederationIngestValidation
+		}
+		if err := db.ValidateCronRunReplay(ctx, tx, projectID, ev); err != nil {
+			return false, err
+		}
+	}
 	var existingHash string
 	err = tx.QueryRowContext(ctx,
 		`SELECT content_hash FROM events WHERE uid = ?`, ev.EventUID).Scan(&existingHash)
@@ -850,6 +874,9 @@ func (d *Store) enableProjectFederationTx(
 	projectID int64,
 	actor string,
 ) (db.FederationBinding, error) {
+	if err := db.LockCronProject(ctx, tx, projectID); err != nil {
+		return db.FederationBinding{}, err
+	}
 	project, err := scanProject(tx.QueryRowContext(ctx,
 		projectSelect+` WHERE id = ? AND deleted_at IS NULL`, projectID))
 	if err != nil {
@@ -1034,6 +1061,15 @@ func (d *Store) insertFederationBaselineEventsTx(
 			return db.Event{}, err
 		}
 	}
+	cron, err := db.CronDefinitionSnapshots(ctx, tx, project)
+	if err != nil {
+		return db.Event{}, err
+	}
+	for _, event := range cron {
+		if _, err := d.insertEventTx(ctx, tx, eventInsert{ProjectID: project.ID, ProjectUID: project.UID, ProjectName: project.Name, Type: event.Type, Actor: actor, Payload: event.Payload, HLC: &boundary, CreatedAt: baselineCreatedAt}); err != nil {
+			return db.Event{}, err
+		}
+	}
 	return enableEvent, nil
 }
 
@@ -1051,7 +1087,6 @@ func (d *Store) materializeFederatedProject(ctx context.Context, projectID int64
 		return fmt.Errorf("begin federated materialization: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-
 	if err := d.materializeFederatedProjectTx(ctx, tx, projectID, true, nil); err != nil {
 		return err
 	}
@@ -1071,7 +1106,11 @@ func (d *Store) materializeFederatedProjectTx(
 	projectID int64,
 	reconcileLinks bool,
 	acceptedEventUIDs []string,
+	validators ...*db.CronReplayValidator,
 ) error {
+	if err := db.LockCronProject(ctx, tx, projectID); err != nil {
+		return err
+	}
 	binding, err := scanFederationBinding(tx.QueryRowContext(ctx,
 		federationBindingSelect+` WHERE project_id = ?`, projectID))
 	if err != nil {
@@ -1088,6 +1127,9 @@ func (d *Store) materializeFederatedProjectTx(
 		}
 	}
 	projection := db.FoldEvents(events)
+	if err := db.MaterializeCronDefinitions(ctx, tx, projectID, binding.HubProjectUID, projection, validators...); err != nil {
+		return err
+	}
 	issueIDs, err := reconcileFederatedIssues(ctx, tx, projectID, projection)
 	if err != nil {
 		return err
@@ -1616,7 +1658,19 @@ func projectUIDTx(ctx context.Context, tx *sql.Tx, projectID int64) (string, err
 	return uid, nil
 }
 
+// Reset removes replica evidence with its event provenance after ordinary
+// pending-publication and integration guards succeed.
 func clearFederatedProjection(ctx context.Context, tx *sql.Tx, projectID int64) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM cron_runs WHERE project_id=$1`, projectID); err != nil {
+		return err
+	}
+	for _, table := range []string{"cron_jobs", "cron_flows"} {
+		//nolint:gosec // Table comes from the fixed cron table list; project ID is bound.
+		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE project_id=$1", projectID); err != nil {
+			return err
+		}
+	}
+
 	// Links are project-independent edges (storage v16), so the project scope
 	// comes from the endpoints: drop every link touching one of this
 	// project's issues before the issues themselves go.
@@ -2605,6 +2659,10 @@ func (d *Store) adoptProjectIntoFederation(
 		}
 	}
 
+	cron, err := db.PrepareCronAdoption(ctx, tx, project, p.HubProjectUID, p.EmptyOnly)
+	if err != nil {
+		return db.AdoptProjectIntoFederationResult{}, err
+	}
 	issues, err := federationIssuesForSnapshot(ctx, tx, project.ID)
 	if err != nil {
 		return db.AdoptProjectIntoFederationResult{}, err
@@ -2714,6 +2772,12 @@ func (d *Store) adoptProjectIntoFederation(
 		snapshotCount++
 	}
 
+	for _, event := range cron {
+		if _, err := d.insertEventTx(ctx, tx, eventInsert{ProjectID: project.ID, ProjectUID: project.UID, ProjectName: project.Name, Type: event.Type, Actor: actor, Payload: event.Payload, HLC: &boundary, CreatedAt: baselineCreatedAt}); err != nil {
+			return db.AdoptProjectIntoFederationResult{}, err
+		}
+		snapshotCount++
+	}
 	binding, err := scanFederationBinding(tx.QueryRowContext(ctx,
 		federationBindingSelect+` WHERE project_id = ?`, project.ID))
 	if err != nil {

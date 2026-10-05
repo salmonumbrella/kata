@@ -145,7 +145,7 @@ func checkSnapshotReplayCore(t *testing.T, target db.Storage, backend Backend) e
 	}
 	token, _, err := source.CreateAPIToken(ctx, db.CreateAPITokenParams{
 		PlaintextToken: "replay-token-secret",
-		Actor:          "automation",
+		Actor:          "cron",
 		Name:           &tokenName,
 		AdminActor:     db.BootstrapActor,
 		Scope:          tokenScope,
@@ -156,7 +156,7 @@ func checkSnapshotReplayCore(t *testing.T, target db.Storage, backend Backend) e
 	}
 	revokedToken, _, err := source.CreateAPIToken(ctx, db.CreateAPITokenParams{
 		PlaintextToken: "revoked-replay-token",
-		Actor:          "retired-automation",
+		Actor:          "retired-cron",
 		AdminActor:     db.BootstrapActor,
 	})
 	if err != nil {
@@ -260,7 +260,7 @@ func checkSnapshotReplayCore(t *testing.T, target db.Storage, backend Backend) e
 		return fmt.Errorf("resolve replay token: %w", err)
 	}
 	assert.Equal(t, token.ID, resolved.ID)
-	assert.Equal(t, "automation", resolved.Actor)
+	assert.Equal(t, "cron", resolved.Actor)
 	require.NotNil(t, resolved.Scope)
 	assert.Equal(t, *tokenScope, *resolved.Scope)
 	require.NotNil(t, resolved.ExpiresAt)
@@ -367,6 +367,24 @@ func CollectImportRecords(
 		v := value
 		if err := appendRecord(&v, err); err != nil {
 			return nil, fmt.Errorf("export issue sync status for replay: %w", err)
+		}
+	}
+	for value, err := range store.ExportCronJobs(ctx, filter) {
+		v := value
+		if err := appendRecord(&v, err); err != nil {
+			return nil, err
+		}
+	}
+	for value, err := range store.ExportCronFlows(ctx, filter) {
+		v := value
+		if err := appendRecord(&v, err); err != nil {
+			return nil, err
+		}
+	}
+	for value, err := range store.ExportCronRuns(ctx, filter) {
+		v := value
+		if err := appendRecord(&v, err); err != nil {
+			return nil, err
 		}
 	}
 	for value, err := range store.ExportRecurrences(ctx, filter) {

@@ -232,7 +232,7 @@ func TestClientListTokensDecodesRedactedAuditInventory(t *testing.T) {
 		require.Equal(t, "/api/v1/tokens", r.URL.Path)
 		respondJSON(t, w, map[string]any{
 			"tokens": []map[string]any{{
-				"id": 41, "actor": "operator", "name": "automation",
+				"id": 41, "actor": "operator", "name": "cron",
 				"scope": map[string]any{
 					"kind": "issue_subtree", "project_uid": "01PROJECT",
 					"root_issue_uid": "01ROOT",
@@ -248,7 +248,7 @@ func TestClientListTokensDecodesRedactedAuditInventory(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, tokens, 1)
 	assert.Equal(t, int64(41), tokens[0].ID)
-	assert.Equal(t, "automation", *tokens[0].Name)
+	assert.Equal(t, "cron", *tokens[0].Name)
 	require.NotNil(t, tokens[0].Scope)
 	assert.Equal(t, "01PROJECT", tokens[0].Scope.ProjectUID)
 	assert.Equal(t, "01ROOT", tokens[0].Scope.RootIssueUID)

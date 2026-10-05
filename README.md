@@ -17,7 +17,7 @@ MCP clients can start Kata's native server over stdio or Streamable HTTP with
 `kata mcp serve`. It binds the current workspace's project by default, and can
 serve a fixed allowlist or the complete daemon catalog on request. Sixteen
 section loaders progressively expose Kata's typed issue, administration,
-automation, and event workflows. See the [MCP reference](docs/reference/mcp.md).
+cron, and event workflows. See the [MCP reference](docs/reference/mcp.md).
 
 The documentation in [`docs/`](docs/) is the definitive guide, published with
 Zensical at <https://katatracker.com/>.
