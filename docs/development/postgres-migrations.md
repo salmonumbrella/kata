@@ -81,7 +81,7 @@ schema 30; rollback requires the pre-upgrade backup and matching older binary.
 
 ## Schema 31: dormant shared definitions and run evidence
 
-The 30→31 migration adds exactly `cron_jobs`, `cron_flows`, and
+The 30→31 migration adds exactly `cron_jobs`, `cron_workflows`, and
 `cron_runs`, with three identity sequences and four named indexes.
 Definitions and attributed run evidence have bounded versioned JSON. Distinct
 run UIDs may share an occurrence key or issue. An upgraded database starts with
@@ -99,7 +99,12 @@ Versions 25–30 use the existing immutable chain followed by migration 31.
 
 Migration 31 is feature-only and unissued on main; this branch replaces its
 rejected experimental five-table design without changing the allocated version.
-Migrations 26–30 remain immutable. An existing experimental schema 31 is
+Migrations 26–30 remain immutable. The workflow naming change also replaces
+the earlier feature-only `cron_flows` table, run `flow_uid` and
+`flow_definition_event_uid` columns, and corresponding JSON/event spellings.
+Current storage uses `cron_workflows`, `workflow_uid`, and
+`workflow_definition_event_uid`; older experimental schema-31 shapes are
+rejected without automatic conversion. An existing experimental schema 31 is
 rejected without repair or restamp, including occurrence-exclusive run shapes.
 Retain its backup and matching old binary for inspection/export; rebuilding it
 requires an explicitly authorized isolated plan. Legacy authority exports are

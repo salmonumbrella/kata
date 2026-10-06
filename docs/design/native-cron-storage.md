@@ -1,22 +1,22 @@
 ---
-last_edited: 2026-10-05
+last_edited: 2026-10-06
 ---
 
 # Dormant native cron storage
 
-Schema 31 stores shared job and flow definitions plus independently attributed
+Schema 31 stores shared job and workflow definitions plus independently attributed
 run observations. Saving a definition or logging a run emits ordinary audit
 events. Scheduling, overlap policy, process launches and notification delivery
 belong to the adapter running on each machine.
 
-Jobs and flows are whole version 1 documents identified by immutable ULIDs.
+Jobs and workflows are whole version 1 documents identified by immutable ULIDs.
 Updates, tombstones and restores compare the winning definition event UID and
 retain its original HLC. Definitions are bounded to 256 KiB and use portable
 checkout keys and secret reference names. Storage never resolves those names
 into paths or credentials and never executes command or prompt text.
 
 Each independent execution has its own retained run UID. Job/event and
-flow/event references identify historical definitions in the same project;
+workflow/event references identify historical definitions in the same project;
 at least one complete pair is required. Occurrence keys and issue UIDs are
 optional descriptive references, so multiple runs may share them. Identity
 includes the attributed actor, optional teammate and executor label, and
@@ -30,7 +30,7 @@ uses ordinary revision CAS; changed identity conflicts. Summary version 1 allows
 a message and nonnegative int64 token counts, bounded to 64 KiB. The complete
 observation and event are bounded to 96 KiB. Logging supplies no process grant.
 
-The production schema has exactly three cron tables: jobs, flows and
+The production schema has exactly three cron tables: jobs, workflows and
 runs. There are no executor registrations, claims, exclusive holders, authority
 epochs, permission receipts or scheduling checkpoints. Ordinary project,
 authentication, actor-token revocation and federation enrollment boundaries
@@ -44,7 +44,7 @@ events cannot invent a new observation or reserve an occurrence. Adoption
 rewrites only the project envelope while preserving exact JSON numbers and
 historical run identity. Ordinary snapshot-author enrollment policy remains.
 
-JSONL exports contain cron_job, cron_flow and cron_run
+JSONL exports contain cron_job, cron_workflow and cron_run
 records, including definition tombstones and both independent runs. Replacement
 preflight rejects retired authority metadata, event kinds, unknown old run
 fields and old claim/holder records before clearing a target. Valid portable

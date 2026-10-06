@@ -1,7 +1,7 @@
 ---
 title: Go client
 description: Connect Go programs to a Kata daemon with the typed client, CLI-compatible daemon discovery, and an in-process test server.
-last_edited: 2026-10-04
+last_edited: 2026-10-06
 ---
 
 # Go client
@@ -152,8 +152,8 @@ event or revision, even with a stale expected revision. Immutable identity
 changes conflict. Distinct run UIDs may share an occurrence key and issue.
 Statuses are evidence and never authorize a process.
 
-For stable job/flow creation, retain a UID and use `ReplaceCronJob` or
-`ReplaceCronFlow` with that path UID and absent `ExpectedEventUID`. A 409
+For stable job/workflow creation, retain a UID and use `ReplaceCronJob` or
+`ReplaceCronWorkflow` with that path UID and absent `ExpectedEventUID`. A 409
 requires inspecting that same UID and comparing the complete live definition;
 later edits and tombstones are not successful creation retries.
 

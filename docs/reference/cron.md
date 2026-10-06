@@ -1,22 +1,40 @@
 ---
 title: Native cron
-description: Shared job and flow definitions and attributed run evidence.
-last_edited: 2026-10-05
+description: Shared job and workflow definitions and attributed run evidence.
+last_edited: 2026-10-06
 ---
 
-Kata stores portable job and flow definitions and independent run observations.
+Kata stores portable job and workflow definitions and independent run observations.
 External adapters decide when to run, resolve checkout and provider configuration,
 create or update ordinary issues, deliver notifications, and launch processes.
 An observation records evidence; its status never grants permission to run.
 
+## Vocabulary
+
+| Name | Meaning |
+| --- | --- |
+| Job | Configured work: its trigger, action, and execution settings. |
+| Workflow | Reusable command or prompt steps and their dependencies. |
+| Run | One execution and its reported status and results. |
+
+A job can invoke a workflow or supply a single prompt. Each execution has its
+own run UID. A workflow can also be referenced directly by a run.
+
+Issue responsibility uses Kata's existing `claim`, `assign`, `unassign`, and
+owner vocabulary. A federation lease provides exclusive coordination on an
+issue. Recording a run changes neither ownership nor leases. See
+[federation leases](../operations/federation.md#leases-and-write-gates) for that mechanism.
+
 ## Definitions
 
-`kata cron job` and `kata cron flow` support `create`, `list`, `show`,
+`kata cron job` and `kata cron workflow` support `create`, `list`, `show`,
 `update`, `delete`, and `restore`. Commands return JSON. Creation retains a ULID:
 
 ```sh
 kata cron job create --uid <job-uid> --file job.json --json
 kata cron job list --json
+kata cron workflow create --uid <workflow-uid> --file workflow.json --json
+kata cron workflow list --json
 kata cron job update <job-uid> --file replacement.json --json
 kata cron job delete <job-uid> --expected-event-uid <event-uid> --json
 ```
@@ -29,8 +47,8 @@ readable, and `list --include-deleted` includes them.
 
 Definitions have version 1, with a 256 KiB bound. Jobs use `kind: "job"`,
 `enabled`, a trigger, an action, issue policy, overlap and catchup policy, and
-optional portable configuration such as flow UID, checkout key, secret references,
-timeouts and provider options. Flow steps carry portable adapter configuration.
+optional portable configuration such as workflow UID, checkout key, secret references,
+timeouts and provider options. Workflow steps carry portable adapter configuration.
 Enabling a job changes shared configuration; it creates no timer or process.
 Secret references are names, and checkout keys are portable names. Credentials,
 host paths, runtime handles, executor grants and execution snapshots are not
@@ -79,7 +97,7 @@ environment. For example:
 }
 ```
 
-At least one paired job/event or flow/event reference is required; both pairs
+At least one paired job/event or workflow/event reference is required; both pairs
 may be supplied. References identify historical definitions, including earlier
 versions and tombstones, within the project. An optional issue UID is an
 ordinary existing issue in that project. Distinct run UIDs may share the same
@@ -175,7 +193,7 @@ workflow. PostgreSQL runtime roles still cannot perform owner-only migrations.
 ## Storage and upgrades
 
 SQLite and PostgreSQL schema 31 contain exactly `cron_jobs`,
-`cron_flows`, and `cron_runs`. The unissued five-table experimental
+`cron_workflows`, and `cron_runs`. The unissued five-table experimental
 schema 31 is incompatible and is rejected without automatic repair or restamp.
 Use its matching binary to inspect/export it, retain a compatible backup, and
 plan an explicitly authorized isolated rebuild. Legacy authority exports are
@@ -185,3 +203,18 @@ an explicitly requested restore, federation reset, adoption, or project merge;
 those operations retain their ordinary identity, revision and credential guards.
 See [PostgreSQL migrations](../development/postgres-migrations.md) for owner-only
 migration, backup, runtime grants, and rollback requirements.
+
+## Naming compatibility
+
+Native cron uses `workflow` throughout the CLI, API, and stored records.
+Workflow routes are `/api/v1/projects/{project_id}/cron/workflows` and
+`/api/v1/projects/{project_id}/cron/workflows/{cron_uid}`. Responses use
+`workflow` or `workflows`; job actions and run observations use `workflow_uid`,
+and run observations pair it with `workflow_definition_event_uid`. Events use
+`cron.workflow.*`, and JSONL workflow records use `cron_workflow`.
+
+This replaces the experimental `flow` spelling without aliases. Update adapter
+commands, request fields, and generated-client calls together. Older experimental
+schema-31 databases and exports require their matching old binary for inspection
+or export; this rename does not automatically convert them. See the
+[database compatibility notes](../development/postgres-migrations.md#schema-31-dormant-shared-definitions-and-run-evidence).

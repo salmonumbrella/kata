@@ -546,7 +546,7 @@ or an active quarantine. `kata federation status` reports these reset blockers.
 
 ## Native Cron Replay And Compatibility
 
-Native jobs and flows replicate as complete documents, including deletion and
+Native jobs and workflows replicate as complete documents, including deletion and
 restoration. The existing total HLC order chooses one whole document; concurrent
 edits never combine fields from different versions. Baseline snapshots retain
 the original winning definition event UID and HLC. Enabling federation,
@@ -579,7 +579,7 @@ backend transaction. It also checks the features of the actual event page.
 The result is a consistent read. Scheduling and execution remain local to the
 plugin; this read grants no execution permission.
 
-Run observations contain bounded evidence: the run UID, job and flow definition
+Run observations contain bounded evidence: the run UID, job and workflow definition
 references, occurrence, issue binding, actor and teammate, timestamps, reported
 status and summary. Event HLC and event UID order observations, while baseline
 envelopes preserve their original observation clocks. Separate executions of
@@ -594,10 +594,10 @@ reserve an issue, grant execution permission or create local process state.
 Definition author handling follows the existing enrolled-actor and adoption
 snapshot policy.
 
-Pages may contain a job before its flow or a run before its definition. These
+Pages may contain a job before its workflow or a run before its definition. These
 records remain visible. `db.CheckCronDependencies(ctx, query, projectID,
 jobDefinition)` returns descriptive errors for missing, tombstoned or
-cross-project flow/issue dependencies and preserves database errors. Local
+cross-project workflow/issue dependencies and preserves database errors. Local
 definition writes use the same helper. The plugin owns activation, overlap,
 catchup, retries, recovery and process/session management, using ordinary Kata
 notify for exact-recipient inbox delivery. This replay layer introduces no

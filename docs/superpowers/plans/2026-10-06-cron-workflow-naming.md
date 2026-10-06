@@ -1,6 +1,6 @@
 # Cron Workflow Naming Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Use jobs, workflows, and runs consistently throughout native cron, including its source code and public contracts.
 
@@ -20,7 +20,7 @@
 | Issue responsibility | Claim / owner |
 | Exclusive federation hold | Lease |
 
-Canonical names become `kata cron workflow`, `/cron/workflows/{workflow_uid}`, `workflow`/`workflows` response keys, `workflow_uid`, `workflow_definition_event_uid`, `cron.workflow.*` events, `cron_workflow` JSONL records, and `Workflow` Go/TypeScript identifiers. Jobs and runs keep their names. Old automation flow spellings receive no compatibility aliases. Ordinary prose about control flow, unrelated workflows, and historical incompatible-schema fixtures are outside the rename.
+Canonical names become `kata cron workflow`, `/cron/workflows/{cron_uid}`, `workflow`/`workflows` response keys, `workflow_uid`, `workflow_definition_event_uid`, `cron.workflow.*` events, `cron_workflow` JSONL records, and `Workflow` Go/TypeScript identifiers. Jobs and runs keep their names. Old automation flow spellings receive no compatibility aliases. Ordinary prose about control flow, unrelated workflows, and historical incompatible-schema fixtures are outside the rename.
 
 ## Global Constraints
 
@@ -54,10 +54,10 @@ Update both canonical schemas, schema manifests/validation, SQL queries, and the
 
 **Interfaces:** Consumes the existing cron CRUD implementation; produces behavioral tests for the new command, route, envelope, and reference names without requiring renamed Go symbols to compile first.
 
-- [ ] Run the existing cron parser and CLI CRUD tests as a baseline.
-- [ ] Update the existing CLI CRUD test to invoke `workflow` and decode the `workflow` response field. Keep its create/update/conflict/delete/list/restore assertions.
-- [ ] Add a parser test that accepts an execute action with `workflow_uid` and rejects the retired `flow_uid` field; inspect actual marshaled keys without referring to a renamed Go field yet.
-- [ ] Run the targeted tests and confirm failures are the missing command and rejected new JSON field.
+- [x] Run the existing cron parser and CLI CRUD tests as a baseline.
+- [x] Update the existing CLI CRUD test to invoke `workflow` and decode the `workflow` response field. Keep its create/update/conflict/delete/list/restore assertions.
+- [x] Add a parser test that accepts an execute action with `workflow_uid` and rejects the retired `flow_uid` field; inspect actual marshaled keys without referring to a renamed Go field yet.
+- [x] Run the targeted tests and confirm failures are the missing command and rejected new JSON field.
 
 ### Task 2: Rename the complete native cron contract
 
@@ -66,11 +66,11 @@ Update both canonical schemas, schema manifests/validation, SQL queries, and the
 **Interfaces:** Produces `cron.WorkflowDefinition`, `cron.WorkflowStep`, `cron.ParseWorkflow`, `db.CronWorkflow`, `db.PutCronWorkflow`, `WorkflowUID`, `WorkflowDefinitionEventUID`, matching storage/client methods and the canonical names above.
 
 - [x] Obtain explicit approval for the persisted-state inventory before edits to it.
-- [ ] Rename native-cron identifiers, resource strings, payload keys, SQL objects, event/snapshot/export names, and fixtures for the current contract. Preserve historical rejected-schema fixtures and immutable migrations.
-- [ ] Regenerate OpenAPI and Go clients with `make api-generate`, and TypeScript clients with `make web-generate`; do not retain hand-edited generated output.
-- [ ] Run the Task 1 tests to GREEN, then cron/client/JSONL tests and SQLite/PostgreSQL conformance for definitions, observations, references, replay, merge, and migration.
-- [ ] Audit remaining flow references and check all Go packages compile.
-- [ ] Commit the coherent code, schema, generated artifacts, and tests.
+- [x] Rename native-cron identifiers, resource strings, payload keys, SQL objects, event/snapshot/export names, and fixtures for the current contract. Preserve historical rejected-schema fixtures and immutable migrations.
+- [x] Regenerate OpenAPI and Go clients with `make api-generate`, and TypeScript clients with `make web-generate`; do not retain hand-edited generated output.
+- [x] Run the Task 1 tests to GREEN, then cron/client/JSONL tests and SQLite/PostgreSQL conformance for definitions, observations, references, replay, merge, and migration.
+- [x] Audit remaining flow references and check all Go packages compile.
+- [x] Commit the coherent code, schema, generated artifacts, and tests.
 
 ### Task 3: Explain the vocabulary and verify the complete change
 
@@ -78,9 +78,28 @@ Update both canonical schemas, schema manifests/validation, SQL queries, and the
 
 **Interfaces:** Consumes the canonical Task 2 commands/types and documents the same contract for users and adapter authors.
 
-- [ ] Define job, workflow, and run together; show workflow commands and explain claim/owner versus federation lease using existing behavior.
-- [ ] Update examples, storage notes, and document the deliberate breaking rename and experimental schema-31 compatibility limit. Update edited-page dates where required.
-- [ ] Run `make api-check`, `make web-check`, `make docs-check`, lint, and the repository Go suite (`make test`), using an isolated PostgreSQL instance where available. Prefer Crabbox for broad validation if ready; retain explicit evidence for any environment limitation.
-- [ ] Commit documentation and the completed plan checklist.
-- [ ] Request one fresh whole-change code review, address substantive findings with failing tests first, and commit verified fixes.
-- [ ] Close the tracked naming issue only after the change is verified; otherwise leave an accurate handoff. Report branch, commits, checks, and compatibility implications.
+- [x] Define job, workflow, and run together; show workflow commands and explain claim/owner versus federation lease using existing behavior.
+- [x] Update examples, storage notes, and document the deliberate breaking rename and experimental schema-31 compatibility limit. Update edited-page dates where required.
+- [x] Run `make api-check`, `make web-check`, `make docs-check`, lint, and the repository Go suite (`make test`), using an isolated PostgreSQL instance where available. Prefer Crabbox for broad validation if ready; retain explicit evidence for any environment limitation.
+- [x] Commit documentation and the completed plan checklist.
+- [x] Request one fresh whole-change code review, address substantive findings with failing tests first, and commit verified fixes.
+- [x] Close the tracked naming issue only after the change is verified; otherwise leave an accurate handoff. Report branch, commits, checks, and compatibility implications.
+
+## Completion evidence
+
+The CLI CRUD and strict workflow-reference tests were observed failing before
+implementation and passing afterward. The complete shuffled Go suite passed on
+an isolated runner with SQLite and PostgreSQL 17 using
+`make test GOFLAGS_TEST='-shuffle=on -p=2'`. PostgreSQL 16 bootstrap,
+30→31 migration, and legacy-schema rejection checks also passed locally.
+
+`make api-check`, `make web-check`, `ZENSICAL_POLL_WATCHER=1 make docs-check`,
+and `GOMAXPROCS=2 make lint LINT_NEW_FLAGS=--new-from-rev=deda3451` passed.
+OpenAPI, Go clients, and TypeScript clients were regenerated by their repository
+targets. Remaining retired names are intentional rejection tests, historical
+fixtures, or compatibility explanations.
+
+One independent review identified stale PostgreSQL fingerprints and federation
+documentation; both were corrected and verified. The shared HTTP path parameter
+remains `{cron_uid}` for jobs and workflows. No runtime semantics, live database,
+released migration, or schema-version changes were introduced.

@@ -1,7 +1,7 @@
 ---
 title: CLI reference
 description: Reference Kata's command-line flags, issue relationships, output modes, and administration workflows.
-last_edited: 2026-10-04
+last_edited: 2026-10-06
 ---
 
 # CLI reference
@@ -200,7 +200,7 @@ kata agent-hook
 
 These commands are coding-agent hooks. Daemon event hooks configured in
 `hooks.toml` are a
-[separate feature](../design/architecture.md#hooks-local-cron-with-a-hard-boundary).
+[separate feature](../design/architecture.md#hooks-local-commands-with-a-hard-boundary).
 
 ### Hookless instructions
 
@@ -1722,7 +1722,7 @@ to inject its value into the consuming process. Revoke the token during teardown
 
 ## Native cron
 
-`kata cron` stores shared jobs, flows and independent attributed run evidence.
+`kata cron` stores shared jobs, workflows and independent attributed run evidence.
 Commands return JSON; external adapters schedule and launch their own work.
 See [Native cron](cron.md) for bounded documents and retry semantics.
 
@@ -1740,7 +1740,7 @@ kata cron run show <run-uid> --json
 kata show <issue-ref> --planning-dates --json
 ```
 
-Flow commands use the same definition actions and flags. Retain a generated or
+Workflow commands use the same definition actions and flags. Retain a generated or
 explicit definition UID after a lost create response; inspect it rather than
 assuming a create conflict is successful. Mutable definitions require the
 current expected event UID. Independent runs use a retained run UID, exact
