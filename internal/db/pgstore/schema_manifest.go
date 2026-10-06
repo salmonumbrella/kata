@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	canonicalColumnFingerprint     = "8eb2460bd9df97e17f876c9ea71d850575b36c38e78714314e4b4b2d653e4ee7"
-	canonicalConstraintFingerprint = "ab05698f46ce7a22a8208cf3ec9774e4ae775e835cb58a4a6ca0ac5ef9e1f476"
-	canonicalIndexFingerprint      = "8dfe7570b8b8b24cfa021440e4e76c4161c78e3803c769644057a09f20bfb766"
+	canonicalColumnFingerprint     = "233ddee00697dc597fe7294f01cd8cb5d2d5875a3ee1cfc1836720140bcd6daa"
+	canonicalConstraintFingerprint = "a70bf40b06182abe4325de5e7b3c1c2e43db4c29a686bcc4016a1f9a66ad9d93"
+	canonicalIndexFingerprint      = "e6f4d172f464d6422f43bc7ef5a8a37d83ef69de11202a547bae4ac5ac0f028a"
 	vectorColumnFingerprint        = "b8c7cb5e43f3c17502fc3e1deba77a772c3e9a486be623a96729de8866381c31"
 	vectorConstraintFingerprint    = "3a39a82331175295586fb3399dff2221fe511171f21e31a88410dd091c3a3cf4"
 	vectorIndexFingerprint         = "7868c4a815ebee6451cef203509dcedcd21401c76f49fb666e9facaad2f7aef3"
