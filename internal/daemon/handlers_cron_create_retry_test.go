@@ -29,13 +29,13 @@ func (transport cronLostResponseTransport) RoundTrip(request *http.Request) (*ht
 }
 
 func TestCronStableCreateRetryReadback(t *testing.T) {
-	for _, kind := range []string{"job", "flow"} {
+	for _, kind := range []string{"job", "workflow"} {
 		t.Run(kind, func(t *testing.T) {
 			env := testenv.New(t, testenv.WithAuthToken("tok"))
 			project := seedProject(t, env, "retry-project")
 			id := cronHTTPUID(t)
 			path := fmt.Sprintf("/api/v1/projects/%d/cron/%ss/%s", project.ID, kind, id)
-			var definition any = cron.FlowDefinition{Version: 1, Steps: []cron.FlowStep{{Key: "inspect", Kind: "command", Command: "git status --short"}}}
+			var definition any = cron.WorkflowDefinition{Version: 1, Steps: []cron.WorkflowStep{{Key: "inspect", Kind: "command", Command: "git status --short"}}}
 			if kind == "job" {
 				job := cronHTTPDefinition(t)
 				job.Kind, job.Enabled, job.Trigger = "job", false, cron.Trigger{Kind: "manual"}

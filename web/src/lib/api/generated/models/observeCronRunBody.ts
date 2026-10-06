@@ -11,8 +11,6 @@ export interface ObserveCronRunBody {
   executor_label?: string
   /** @minimum 0 */
   expected_revision: number
-  flow_definition_event_uid?: string
-  flow_uid?: string
   issue_uid?: string
   job_uid?: string
   occurrence_key?: string
@@ -20,4 +18,6 @@ export interface ObserveCronRunBody {
   status: ObserveCronRunBodyStatus
   summary: Summary
   teammate?: string
+  workflow_definition_event_uid?: string
+  workflow_uid?: string
 }

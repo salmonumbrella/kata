@@ -28,7 +28,7 @@ func TestParseJob(t *testing.T) {
 		"unknown field":      strings.Replace(executeJSON, `"version":1`, `"version":1,"typo":true`, 1),
 		"deadline execute":   strings.Replace(executeJSON, `"kind":"manual"`, `"kind":"issue-deadline","issue_uid":"01ARZ3NDEKTSV4RRFFQ69G5FAV"`, 1),
 		"notify with prompt": strings.Replace(executeJSON, `"kind":"execute"`, `"kind":"notify","recipient":"operator"`, 1),
-		"bad flow UID":       strings.Replace(executeJSON, `"prompt":"Review changes"`, `"flow_uid":"workflow.yaml"`, 1),
+		"bad workflow UID":   strings.Replace(executeJSON, `"prompt":"Review changes"`, `"workflow_uid":"workflow.yaml"`, 1),
 		"local checkout":     strings.Replace(executeJSON, `"version":1`, `"version":1,"checkout_key":"/home/worker/repo"`, 1),
 		"secret value":       strings.Replace(executeJSON, `"version":1`, `"version":1,"options":{"api_token":"secret"}`, 1),
 		"oversized":          strings.Replace(executeJSON, `Review changes`, strings.Repeat("a", 256*1024), 1),
@@ -40,17 +40,35 @@ func TestParseJob(t *testing.T) {
 	}
 }
 
-func TestParseFlow(t *testing.T) {
-	flow, err := ParseFlow([]byte(`{"version":1,"steps":[{"key":"inspect","kind":"command","command":"git status"},{"key":"review","kind":"prompt","prompt":"Review","after":["inspect"],"retries":2}]}`))
+// Job references use the same workflow vocabulary as the CLI and run records.
+// The retired spelling must not be accepted as an ignored option.
+func TestParseJobWorkflowReference(t *testing.T) {
+	input := strings.Replace(executeJSON, `"prompt":"Review changes"`, `"workflow_uid":"01ARZ3NDEKTSV4RRFFQ69G5FAV"`, 1)
+	job, err := ParseJob([]byte(input))
 	require.NoError(t, err)
-	require.Len(t, flow.Steps, 2)
+	encoded, err := json.Marshal(job)
+	require.NoError(t, err)
+	var document struct {
+		Action map[string]any `json:"action"`
+	}
+	require.NoError(t, json.Unmarshal(encoded, &document))
+	require.Equal(t, "01ARZ3NDEKTSV4RRFFQ69G5FAV", document.Action["workflow_uid"])
+	require.NotContains(t, document.Action, "flow_uid")
+	_, err = ParseJob([]byte(strings.Replace(input, "workflow_uid", "flow_uid", 1)))
+	require.Error(t, err)
+}
+
+func TestParseWorkflow(t *testing.T) {
+	workflow, err := ParseWorkflow([]byte(`{"version":1,"steps":[{"key":"inspect","kind":"command","command":"git status"},{"key":"review","kind":"prompt","prompt":"Review","after":["inspect"],"retries":2}]}`))
+	require.NoError(t, err)
+	require.Len(t, workflow.Steps, 2)
 	for _, input := range []string{
 		`{"version":1,"steps":[]}`,
 		`{"version":1,"steps":[{"key":"a","kind":"prompt","prompt":"Hi","after":["a"]}]}`,
 		`{"version":1,"steps":[{"key":"a","kind":"command","command":"true","retries":-1}]}`,
 		`{"version":1,"steps":[{"key":"a","kind":"command","command":"true"},{"key":"a","kind":"command","command":"false"}]}`,
 	} {
-		_, err := ParseFlow([]byte(input))
+		_, err := ParseWorkflow([]byte(input))
 		require.Error(t, err)
 	}
 }
@@ -89,15 +107,15 @@ func TestUnsupportedVersionsRejectedProperty(t *testing.T) {
 
 // Command and prompt variants obey the same exact document round-trip law,
 // including non-default retries and dependency lists.
-func TestFlowRoundTripProperty(t *testing.T) {
+func TestWorkflowRoundTripProperty(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		texts := rapid.SliceOf(rapid.String()).Draw(t, "step text")
 		if len(texts) == 0 {
 			texts = []string{""}
 		}
-		flow := FlowDefinition{Version: 1}
+		workflow := WorkflowDefinition{Version: 1}
 		for i, text := range texts {
-			step := FlowStep{Key: fmt.Sprintf("step-%d", i), Retries: rapid.IntRange(0, 100).Draw(t, "retries")}
+			step := WorkflowStep{Key: fmt.Sprintf("step-%d", i), Retries: rapid.IntRange(0, 100).Draw(t, "retries")}
 			if rapid.Bool().Draw(t, "command") {
 				step.Kind = "command"
 				step.Command = "echo " + text
@@ -106,15 +124,15 @@ func TestFlowRoundTripProperty(t *testing.T) {
 				step.Prompt = "Review: " + text
 			}
 			if i > 0 && rapid.Bool().Draw(t, "dependency") {
-				step.After = []string{flow.Steps[i-1].Key}
+				step.After = []string{workflow.Steps[i-1].Key}
 			}
-			flow.Steps = append(flow.Steps, step)
+			workflow.Steps = append(workflow.Steps, step)
 		}
-		raw, err := json.Marshal(flow)
+		raw, err := json.Marshal(workflow)
 		require.NoError(t, err)
-		restored, err := ParseFlow(raw)
+		restored, err := ParseWorkflow(raw)
 		require.NoError(t, err)
-		require.Equal(t, flow, restored)
+		require.Equal(t, workflow, restored)
 	})
 }
 
@@ -132,11 +150,11 @@ func TestCronCompatibility(t *testing.T) {
 	}
 }
 
-func TestFlowPortableTopLevelConfiguration(t *testing.T) {
+func TestWorkflowPortableTopLevelConfiguration(t *testing.T) {
 	input := `{"version":1,"about":"Review a change","input":"Change reference","options":{"skip_permissions":false,"overwatch":{"agent":"reviewer","model":"example-model"}},"steps":[{"key":"review","kind":"prompt","prompt":"Review"}]}`
-	flow, err := ParseFlow([]byte(input))
+	workflow, err := ParseWorkflow([]byte(input))
 	require.NoError(t, err)
-	encoded, err := json.Marshal(flow)
+	encoded, err := json.Marshal(workflow)
 	require.NoError(t, err)
 	require.JSONEq(t, input, string(encoded))
 	for _, bad := range []string{
@@ -144,7 +162,7 @@ func TestFlowPortableTopLevelConfiguration(t *testing.T) {
 		strings.Replace(input, `"agent":"reviewer"`, `"path":"/local/checkout"`, 1),
 		strings.Replace(input, `"example-model"`, `"`+strings.Repeat("x", DefinitionLimit)+`"`, 1),
 	} {
-		_, err := ParseFlow([]byte(bad))
+		_, err := ParseWorkflow([]byte(bad))
 		require.Error(t, err)
 	}
 }

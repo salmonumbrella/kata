@@ -19,8 +19,8 @@ import (
 // Native cron commands are finite API clients. Scheduling, process
 // execution and durable executor journals belong to the external adapter.
 func newCronCmd() *cobra.Command {
-	command := &cobra.Command{Use: "cron", Short: "manage shared jobs, flows and run evidence", Long: "Manage dormant shared cron definitions and attributed run evidence. Results are JSON. These commands do not schedule work or launch processes."}
-	for _, resource := range []string{"job", "flow"} {
+	command := &cobra.Command{Use: "cron", Short: "manage shared jobs, workflows and run evidence", Long: "Manage dormant shared cron definitions and attributed run evidence. Results are JSON. These commands do not schedule work or launch processes."}
+	for _, resource := range []string{"job", "workflow"} {
 		group := &cobra.Command{Use: resource, Short: "manage native " + resource + " definitions"}
 		for _, action := range []string{"list", "show", "create", "update", "delete", "restore"} {
 			group.AddCommand(newCronOperationCmd(resource, action))
@@ -47,10 +47,10 @@ type cronCLIOptions struct {
 }
 
 func (o cronCLIOptions) mutation() bool   { return o.action != "list" && o.action != "show" }
-func (o cronCLIOptions) definition() bool { return o.resource == "job" || o.resource == "flow" }
+func (o cronCLIOptions) definition() bool { return o.resource == "job" || o.resource == "workflow" }
 func newCronOperationCmd(resource, action string) *cobra.Command {
 	options := cronCLIOptions{resource: resource, action: action, limit: 100}
-	takesUID := (resource == "job" || resource == "flow" || resource == "run") && action != "list" && action != "create"
+	takesUID := (resource == "job" || resource == "workflow" || resource == "run") && action != "list" && action != "create"
 	command := &cobra.Command{Use: action, Short: action + " native " + resource, Args: cobra.NoArgs}
 	if takesUID {
 		command.Use += " <uid>"
@@ -199,8 +199,8 @@ func (o *cronCLIOptions) requestBody(cmd *cobra.Command) ([]byte, error) {
 	switch {
 	case o.resource == "job" && (o.action == "create" || o.action == "update"):
 		shape = &api.PutCronJobBody{}
-	case o.resource == "flow" && (o.action == "create" || o.action == "update"):
-		shape = &api.PutCronFlowBody{}
+	case o.resource == "workflow" && (o.action == "create" || o.action == "update"):
+		shape = &api.PutCronWorkflowBody{}
 	case o.resource == "run" && o.action == "observe":
 		shape = &api.ObserveCronRunBody{}
 	case o.definition():
@@ -324,14 +324,14 @@ func (o cronCLIOptions) call(a daemonAPI, c *kataclient.Client, projectID int64,
 			return nil, externalCLITransportError(response, err)
 		}
 		return cronCLIResponse(response.StatusCode, response.Body, err)
-	case o.resource == "flow" && o.action == "list":
-		response, err := c.ListCronFlowsWithResponse(a.ctx, &generated.ListCronFlowsRequestOptions{PathParams: &generated.ListCronFlowsPath{ProjectID: projectID}, Query: &generated.ListCronFlowsQuery{IncludeDeleted: &o.includeDeleted}})
+	case o.resource == "workflow" && o.action == "list":
+		response, err := c.ListCronWorkflowsWithResponse(a.ctx, &generated.ListCronWorkflowsRequestOptions{PathParams: &generated.ListCronWorkflowsPath{ProjectID: projectID}, Query: &generated.ListCronWorkflowsQuery{IncludeDeleted: &o.includeDeleted}})
 		if response == nil {
 			return nil, externalCLITransportError(response, err)
 		}
 		return cronCLIResponse(response.StatusCode, response.Body, err)
-	case o.resource == "flow" && o.action == "show":
-		response, err := c.ShowCronFlowWithResponse(a.ctx, &generated.ShowCronFlowRequestOptions{PathParams: &generated.ShowCronFlowPath{ProjectID: projectID, CronUID: o.identity}})
+	case o.resource == "workflow" && o.action == "show":
+		response, err := c.ShowCronWorkflowWithResponse(a.ctx, &generated.ShowCronWorkflowRequestOptions{PathParams: &generated.ShowCronWorkflowPath{ProjectID: projectID, CronUID: o.identity}})
 		if response == nil {
 			return nil, externalCLITransportError(response, err)
 		}
@@ -386,12 +386,12 @@ func (o cronCLIOptions) call(a daemonAPI, c *kataclient.Client, projectID int64,
 		}
 		return cronCLIResponse(response.StatusCode, response.Body, err)
 	}
-	if o.resource == "flow" && (o.action == "create" || o.action == "update") {
-		var body generated.PutCronFlowBody
+	if o.resource == "workflow" && (o.action == "create" || o.action == "update") {
+		var body generated.PutCronWorkflowBody
 		if err := decodeCronCLIRequest(raw, &body); err != nil {
 			return nil, err
 		}
-		response, err := c.ReplaceCronFlowWithResponse(a.ctx, &generated.ReplaceCronFlowRequestOptions{PathParams: &generated.ReplaceCronFlowPath{ProjectID: projectID, CronUID: o.identity}, Body: &body})
+		response, err := c.ReplaceCronWorkflowWithResponse(a.ctx, &generated.ReplaceCronWorkflowRequestOptions{PathParams: &generated.ReplaceCronWorkflowPath{ProjectID: projectID, CronUID: o.identity}, Body: &body})
 		if response == nil {
 			return nil, externalCLITransportError(response, err)
 		}
@@ -415,14 +415,14 @@ func (o cronCLIOptions) call(a daemonAPI, c *kataclient.Client, projectID int64,
 				return nil, externalCLITransportError(response, err)
 			}
 			return cronCLIResponse(response.StatusCode, response.Body, err)
-		case o.resource == "flow" && o.action == "delete":
-			response, err := c.ArchiveCronFlowWithResponse(a.ctx, &generated.ArchiveCronFlowRequestOptions{PathParams: &generated.ArchiveCronFlowPath{ProjectID: projectID, CronUID: o.identity}, Body: &body})
+		case o.resource == "workflow" && o.action == "delete":
+			response, err := c.ArchiveCronWorkflowWithResponse(a.ctx, &generated.ArchiveCronWorkflowRequestOptions{PathParams: &generated.ArchiveCronWorkflowPath{ProjectID: projectID, CronUID: o.identity}, Body: &body})
 			if response == nil {
 				return nil, externalCLITransportError(response, err)
 			}
 			return cronCLIResponse(response.StatusCode, response.Body, err)
-		case o.resource == "flow" && o.action == "restore":
-			response, err := c.RestoreCronFlowWithResponse(a.ctx, &generated.RestoreCronFlowRequestOptions{PathParams: &generated.RestoreCronFlowPath{ProjectID: projectID, CronUID: o.identity}, Body: &body})
+		case o.resource == "workflow" && o.action == "restore":
+			response, err := c.RestoreCronWorkflowWithResponse(a.ctx, &generated.RestoreCronWorkflowRequestOptions{PathParams: &generated.RestoreCronWorkflowPath{ProjectID: projectID, CronUID: o.identity}, Body: &body})
 			if response == nil {
 				return nil, externalCLITransportError(response, err)
 			}

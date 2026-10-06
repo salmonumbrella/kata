@@ -12,11 +12,11 @@ import (
 )
 
 type Action struct {
-	FlowUID   *string `json:"flow_uid,omitempty"`
-	Kind      string  `json:"kind" validate:"required"`
-	Message   *string `json:"message,omitempty"`
-	Prompt    *string `json:"prompt,omitempty"`
-	Recipient *string `json:"recipient,omitempty"`
+	Kind        string  `json:"kind" validate:"required"`
+	Message     *string `json:"message,omitempty"`
+	Prompt      *string `json:"prompt,omitempty"`
+	Recipient   *string `json:"recipient,omitempty"`
+	WorkflowUID *string `json:"workflow_uid,omitempty"`
 }
 
 func (a Action) Validate() error {
@@ -62,11 +62,11 @@ func (a ActionRequestBody) Validate() error {
 }
 
 type ActionResponse struct {
-	FlowUID   *string `json:"flow_uid,omitempty"`
-	Kind      string  `json:"kind" validate:"required"`
-	Message   *string `json:"message,omitempty"`
-	Prompt    *string `json:"prompt,omitempty"`
-	Recipient *string `json:"recipient,omitempty"`
+	Kind        string  `json:"kind" validate:"required"`
+	Message     *string `json:"message,omitempty"`
+	Prompt      *string `json:"prompt,omitempty"`
+	Recipient   *string `json:"recipient,omitempty"`
+	WorkflowUID *string `json:"workflow_uid,omitempty"`
 }
 
 func (a ActionResponse) Validate() error {
@@ -992,184 +992,6 @@ func (c CronDefinitionActionBody) Validate() error {
 	return runtime.ConvertValidatorError(typesValidator.Struct(c))
 }
 
-type CronFlow struct {
-	Author             string                     `json:"author" validate:"required"`
-	CreatedAt          time.Time                  `json:"created_at" validate:"required"`
-	Definition         CronFlowDefinitionResponse `json:"definition"`
-	DefinitionEventUID string                     `json:"definition_event_uid" validate:"required"`
-	DefinitionHlc      HLC                        `json:"definition_hlc"`
-	DeletedAt          *time.Time                 `json:"deleted_at,omitempty"`
-	ID                 int64                      `json:"id"`
-	Name               string                     `json:"name" validate:"required"`
-	ProjectID          int64                      `json:"project_id"`
-	Revision           int64                      `json:"revision"`
-	UID                string                     `json:"uid" validate:"required"`
-	UpdatedAt          time.Time                  `json:"updated_at" validate:"required"`
-}
-
-func (c CronFlow) Validate() error {
-	var errors runtime.ValidationErrors
-	if err := typesValidator.Var(c.Author, "required"); err != nil {
-		errors = errors.Append("Author", err)
-	}
-	if err := typesValidator.Var(c.CreatedAt, "required"); err != nil {
-		errors = errors.Append("CreatedAt", err)
-	}
-	if v, ok := any(c.Definition).(runtime.Validator); ok {
-		if err := v.Validate(); err != nil {
-			errors = errors.Append("Definition", err)
-		}
-	}
-	if err := typesValidator.Var(c.DefinitionEventUID, "required"); err != nil {
-		errors = errors.Append("DefinitionEventUID", err)
-	}
-	if v, ok := any(c.DefinitionHlc).(runtime.Validator); ok {
-		if err := v.Validate(); err != nil {
-			errors = errors.Append("DefinitionHlc", err)
-		}
-	}
-	if err := typesValidator.Var(c.Name, "required"); err != nil {
-		errors = errors.Append("Name", err)
-	}
-	if err := typesValidator.Var(c.UID, "required"); err != nil {
-		errors = errors.Append("UID", err)
-	}
-	if err := typesValidator.Var(c.UpdatedAt, "required"); err != nil {
-		errors = errors.Append("UpdatedAt", err)
-	}
-	if len(errors) == 0 {
-		return nil
-	}
-	return errors
-}
-
-type CronFlowDefinition struct {
-	About   *string        `json:"about,omitempty"`
-	Input   *string        `json:"input,omitempty"`
-	Options map[string]any `json:"options,omitempty"`
-	Steps   []CronFlowStep `json:"steps" validate:"required"`
-	Version int64          `json:"version"`
-}
-
-func (value *CronFlowDefinition) UnmarshalJSON(data []byte) error {
-	type plain CronFlowDefinition
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.UseNumber()
-	return decoder.Decode((*plain)(value))
-}
-
-func (c CronFlowDefinition) Validate() error {
-	var errors runtime.ValidationErrors
-	for i, item := range c.Steps {
-		if v, ok := any(item).(runtime.Validator); ok {
-			if err := v.Validate(); err != nil {
-				errors = errors.Append(fmt.Sprintf("Steps[%d]", i), err)
-			}
-		}
-	}
-	if len(errors) == 0 {
-		return nil
-	}
-	return errors
-}
-
-type CronFlowDefinitionResponse struct {
-	About   *string                `json:"about,omitempty"`
-	Input   *string                `json:"input,omitempty"`
-	Options map[string]any         `json:"options,omitempty"`
-	Steps   []CronFlowStepResponse `json:"steps" validate:"required"`
-	Version int64                  `json:"version"`
-}
-
-func (value *CronFlowDefinitionResponse) UnmarshalJSON(data []byte) error {
-	type plain CronFlowDefinitionResponse
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.UseNumber()
-	return decoder.Decode((*plain)(value))
-}
-
-func (c CronFlowDefinitionResponse) Validate() error {
-	var errors runtime.ValidationErrors
-	for i, item := range c.Steps {
-		if v, ok := any(item).(runtime.Validator); ok {
-			if err := v.Validate(); err != nil {
-				errors = errors.Append(fmt.Sprintf("Steps[%d]", i), err)
-			}
-		}
-	}
-	if len(errors) == 0 {
-		return nil
-	}
-	return errors
-}
-
-type CronFlowResponseBody struct {
-	Events []Event  `json:"events,omitempty"`
-	Flow   CronFlow `json:"flow"`
-}
-
-func (c CronFlowResponseBody) Validate() error {
-	var errors runtime.ValidationErrors
-	for i, item := range c.Events {
-		if v, ok := any(item).(runtime.Validator); ok {
-			if err := v.Validate(); err != nil {
-				errors = errors.Append(fmt.Sprintf("Events[%d]", i), err)
-			}
-		}
-	}
-	if v, ok := any(c.Flow).(runtime.Validator); ok {
-		if err := v.Validate(); err != nil {
-			errors = errors.Append("Flow", err)
-		}
-	}
-	if len(errors) == 0 {
-		return nil
-	}
-	return errors
-}
-
-type CronFlowStep struct {
-	After   []string       `json:"after,omitempty"`
-	Command *string        `json:"command,omitempty"`
-	Key     string         `json:"key" validate:"required"`
-	Kind    string         `json:"kind" validate:"required"`
-	Options map[string]any `json:"options,omitempty"`
-	Prompt  *string        `json:"prompt,omitempty"`
-	Retries *int64         `json:"retries,omitempty"`
-}
-
-func (value *CronFlowStep) UnmarshalJSON(data []byte) error {
-	type plain CronFlowStep
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.UseNumber()
-	return decoder.Decode((*plain)(value))
-}
-
-func (c CronFlowStep) Validate() error {
-	return runtime.ConvertValidatorError(typesValidator.Struct(c))
-}
-
-type CronFlowStepResponse struct {
-	After   []string       `json:"after,omitempty"`
-	Command *string        `json:"command,omitempty"`
-	Key     string         `json:"key" validate:"required"`
-	Kind    string         `json:"kind" validate:"required"`
-	Options map[string]any `json:"options,omitempty"`
-	Prompt  *string        `json:"prompt,omitempty"`
-	Retries *int64         `json:"retries,omitempty"`
-}
-
-func (value *CronFlowStepResponse) UnmarshalJSON(data []byte) error {
-	type plain CronFlowStepResponse
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.UseNumber()
-	return decoder.Decode((*plain)(value))
-}
-
-func (c CronFlowStepResponse) Validate() error {
-	return runtime.ConvertValidatorError(typesValidator.Struct(c))
-}
-
 type CronJob struct {
 	Author             string                    `json:"author" validate:"required"`
 	CreatedAt          time.Time                 `json:"created_at" validate:"required"`
@@ -1361,25 +1183,25 @@ func (c CronJobResponseBody) Validate() error {
 }
 
 type CronRun struct {
-	Actor                  string          `json:"actor" validate:"required"`
-	CreatedAt              time.Time       `json:"created_at" validate:"required"`
-	DefinitionEventUID     *string         `json:"definition_event_uid,omitempty"`
-	EndedAt                *time.Time      `json:"ended_at,omitempty"`
-	ExecutorLabel          *string         `json:"executor_label,omitempty"`
-	FlowDefinitionEventUID *string         `json:"flow_definition_event_uid,omitempty"`
-	FlowUID                *string         `json:"flow_uid,omitempty"`
-	ID                     int64           `json:"id"`
-	IssueUID               *string         `json:"issue_uid,omitempty"`
-	JobUID                 *string         `json:"job_uid,omitempty"`
-	OccurrenceKey          *string         `json:"occurrence_key,omitempty"`
-	ProjectID              int64           `json:"project_id"`
-	Revision               int64           `json:"revision"`
-	StartedAt              *time.Time      `json:"started_at,omitempty"`
-	Status                 string          `json:"status" validate:"required"`
-	Summary                SummaryResponse `json:"summary"`
-	Teammate               *string         `json:"teammate,omitempty"`
-	UID                    string          `json:"uid" validate:"required"`
-	UpdatedAt              time.Time       `json:"updated_at" validate:"required"`
+	Actor                      string          `json:"actor" validate:"required"`
+	CreatedAt                  time.Time       `json:"created_at" validate:"required"`
+	DefinitionEventUID         *string         `json:"definition_event_uid,omitempty"`
+	EndedAt                    *time.Time      `json:"ended_at,omitempty"`
+	ExecutorLabel              *string         `json:"executor_label,omitempty"`
+	ID                         int64           `json:"id"`
+	IssueUID                   *string         `json:"issue_uid,omitempty"`
+	JobUID                     *string         `json:"job_uid,omitempty"`
+	OccurrenceKey              *string         `json:"occurrence_key,omitempty"`
+	ProjectID                  int64           `json:"project_id"`
+	Revision                   int64           `json:"revision"`
+	StartedAt                  *time.Time      `json:"started_at,omitempty"`
+	Status                     string          `json:"status" validate:"required"`
+	Summary                    SummaryResponse `json:"summary"`
+	Teammate                   *string         `json:"teammate,omitempty"`
+	UID                        string          `json:"uid" validate:"required"`
+	UpdatedAt                  time.Time       `json:"updated_at" validate:"required"`
+	WorkflowDefinitionEventUID *string         `json:"workflow_definition_event_uid,omitempty"`
+	WorkflowUID                *string         `json:"workflow_uid,omitempty"`
 }
 
 func (c CronRun) Validate() error {
@@ -1445,6 +1267,184 @@ func (c CronRunsResponseBody) Validate() error {
 		return nil
 	}
 	return errors
+}
+
+type CronWorkflow struct {
+	Author             string                         `json:"author" validate:"required"`
+	CreatedAt          time.Time                      `json:"created_at" validate:"required"`
+	Definition         CronWorkflowDefinitionResponse `json:"definition"`
+	DefinitionEventUID string                         `json:"definition_event_uid" validate:"required"`
+	DefinitionHlc      HLC                            `json:"definition_hlc"`
+	DeletedAt          *time.Time                     `json:"deleted_at,omitempty"`
+	ID                 int64                          `json:"id"`
+	Name               string                         `json:"name" validate:"required"`
+	ProjectID          int64                          `json:"project_id"`
+	Revision           int64                          `json:"revision"`
+	UID                string                         `json:"uid" validate:"required"`
+	UpdatedAt          time.Time                      `json:"updated_at" validate:"required"`
+}
+
+func (c CronWorkflow) Validate() error {
+	var errors runtime.ValidationErrors
+	if err := typesValidator.Var(c.Author, "required"); err != nil {
+		errors = errors.Append("Author", err)
+	}
+	if err := typesValidator.Var(c.CreatedAt, "required"); err != nil {
+		errors = errors.Append("CreatedAt", err)
+	}
+	if v, ok := any(c.Definition).(runtime.Validator); ok {
+		if err := v.Validate(); err != nil {
+			errors = errors.Append("Definition", err)
+		}
+	}
+	if err := typesValidator.Var(c.DefinitionEventUID, "required"); err != nil {
+		errors = errors.Append("DefinitionEventUID", err)
+	}
+	if v, ok := any(c.DefinitionHlc).(runtime.Validator); ok {
+		if err := v.Validate(); err != nil {
+			errors = errors.Append("DefinitionHlc", err)
+		}
+	}
+	if err := typesValidator.Var(c.Name, "required"); err != nil {
+		errors = errors.Append("Name", err)
+	}
+	if err := typesValidator.Var(c.UID, "required"); err != nil {
+		errors = errors.Append("UID", err)
+	}
+	if err := typesValidator.Var(c.UpdatedAt, "required"); err != nil {
+		errors = errors.Append("UpdatedAt", err)
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+	return errors
+}
+
+type CronWorkflowDefinition struct {
+	About   *string            `json:"about,omitempty"`
+	Input   *string            `json:"input,omitempty"`
+	Options map[string]any     `json:"options,omitempty"`
+	Steps   []CronWorkflowStep `json:"steps" validate:"required"`
+	Version int64              `json:"version"`
+}
+
+func (value *CronWorkflowDefinition) UnmarshalJSON(data []byte) error {
+	type plain CronWorkflowDefinition
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	return decoder.Decode((*plain)(value))
+}
+
+func (c CronWorkflowDefinition) Validate() error {
+	var errors runtime.ValidationErrors
+	for i, item := range c.Steps {
+		if v, ok := any(item).(runtime.Validator); ok {
+			if err := v.Validate(); err != nil {
+				errors = errors.Append(fmt.Sprintf("Steps[%d]", i), err)
+			}
+		}
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+	return errors
+}
+
+type CronWorkflowDefinitionResponse struct {
+	About   *string                    `json:"about,omitempty"`
+	Input   *string                    `json:"input,omitempty"`
+	Options map[string]any             `json:"options,omitempty"`
+	Steps   []CronWorkflowStepResponse `json:"steps" validate:"required"`
+	Version int64                      `json:"version"`
+}
+
+func (value *CronWorkflowDefinitionResponse) UnmarshalJSON(data []byte) error {
+	type plain CronWorkflowDefinitionResponse
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	return decoder.Decode((*plain)(value))
+}
+
+func (c CronWorkflowDefinitionResponse) Validate() error {
+	var errors runtime.ValidationErrors
+	for i, item := range c.Steps {
+		if v, ok := any(item).(runtime.Validator); ok {
+			if err := v.Validate(); err != nil {
+				errors = errors.Append(fmt.Sprintf("Steps[%d]", i), err)
+			}
+		}
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+	return errors
+}
+
+type CronWorkflowResponseBody struct {
+	Events   []Event      `json:"events,omitempty"`
+	Workflow CronWorkflow `json:"workflow"`
+}
+
+func (c CronWorkflowResponseBody) Validate() error {
+	var errors runtime.ValidationErrors
+	for i, item := range c.Events {
+		if v, ok := any(item).(runtime.Validator); ok {
+			if err := v.Validate(); err != nil {
+				errors = errors.Append(fmt.Sprintf("Events[%d]", i), err)
+			}
+		}
+	}
+	if v, ok := any(c.Workflow).(runtime.Validator); ok {
+		if err := v.Validate(); err != nil {
+			errors = errors.Append("Workflow", err)
+		}
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+	return errors
+}
+
+type CronWorkflowStep struct {
+	After   []string       `json:"after,omitempty"`
+	Command *string        `json:"command,omitempty"`
+	Key     string         `json:"key" validate:"required"`
+	Kind    string         `json:"kind" validate:"required"`
+	Options map[string]any `json:"options,omitempty"`
+	Prompt  *string        `json:"prompt,omitempty"`
+	Retries *int64         `json:"retries,omitempty"`
+}
+
+func (value *CronWorkflowStep) UnmarshalJSON(data []byte) error {
+	type plain CronWorkflowStep
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	return decoder.Decode((*plain)(value))
+}
+
+func (c CronWorkflowStep) Validate() error {
+	return runtime.ConvertValidatorError(typesValidator.Struct(c))
+}
+
+type CronWorkflowStepResponse struct {
+	After   []string       `json:"after,omitempty"`
+	Command *string        `json:"command,omitempty"`
+	Key     string         `json:"key" validate:"required"`
+	Kind    string         `json:"kind" validate:"required"`
+	Options map[string]any `json:"options,omitempty"`
+	Prompt  *string        `json:"prompt,omitempty"`
+	Retries *int64         `json:"retries,omitempty"`
+}
+
+func (value *CronWorkflowStepResponse) UnmarshalJSON(data []byte) error {
+	type plain CronWorkflowStepResponse
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	return decoder.Decode((*plain)(value))
+}
+
+func (c CronWorkflowStepResponse) Validate() error {
+	return runtime.ConvertValidatorError(typesValidator.Struct(c))
 }
 
 type DestructiveActionRequestBody struct {
@@ -3263,25 +3263,6 @@ func (l ListAllIssuesResponseBody) Validate() error {
 	return errors
 }
 
-type ListCronFlowsResponseBody struct {
-	Flows []CronFlow `json:"flows" validate:"required"`
-}
-
-func (l ListCronFlowsResponseBody) Validate() error {
-	var errors runtime.ValidationErrors
-	for i, item := range l.Flows {
-		if v, ok := any(item).(runtime.Validator); ok {
-			if err := v.Validate(); err != nil {
-				errors = errors.Append(fmt.Sprintf("Flows[%d]", i), err)
-			}
-		}
-	}
-	if len(errors) == 0 {
-		return nil
-	}
-	return errors
-}
-
 type ListCronJobsResponseBody struct {
 	Jobs []CronJob `json:"jobs" validate:"required"`
 }
@@ -3292,6 +3273,25 @@ func (l ListCronJobsResponseBody) Validate() error {
 		if v, ok := any(item).(runtime.Validator); ok {
 			if err := v.Validate(); err != nil {
 				errors = errors.Append(fmt.Sprintf("Jobs[%d]", i), err)
+			}
+		}
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+	return errors
+}
+
+type ListCronWorkflowsResponseBody struct {
+	Workflows []CronWorkflow `json:"workflows" validate:"required"`
+}
+
+func (l ListCronWorkflowsResponseBody) Validate() error {
+	var errors runtime.ValidationErrors
+	for i, item := range l.Workflows {
+		if v, ok := any(item).(runtime.Validator); ok {
+			if err := v.Validate(); err != nil {
+				errors = errors.Append(fmt.Sprintf("Workflows[%d]", i), err)
 			}
 		}
 	}
@@ -3664,20 +3664,20 @@ func (m MutationResponseBody) Validate() error {
 }
 
 type ObserveCronRunBody struct {
-	Actor                  *string                  `json:"actor,omitempty"`
-	DefinitionEventUID     *string                  `json:"definition_event_uid,omitempty"`
-	EndedAt                *time.Time               `json:"ended_at,omitempty"`
-	ExecutorLabel          *string                  `json:"executor_label,omitempty"`
-	ExpectedRevision       int64                    `json:"expected_revision" validate:"gte=0"`
-	FlowDefinitionEventUID *string                  `json:"flow_definition_event_uid,omitempty"`
-	FlowUID                *string                  `json:"flow_uid,omitempty"`
-	IssueUID               *string                  `json:"issue_uid,omitempty"`
-	JobUID                 *string                  `json:"job_uid,omitempty"`
-	OccurrenceKey          *string                  `json:"occurrence_key,omitempty"`
-	StartedAt              *time.Time               `json:"started_at,omitempty"`
-	Status                 ObserveCronRunBodyStatus `json:"status" validate:"required"`
-	Summary                Summary                  `json:"summary"`
-	Teammate               *string                  `json:"teammate,omitempty"`
+	Actor                      *string                  `json:"actor,omitempty"`
+	DefinitionEventUID         *string                  `json:"definition_event_uid,omitempty"`
+	EndedAt                    *time.Time               `json:"ended_at,omitempty"`
+	ExecutorLabel              *string                  `json:"executor_label,omitempty"`
+	ExpectedRevision           int64                    `json:"expected_revision" validate:"gte=0"`
+	IssueUID                   *string                  `json:"issue_uid,omitempty"`
+	JobUID                     *string                  `json:"job_uid,omitempty"`
+	OccurrenceKey              *string                  `json:"occurrence_key,omitempty"`
+	StartedAt                  *time.Time               `json:"started_at,omitempty"`
+	Status                     ObserveCronRunBodyStatus `json:"status" validate:"required"`
+	Summary                    Summary                  `json:"summary"`
+	Teammate                   *string                  `json:"teammate,omitempty"`
+	WorkflowDefinitionEventUID *string                  `json:"workflow_definition_event_uid,omitempty"`
+	WorkflowUID                *string                  `json:"workflow_uid,omitempty"`
 }
 
 func (o ObserveCronRunBody) Validate() error {
@@ -4133,14 +4133,14 @@ func (p PurgeResponseBody) Validate() error {
 	return errors
 }
 
-type PutCronFlowBody struct {
-	Actor            *string            `json:"actor,omitempty"`
-	Definition       CronFlowDefinition `json:"definition"`
-	ExpectedEventUID *string            `json:"expected_event_uid,omitempty"`
-	Name             string             `json:"name" validate:"required"`
+type PutCronJobBody struct {
+	Actor            *string           `json:"actor,omitempty"`
+	Definition       CronJobDefinition `json:"definition"`
+	ExpectedEventUID *string           `json:"expected_event_uid,omitempty"`
+	Name             string            `json:"name" validate:"required"`
 }
 
-func (p PutCronFlowBody) Validate() error {
+func (p PutCronJobBody) Validate() error {
 	var errors runtime.ValidationErrors
 	if v, ok := any(p.Definition).(runtime.Validator); ok {
 		if err := v.Validate(); err != nil {
@@ -4156,14 +4156,14 @@ func (p PutCronFlowBody) Validate() error {
 	return errors
 }
 
-type PutCronJobBody struct {
-	Actor            *string           `json:"actor,omitempty"`
-	Definition       CronJobDefinition `json:"definition"`
-	ExpectedEventUID *string           `json:"expected_event_uid,omitempty"`
-	Name             string            `json:"name" validate:"required"`
+type PutCronWorkflowBody struct {
+	Actor            *string                `json:"actor,omitempty"`
+	Definition       CronWorkflowDefinition `json:"definition"`
+	ExpectedEventUID *string                `json:"expected_event_uid,omitempty"`
+	Name             string                 `json:"name" validate:"required"`
 }
 
-func (p PutCronJobBody) Validate() error {
+func (p PutCronWorkflowBody) Validate() error {
 	var errors runtime.ValidationErrors
 	if v, ok := any(p.Definition).(runtime.Validator); ok {
 		if err := v.Validate(); err != nil {

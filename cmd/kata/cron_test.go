@@ -81,47 +81,47 @@ func TestCronCLIDefinitionsPreserveOpaqueNumbers(t *testing.T) {
 	require.Contains(t, out, "9007199254740993")
 }
 
-func TestCronCLIDefinitionRevisionAndFlowCRUD(t *testing.T) {
+func TestCronCLIDefinitionRevisionAndWorkflowCRUD(t *testing.T) {
 	t.Setenv("KATA_AUTHOR", "worker")
 	env := testenv.New(t)
 	_, err := env.DB.CreateProject(t.Context(), "spoke-project")
 	require.NoError(t, err)
-	flowUID := cronCLIUID(t)
-	input := api.PutCronFlowBody{Name: "Inspection", Definition: api.CronFlowDefinition{Version: 1, Steps: []api.CronFlowStep{{Key: "inspect", Kind: "command", Command: "git status"}}}}
+	workflowUID := cronCLIUID(t)
+	input := api.PutCronWorkflowBody{Name: "Inspection", Definition: api.CronWorkflowDefinition{Version: 1, Steps: []api.CronWorkflowStep{{Key: "inspect", Kind: "command", Command: "git status"}}}}
 	file := cronCLIFile(t, input)
-	out, _, err := executeCronCLI(t, env.URL, nil, "flow", "create", "--uid", flowUID, "--file", file)
+	out, _, err := executeCronCLI(t, env.URL, nil, "workflow", "create", "--uid", workflowUID, "--file", file)
 	require.NoError(t, err)
 	var created struct {
-		Flow api.CronFlow `json:"flow"`
+		Workflow api.CronWorkflow `json:"workflow"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(out), &created))
 	input.Name = "Updated inspection"
-	input.ExpectedEventUID = created.Flow.DefinitionEventUID
-	out, _, err = executeCronCLI(t, env.URL, nil, "flow", "update", flowUID, "--file", cronCLIFile(t, input))
+	input.ExpectedEventUID = created.Workflow.DefinitionEventUID
+	out, _, err = executeCronCLI(t, env.URL, nil, "workflow", "update", workflowUID, "--file", cronCLIFile(t, input))
 	require.NoError(t, err)
 	var updated struct {
-		Flow api.CronFlow `json:"flow"`
+		Workflow api.CronWorkflow `json:"workflow"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(out), &updated))
-	_, _, err = executeCronCLI(t, env.URL, nil, "flow", "delete", flowUID, "--expected-event-uid", created.Flow.DefinitionEventUID)
+	_, _, err = executeCronCLI(t, env.URL, nil, "workflow", "delete", workflowUID, "--expected-event-uid", created.Workflow.DefinitionEventUID)
 	require.Error(t, err)
-	out, _, err = executeCronCLI(t, env.URL, nil, "flow", "delete", flowUID, "--expected-event-uid", updated.Flow.DefinitionEventUID)
+	out, _, err = executeCronCLI(t, env.URL, nil, "workflow", "delete", workflowUID, "--expected-event-uid", updated.Workflow.DefinitionEventUID)
 	require.NoError(t, err)
 	var deleted struct {
-		Flow api.CronFlow `json:"flow"`
+		Workflow api.CronWorkflow `json:"workflow"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(out), &deleted))
-	require.NotNil(t, deleted.Flow.DeletedAt)
-	out, _, err = executeCronCLI(t, env.URL, nil, "flow", "list", "--include-deleted")
+	require.NotNil(t, deleted.Workflow.DeletedAt)
+	out, _, err = executeCronCLI(t, env.URL, nil, "workflow", "list", "--include-deleted")
 	require.NoError(t, err)
-	require.Contains(t, out, flowUID)
-	out, _, err = executeCronCLI(t, env.URL, nil, "flow", "restore", flowUID, "--expected-event-uid", deleted.Flow.DefinitionEventUID)
+	require.Contains(t, out, workflowUID)
+	out, _, err = executeCronCLI(t, env.URL, nil, "workflow", "restore", workflowUID, "--expected-event-uid", deleted.Workflow.DefinitionEventUID)
 	require.NoError(t, err)
 	var restored struct {
-		Flow api.CronFlow `json:"flow"`
+		Workflow api.CronWorkflow `json:"workflow"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(out), &restored))
-	require.Nil(t, restored.Flow.DeletedAt)
+	require.Nil(t, restored.Workflow.DeletedAt)
 }
 
 func TestCronCLIRejectsInvalidInputBeforeNetwork(t *testing.T) {
@@ -239,7 +239,7 @@ func TestCronCLICapabilitiesEmptyProject(t *testing.T) {
 	require.Equal(t, before, after)
 	require.NoError(t, env.DB.QueryRowContext(t.Context(), "SELECT count(*) FROM meta WHERE key LIKE 'cron_state.%'").Scan(&states))
 	require.Zero(t, states)
-	for _, table := range []string{"cron_jobs", "cron_flows", "cron_runs"} {
+	for _, table := range []string{"cron_jobs", "cron_workflows", "cron_runs"} {
 		var count int
 		require.NoError(t, env.DB.QueryRowContext(t.Context(), "SELECT count(*) FROM "+table).Scan(&count))
 		require.Zero(t, count)

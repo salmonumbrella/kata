@@ -263,11 +263,11 @@ func TestCronFederationBackendPairs(t *testing.T) {
 				server := nativeHTTP(t, hub)
 				project, err := hub.CreateProject(ctx, "hub-project")
 				require.NoError(t, err)
-				flow, _, err := hub.PutCronFlow(ctx, db.PutCronFlow{ProjectID: project.ID, Name: "Review flow", Actor: "worker", Definition: cron.FlowDefinition{Version: 1, Steps: []cron.FlowStep{{Key: "inspect", Kind: "command", Command: "git status"}}}})
+				workflow, _, err := hub.PutCronWorkflow(ctx, db.PutCronWorkflow{ProjectID: project.ID, Name: "Review workflow", Actor: "worker", Definition: cron.WorkflowDefinition{Version: 1, Steps: []cron.WorkflowStep{{Key: "inspect", Kind: "command", Command: "git status"}}}})
 				require.NoError(t, err)
 				job, _ := nativeJob(t, hub, project)
 				definition := job.Definition
-				definition.Action = cron.Action{Kind: "execute", FlowUID: flow.UID}
+				definition.Action = cron.Action{Kind: "execute", WorkflowUID: workflow.UID}
 				job, _, err = hub.PutCronJob(ctx, db.PutCronJob{ProjectID: project.ID, UID: job.UID, ExpectedEventUID: job.DefinitionEventUID, Actor: "worker", Name: job.Name, Definition: definition})
 				require.NoError(t, err)
 
@@ -276,7 +276,7 @@ func TestCronFederationBackendPairs(t *testing.T) {
 				for range 2 {
 					runUID, err := uid.New()
 					require.NoError(t, err)
-					result, err := hub.ObserveCronRun(ctx, db.ObserveCronRun{ProjectID: project.ID, UID: runUID, JobUID: &job.UID, DefinitionEventUID: &job.DefinitionEventUID, FlowUID: &flow.UID, FlowDefinitionEventUID: &flow.DefinitionEventUID, OccurrenceKey: &occurrence, Actor: "worker", Status: "succeeded", Summary: cron.Summary{Version: 1, Message: "Reviewed", InputTokens: 123}})
+					result, err := hub.ObserveCronRun(ctx, db.ObserveCronRun{ProjectID: project.ID, UID: runUID, JobUID: &job.UID, DefinitionEventUID: &job.DefinitionEventUID, WorkflowUID: &workflow.UID, WorkflowDefinitionEventUID: &workflow.DefinitionEventUID, OccurrenceKey: &occurrence, Actor: "worker", Status: "succeeded", Summary: cron.Summary{Version: 1, Message: "Reviewed", InputTokens: 123}})
 					require.NoError(t, err)
 					expectedRuns = append(expectedRuns, result.Run)
 				}

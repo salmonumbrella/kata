@@ -334,7 +334,7 @@ func (d *Store) MaxFederationBaselineEventID(ctx context.Context, projectID, sin
 		SELECT MAX(id)
 		  FROM events
 		 WHERE project_id = ?
-		   AND type IN ('issue.snapshot','cron.job.snapshot','cron.flow.snapshot','cron.run.snapshot')
+		   AND type IN ('issue.snapshot','cron.job.snapshot','cron.workflow.snapshot','cron.run.snapshot')
 		   AND id >= ?`,
 		projectID, sinceEventID).Scan(&n); err != nil {
 		return 0, fmt.Errorf("max federation baseline event id: %w", err)

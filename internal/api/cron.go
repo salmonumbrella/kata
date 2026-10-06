@@ -24,8 +24,8 @@ type CronJobDefinition struct {
 	Options        JSONRawObject     `json:"options,omitempty"`
 }
 
-// CronFlowStep is a portable shell or prompt step with dependency keys.
-type CronFlowStep struct {
+// CronWorkflowStep is a portable shell or prompt step with dependency keys.
+type CronWorkflowStep struct {
 	Key     string        `json:"key"`
 	Kind    string        `json:"kind"`
 	Command string        `json:"command,omitempty"`
@@ -35,13 +35,13 @@ type CronFlowStep struct {
 	Options JSONRawObject `json:"options,omitempty"`
 }
 
-// CronFlowDefinition is the portable ordered flow document exposed by the API.
-type CronFlowDefinition struct {
-	About   string         `json:"about,omitempty"`
-	Input   string         `json:"input,omitempty"`
-	Options JSONRawObject  `json:"options,omitempty"`
-	Version int            `json:"version"`
-	Steps   []CronFlowStep `json:"steps"`
+// CronWorkflowDefinition is the portable ordered workflow document exposed by the API.
+type CronWorkflowDefinition struct {
+	About   string             `json:"about,omitempty"`
+	Input   string             `json:"input,omitempty"`
+	Options JSONRawObject      `json:"options,omitempty"`
+	Version int                `json:"version"`
+	Steps   []CronWorkflowStep `json:"steps"`
 }
 
 // Native converts the API document to its domain representation.
@@ -55,21 +55,21 @@ func CronJobDefinitionFrom(value cron.JobDefinition) CronJobDefinition {
 }
 
 // Native converts the API document to its domain representation.
-func (value CronFlowDefinition) Native() cron.FlowDefinition {
-	steps := make([]cron.FlowStep, 0, len(value.Steps))
+func (value CronWorkflowDefinition) Native() cron.WorkflowDefinition {
+	steps := make([]cron.WorkflowStep, 0, len(value.Steps))
 	for _, step := range value.Steps {
-		steps = append(steps, cron.FlowStep{Key: step.Key, Kind: step.Kind, Command: step.Command, Prompt: step.Prompt, After: step.After, Retries: step.Retries, Options: jsontext.Value(step.Options)})
+		steps = append(steps, cron.WorkflowStep{Key: step.Key, Kind: step.Kind, Command: step.Command, Prompt: step.Prompt, After: step.After, Retries: step.Retries, Options: jsontext.Value(step.Options)})
 	}
-	return cron.FlowDefinition{Version: value.Version, About: value.About, Input: value.Input, Options: jsontext.Value(value.Options), Steps: steps}
+	return cron.WorkflowDefinition{Version: value.Version, About: value.About, Input: value.Input, Options: jsontext.Value(value.Options), Steps: steps}
 }
 
-// CronFlowDefinitionFrom converts a storage value to its API representation.
-func CronFlowDefinitionFrom(value cron.FlowDefinition) CronFlowDefinition {
-	steps := make([]CronFlowStep, 0, len(value.Steps))
+// CronWorkflowDefinitionFrom converts a storage value to its API representation.
+func CronWorkflowDefinitionFrom(value cron.WorkflowDefinition) CronWorkflowDefinition {
+	steps := make([]CronWorkflowStep, 0, len(value.Steps))
 	for _, step := range value.Steps {
-		steps = append(steps, CronFlowStep{Key: step.Key, Kind: step.Kind, Command: step.Command, Prompt: step.Prompt, After: step.After, Retries: step.Retries, Options: JSONRawObject(step.Options)})
+		steps = append(steps, CronWorkflowStep{Key: step.Key, Kind: step.Kind, Command: step.Command, Prompt: step.Prompt, After: step.After, Retries: step.Retries, Options: JSONRawObject(step.Options)})
 	}
-	return CronFlowDefinition{Version: value.Version, About: value.About, Input: value.Input, Options: JSONRawObject(value.Options), Steps: steps}
+	return CronWorkflowDefinition{Version: value.Version, About: value.About, Input: value.Input, Options: JSONRawObject(value.Options), Steps: steps}
 }
 
 // CronJob combines job identity and revision with its portable definition.
@@ -78,10 +78,10 @@ type CronJob struct {
 	Definition CronJobDefinition `json:"definition"`
 }
 
-// CronFlow combines flow identity and revision with its portable definition.
-type CronFlow struct {
+// CronWorkflow combines workflow identity and revision with its portable definition.
+type CronWorkflow struct {
 	db.CronDefinition
-	Definition CronFlowDefinition `json:"definition"`
+	Definition CronWorkflowDefinition `json:"definition"`
 }
 
 // CronJobFrom converts a storage value to its API representation.
@@ -89,9 +89,9 @@ func CronJobFrom(value db.CronJob) CronJob {
 	return CronJob{value.CronDefinition, CronJobDefinitionFrom(value.Definition)}
 }
 
-// CronFlowFrom converts a storage value to its API representation.
-func CronFlowFrom(value db.CronFlow) CronFlow {
-	return CronFlow{value.CronDefinition, CronFlowDefinitionFrom(value.Definition)}
+// CronWorkflowFrom converts a storage value to its API representation.
+func CronWorkflowFrom(value db.CronWorkflow) CronWorkflow {
+	return CronWorkflow{value.CronDefinition, CronWorkflowDefinitionFrom(value.Definition)}
 }
 
 // CronDefinitionRequest addresses one project-scoped definition.
@@ -126,12 +126,12 @@ type PutCronJobBody struct {
 	ExpectedEventUID string            `json:"expected_event_uid,omitempty"`
 }
 
-// PutCronFlowBody carries a flow definition and optional replacement precondition.
-type PutCronFlowBody struct {
-	Actor            string             `json:"actor,omitempty"`
-	Name             string             `json:"name"`
-	Definition       CronFlowDefinition `json:"definition"`
-	ExpectedEventUID string             `json:"expected_event_uid,omitempty"`
+// PutCronWorkflowBody carries a workflow definition and optional replacement precondition.
+type PutCronWorkflowBody struct {
+	Actor            string                 `json:"actor,omitempty"`
+	Name             string                 `json:"name"`
+	Definition       CronWorkflowDefinition `json:"definition"`
+	ExpectedEventUID string                 `json:"expected_event_uid,omitempty"`
 }
 
 // CreateCronJobRequest creates a definition in the selected project.
@@ -146,15 +146,15 @@ type ReplaceCronJobRequest struct {
 	UID string `path:"cron_uid"`
 }
 
-// CreateCronFlowRequest creates a flow in the selected project.
-type CreateCronFlowRequest struct {
+// CreateCronWorkflowRequest creates a workflow in the selected project.
+type CreateCronWorkflowRequest struct {
 	ProjectID int64 `path:"project_id"`
-	Body      PutCronFlowBody
+	Body      PutCronWorkflowBody
 }
 
-// ReplaceCronFlowRequest replaces one flow at its expected definition event.
-type ReplaceCronFlowRequest struct {
-	CreateCronFlowRequest
+// ReplaceCronWorkflowRequest replaces one workflow at its expected definition event.
+type ReplaceCronWorkflowRequest struct {
+	CreateCronWorkflowRequest
 	UID string `path:"cron_uid"`
 }
 
@@ -166,11 +166,11 @@ type CronJobResponse struct {
 	}
 }
 
-// CronFlowResponse returns the flow and events committed by its mutation.
-type CronFlowResponse struct {
+// CronWorkflowResponse returns the workflow and events committed by its mutation.
+type CronWorkflowResponse struct {
 	Body struct {
-		Flow   CronFlow   `json:"flow"`
-		Events []db.Event `json:"events,omitempty"`
+		Workflow CronWorkflow `json:"workflow"`
+		Events   []db.Event   `json:"events,omitempty"`
 	}
 }
 
@@ -181,9 +181,9 @@ type ListCronJobsResponse struct {
 	}
 }
 
-// ListCronFlowsResponse returns the selected portable flows.
-type ListCronFlowsResponse struct {
+// ListCronWorkflowsResponse returns the selected portable workflows.
+type ListCronWorkflowsResponse struct {
 	Body struct {
-		Flows []CronFlow `json:"flows"`
+		Workflows []CronWorkflow `json:"workflows"`
 	}
 }

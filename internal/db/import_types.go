@@ -67,10 +67,10 @@ type ImportRecord interface {
 // so the contract is the shared NDJSON kind string, asserted by the roundtrip
 // tests.
 const (
-	ImportKindMeta     = "meta"
-	ImportKindCronJob  = "cron_job"
-	ImportKindCronFlow = "cron_flow"
-	ImportKindCronRun  = "cron_run"
+	ImportKindMeta         = "meta"
+	ImportKindCronJob      = "cron_job"
+	ImportKindCronWorkflow = "cron_workflow"
+	ImportKindCronRun      = "cron_run"
 
 	ImportKindProject              = "project"
 	ImportKindProjectAlias         = "project_alias"

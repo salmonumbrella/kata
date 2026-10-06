@@ -180,7 +180,7 @@ func (s *Store) MaxLocalOriginEventID(ctx context.Context, projectID int64) (int
 func (s *Store) MaxFederationBaselineEventID(ctx context.Context, projectID, sinceEventID int64) (int64, error) {
 	var value sql.NullInt64
 	if err := s.QueryRowContext(ctx, `SELECT MAX(id) FROM events
-      WHERE project_id = $1 AND type IN ('issue.snapshot','cron.job.snapshot','cron.flow.snapshot','cron.run.snapshot') AND id >= $2`, projectID, sinceEventID).Scan(&value); err != nil {
+      WHERE project_id = $1 AND type IN ('issue.snapshot','cron.job.snapshot','cron.workflow.snapshot','cron.run.snapshot') AND id >= $2`, projectID, sinceEventID).Scan(&value); err != nil {
 		return 0, mapSQLError(err, nil)
 	}
 	return value.Int64, nil

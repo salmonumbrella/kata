@@ -19,33 +19,33 @@ type CronRunObservation struct {
 	ObservationEventUID string             `json:"observation_event_uid,omitempty"`
 	ObservationHLC      *CronDefinitionHLC `json:"observation_hlc,omitempty"`
 
-	UID                    string       `json:"uid"`
-	JobUID                 *string      `json:"job_uid,omitempty"`
-	DefinitionEventUID     *string      `json:"definition_event_uid,omitempty"`
-	FlowUID                *string      `json:"flow_uid,omitempty"`
-	FlowDefinitionEventUID *string      `json:"flow_definition_event_uid,omitempty"`
-	OccurrenceKey          *string      `json:"occurrence_key,omitempty"`
-	IssueUID               *string      `json:"issue_uid,omitempty"`
-	Actor                  string       `json:"actor"`
-	Teammate               *string      `json:"teammate,omitempty"`
-	ExecutorLabel          *string      `json:"executor_label,omitempty"`
-	Status                 string       `json:"status"`
-	Summary                cron.Summary `json:"summary"`
-	Revision               int64        `json:"revision"`
-	CreatedAt              time.Time    `json:"created_at"`
-	StartedAt              *time.Time   `json:"started_at,omitempty"`
-	EndedAt                *time.Time   `json:"ended_at,omitempty"`
-	UpdatedAt              time.Time    `json:"updated_at"`
+	UID                        string       `json:"uid"`
+	JobUID                     *string      `json:"job_uid,omitempty"`
+	DefinitionEventUID         *string      `json:"definition_event_uid,omitempty"`
+	WorkflowUID                *string      `json:"workflow_uid,omitempty"`
+	WorkflowDefinitionEventUID *string      `json:"workflow_definition_event_uid,omitempty"`
+	OccurrenceKey              *string      `json:"occurrence_key,omitempty"`
+	IssueUID                   *string      `json:"issue_uid,omitempty"`
+	Actor                      string       `json:"actor"`
+	Teammate                   *string      `json:"teammate,omitempty"`
+	ExecutorLabel              *string      `json:"executor_label,omitempty"`
+	Status                     string       `json:"status"`
+	Summary                    cron.Summary `json:"summary"`
+	Revision                   int64        `json:"revision"`
+	CreatedAt                  time.Time    `json:"created_at"`
+	StartedAt                  *time.Time   `json:"started_at,omitempty"`
+	EndedAt                    *time.Time   `json:"ended_at,omitempty"`
+	UpdatedAt                  time.Time    `json:"updated_at"`
 }
 
 // NewCronRunObservation attaches portable project identity to a stored run.
 func NewCronRunObservation(run CronRun, projectUID string) CronRunObservation {
-	return CronRunObservation{ProjectUID: projectUID, UID: run.UID, JobUID: run.JobUID, DefinitionEventUID: run.DefinitionEventUID, FlowUID: run.FlowUID, FlowDefinitionEventUID: run.FlowDefinitionEventUID, OccurrenceKey: run.OccurrenceKey, IssueUID: run.IssueUID, Actor: run.Actor, Teammate: run.Teammate, ExecutorLabel: run.ExecutorLabel, Status: run.Status, Summary: run.Summary, Revision: run.Revision, CreatedAt: run.CreatedAt, StartedAt: run.StartedAt, EndedAt: run.EndedAt, UpdatedAt: run.UpdatedAt}
+	return CronRunObservation{ProjectUID: projectUID, UID: run.UID, JobUID: run.JobUID, DefinitionEventUID: run.DefinitionEventUID, WorkflowUID: run.WorkflowUID, WorkflowDefinitionEventUID: run.WorkflowDefinitionEventUID, OccurrenceKey: run.OccurrenceKey, IssueUID: run.IssueUID, Actor: run.Actor, Teammate: run.Teammate, ExecutorLabel: run.ExecutorLabel, Status: run.Status, Summary: run.Summary, Revision: run.Revision, CreatedAt: run.CreatedAt, StartedAt: run.StartedAt, EndedAt: run.EndedAt, UpdatedAt: run.UpdatedAt}
 }
 
 // Run returns the observation fields without backend-local row identifiers.
 func (v CronRunObservation) Run() CronRun {
-	return CronRun{UID: v.UID, JobUID: v.JobUID, DefinitionEventUID: v.DefinitionEventUID, FlowUID: v.FlowUID, FlowDefinitionEventUID: v.FlowDefinitionEventUID, OccurrenceKey: v.OccurrenceKey, IssueUID: v.IssueUID, Actor: v.Actor, Teammate: v.Teammate, ExecutorLabel: v.ExecutorLabel, Status: v.Status, Summary: v.Summary, Revision: v.Revision, CreatedAt: v.CreatedAt, StartedAt: v.StartedAt, EndedAt: v.EndedAt, UpdatedAt: v.UpdatedAt}
+	return CronRun{UID: v.UID, JobUID: v.JobUID, DefinitionEventUID: v.DefinitionEventUID, WorkflowUID: v.WorkflowUID, WorkflowDefinitionEventUID: v.WorkflowDefinitionEventUID, OccurrenceKey: v.OccurrenceKey, IssueUID: v.IssueUID, Actor: v.Actor, Teammate: v.Teammate, ExecutorLabel: v.ExecutorLabel, Status: v.Status, Summary: v.Summary, Revision: v.Revision, CreatedAt: v.CreatedAt, StartedAt: v.StartedAt, EndedAt: v.EndedAt, UpdatedAt: v.UpdatedAt}
 }
 
 // FoldCronRun retains original observation provenance through snapshots.
@@ -97,7 +97,7 @@ func runObservationClock(v FoldCronRun) FoldClock {
 }
 
 func sameCronRunIdentity(a, b CronRun) bool {
-	return a.UID == b.UID && reflect.DeepEqual(a.JobUID, b.JobUID) && reflect.DeepEqual(a.DefinitionEventUID, b.DefinitionEventUID) && reflect.DeepEqual(a.FlowUID, b.FlowUID) && reflect.DeepEqual(a.FlowDefinitionEventUID, b.FlowDefinitionEventUID) && reflect.DeepEqual(a.OccurrenceKey, b.OccurrenceKey) && reflect.DeepEqual(a.IssueUID, b.IssueUID) && a.Actor == b.Actor && reflect.DeepEqual(a.Teammate, b.Teammate) && reflect.DeepEqual(a.ExecutorLabel, b.ExecutorLabel) && a.CreatedAt.Equal(b.CreatedAt)
+	return a.UID == b.UID && reflect.DeepEqual(a.JobUID, b.JobUID) && reflect.DeepEqual(a.DefinitionEventUID, b.DefinitionEventUID) && reflect.DeepEqual(a.WorkflowUID, b.WorkflowUID) && reflect.DeepEqual(a.WorkflowDefinitionEventUID, b.WorkflowDefinitionEventUID) && reflect.DeepEqual(a.OccurrenceKey, b.OccurrenceKey) && reflect.DeepEqual(a.IssueUID, b.IssueUID) && a.Actor == b.Actor && reflect.DeepEqual(a.Teammate, b.Teammate) && reflect.DeepEqual(a.ExecutorLabel, b.ExecutorLabel) && a.CreatedAt.Equal(b.CreatedAt)
 }
 
 // ValidateCronRunReplay checks one event; ingest batches reuse a validator.
@@ -117,7 +117,7 @@ func (v *CronReplayValidator) Validate(ctx context.Context, projectID int64, eve
 		if err != nil {
 			return fmt.Errorf("%w: %v", ErrFederationIngestValidation, err)
 		}
-		kind := "flow"
+		kind := "workflow"
 		if strings.HasPrefix(event.Type, "cron.job.") {
 			kind = "job"
 		}

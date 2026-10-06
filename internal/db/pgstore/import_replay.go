@@ -218,7 +218,7 @@ func (s *Store) importReplayRecord(
 	sequenceFloors map[string]int64,
 ) (replayLinkSkip, error) {
 	switch rec := record.(type) {
-	case *db.CronJobExport, *db.CronFlowExport, *db.CronRunExport:
+	case *db.CronJobExport, *db.CronWorkflowExport, *db.CronRunExport:
 		return replayLinkInserted, db.ReplayCronRecord(ctx, tx, rec, true)
 	case *db.MetaKV:
 		return replayLinkInserted, pgReplayMeta(ctx, tx, rec, opts)

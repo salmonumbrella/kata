@@ -12,7 +12,7 @@ import (
 // CheckCronDependencies checks the live dependencies of a new job/run.
 // Definition writers pass their transaction so referenced documents are checked
 // consistently with the write. Frozen resumes use their
-// stored snapshot and must not reload an edited flow through this helper.
+// stored snapshot and must not reload an edited workflow through this helper.
 func CheckCronDependencies(ctx context.Context, q interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }, projectID int64, definition cron.JobDefinition) error {
@@ -37,7 +37,7 @@ func CheckCronDependencies(ctx context.Context, q interface {
 		}
 		return nil
 	}
-	if err := check("cron_flows", "flow", definition.Action.FlowUID); err != nil {
+	if err := check("cron_workflows", "workflow", definition.Action.WorkflowUID); err != nil {
 		return err
 	}
 	issueUID := definition.Trigger.IssueUID

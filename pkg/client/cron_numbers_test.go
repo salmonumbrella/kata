@@ -23,7 +23,7 @@ func TestCronTypedSDKPreservesNumbers(t *testing.T) {
 	id, err := client.NewCronUID()
 	require.NoError(t, err)
 	jobDefinition := `{"version":1,"kind":"job","enabled":false,"trigger":{"kind":"manual"},"action":{"kind":"execute","prompt":"Inspect"},"issue":{"kind":"per-run","title":"Inspect"},"overlap":"forbid","catchup":"all","options":` + opaque + `}`
-	flowDefinition := `{"version":1,"options":` + opaque + `,"steps":[{"key":"inspect","kind":"command","command":"git status","options":` + opaque + `}]}`
+	workflowDefinition := `{"version":1,"options":` + opaque + `,"steps":[{"key":"inspect","kind":"command","command":"git status","options":` + opaque + `}]}`
 	decode := func(t *testing.T, raw []byte) any {
 		t.Helper()
 		d := json.NewDecoder(bytes.NewReader(raw))
@@ -55,8 +55,8 @@ func TestCronTypedSDKPreservesNumbers(t *testing.T) {
 				switch {
 				case strings.Contains(r.URL.Path, "/jobs/"):
 					response = `{"job":{"definition":` + jobDefinition + `}}`
-				case strings.Contains(r.URL.Path, "/flows/"):
-					response = `{"flow":{"definition":` + flowDefinition + `}}`
+				case strings.Contains(r.URL.Path, "/workflows/"):
+					response = `{"workflow":{"definition":` + workflowDefinition + `}}`
 				default:
 					t.Errorf("unexpected path %s", r.URL.Path)
 				}
@@ -84,25 +84,25 @@ func TestCronTypedSDKPreservesNumbers(t *testing.T) {
 			sent := decode(t, submitted).(map[string]any)
 			mu.Unlock()
 			require.Equal(t, decode(t, []byte(jobDefinition)), sent["definition"])
-			flowOptions := &generated.ShowCronFlowRequestOptions{PathParams: &generated.ShowCronFlowPath{ProjectID: 1, CronUID: id}}
-			var flow generated.CronFlowDefinition
+			workflowOptions := &generated.ShowCronWorkflowRequestOptions{PathParams: &generated.ShowCronWorkflowPath{ProjectID: 1, CronUID: id}}
+			var workflow generated.CronWorkflowDefinition
 			if withResponse {
-				r, e := c.ShowCronFlowWithResponse(t.Context(), flowOptions)
+				r, e := c.ShowCronWorkflowWithResponse(t.Context(), workflowOptions)
 				require.NoError(t, e)
-				copyCronSDKDefinition(t, r.JSON200.Flow.Definition, &flow)
+				copyCronSDKDefinition(t, r.JSON200.Workflow.Definition, &workflow)
 			} else {
-				r, e := c.ShowCronFlow(t.Context(), flowOptions)
+				r, e := c.ShowCronWorkflow(t.Context(), workflowOptions)
 				require.NoError(t, e)
-				copyCronSDKDefinition(t, r.Flow.Definition, &flow)
+				copyCronSDKDefinition(t, r.Workflow.Definition, &workflow)
 			}
-			exact(t, flow.Options)
-			exact(t, flow.Steps[0].Options)
-			_, e = c.ReplaceCronFlow(t.Context(), &generated.ReplaceCronFlowRequestOptions{PathParams: &generated.ReplaceCronFlowPath{ProjectID: 1, CronUID: id}, Body: &generated.ReplaceCronFlowBody{Name: "Inspect", Definition: flow}})
+			exact(t, workflow.Options)
+			exact(t, workflow.Steps[0].Options)
+			_, e = c.ReplaceCronWorkflow(t.Context(), &generated.ReplaceCronWorkflowRequestOptions{PathParams: &generated.ReplaceCronWorkflowPath{ProjectID: 1, CronUID: id}, Body: &generated.ReplaceCronWorkflowBody{Name: "Inspect", Definition: workflow}})
 			require.NoError(t, e)
 			mu.Lock()
 			sent = decode(t, submitted).(map[string]any)
 			mu.Unlock()
-			require.Equal(t, decode(t, []byte(flowDefinition)), sent["definition"])
+			require.Equal(t, decode(t, []byte(workflowDefinition)), sent["definition"])
 
 		})
 	}
@@ -119,11 +119,11 @@ func FuzzCronTypedJSONNumbers(f *testing.F) {
 			value any
 		}{
 			{"options", new(generated.CronJobDefinition)},
-			{"options", new(generated.CronFlowDefinition)},
-			{"options", new(generated.CronFlowStep)},
+			{"options", new(generated.CronWorkflowDefinition)},
+			{"options", new(generated.CronWorkflowStep)},
 			{"options", new(generated.CronJobDefinitionResponse)},
-			{"options", new(generated.CronFlowDefinitionResponse)},
-			{"options", new(generated.CronFlowStepResponse)},
+			{"options", new(generated.CronWorkflowDefinitionResponse)},
+			{"options", new(generated.CronWorkflowStepResponse)},
 		} {
 			expected := fmt.Sprintf(`{"nested":[%d,{"value":%d}]}`, positive, negative)
 			raw := fmt.Sprintf(`{%q:%s}`, surface.field, expected)
@@ -143,11 +143,11 @@ func TestCronTypedJSONRejectsInvalidObjects(t *testing.T) {
 		value any
 	}{
 		{"options", new(generated.CronJobDefinition)},
-		{"options", new(generated.CronFlowDefinition)},
-		{"options", new(generated.CronFlowStep)},
+		{"options", new(generated.CronWorkflowDefinition)},
+		{"options", new(generated.CronWorkflowStep)},
 		{"options", new(generated.CronJobDefinitionResponse)},
-		{"options", new(generated.CronFlowDefinitionResponse)},
-		{"options", new(generated.CronFlowStepResponse)},
+		{"options", new(generated.CronWorkflowDefinitionResponse)},
+		{"options", new(generated.CronWorkflowStepResponse)},
 	} {
 		for _, raw := range []string{fmt.Sprintf(`{%q:[]}`, surface.field), fmt.Sprintf(`{%q:{"n":01}}`, surface.field)} {
 			require.Error(t, json.Unmarshal([]byte(raw), surface.value), "%T: %s", surface.value, raw)

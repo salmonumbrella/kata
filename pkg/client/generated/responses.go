@@ -143,30 +143,6 @@ type GetCronCapabilitiesResponse = CronCapabilitiesResponseBody
 
 type GetCronCapabilitiesErrorResponse = ErrorEnvelope
 
-type ListCronFlowsResponse = ListCronFlowsResponseBody
-
-type ListCronFlowsErrorResponse = ErrorEnvelope
-
-type CreateCronFlowResponse = CronFlowResponseBody
-
-type CreateCronFlowErrorResponse = ErrorEnvelope
-
-type ArchiveCronFlowResponse = CronFlowResponseBody
-
-type ArchiveCronFlowErrorResponse = ErrorEnvelope
-
-type ShowCronFlowResponse = CronFlowResponseBody
-
-type ShowCronFlowErrorResponse = ErrorEnvelope
-
-type ReplaceCronFlowResponse = CronFlowResponseBody
-
-type ReplaceCronFlowErrorResponse = ErrorEnvelope
-
-type RestoreCronFlowResponse = CronFlowResponseBody
-
-type RestoreCronFlowErrorResponse = ErrorEnvelope
-
 type ListCronJobsResponse = ListCronJobsResponseBody
 
 type ListCronJobsErrorResponse = ErrorEnvelope
@@ -202,6 +178,30 @@ type ShowCronRunErrorResponse = ErrorEnvelope
 type ObserveCronRunResponse = ObserveCronRunResponseBody
 
 type ObserveCronRunErrorResponse = ErrorEnvelope
+
+type ListCronWorkflowsResponse = ListCronWorkflowsResponseBody
+
+type ListCronWorkflowsErrorResponse = ErrorEnvelope
+
+type CreateCronWorkflowResponse = CronWorkflowResponseBody
+
+type CreateCronWorkflowErrorResponse = ErrorEnvelope
+
+type ArchiveCronWorkflowResponse = CronWorkflowResponseBody
+
+type ArchiveCronWorkflowErrorResponse = ErrorEnvelope
+
+type ShowCronWorkflowResponse = CronWorkflowResponseBody
+
+type ShowCronWorkflowErrorResponse = ErrorEnvelope
+
+type ReplaceCronWorkflowResponse = CronWorkflowResponseBody
+
+type ReplaceCronWorkflowErrorResponse = ErrorEnvelope
+
+type RestoreCronWorkflowResponse = CronWorkflowResponseBody
+
+type RestoreCronWorkflowErrorResponse = ErrorEnvelope
 
 type DigestProjectResponse = DigestResponseBody
 
@@ -751,48 +751,6 @@ type GetCronCapabilitiesResp struct {
 	Headers200   *GetCronCapabilitiesResp200Headers
 }
 
-type ListCronFlowsResp struct {
-	HTTPResponse *http.Response
-	Body         []byte
-	StatusCode   int
-	JSON200      *ListCronFlowsResponse
-}
-
-type CreateCronFlowResp struct {
-	HTTPResponse *http.Response
-	Body         []byte
-	StatusCode   int
-	JSON201      *CreateCronFlowResponse
-}
-
-type ArchiveCronFlowResp struct {
-	HTTPResponse *http.Response
-	Body         []byte
-	StatusCode   int
-	JSON200      *ArchiveCronFlowResponse
-}
-
-type ShowCronFlowResp struct {
-	HTTPResponse *http.Response
-	Body         []byte
-	StatusCode   int
-	JSON200      *ShowCronFlowResponse
-}
-
-type ReplaceCronFlowResp struct {
-	HTTPResponse *http.Response
-	Body         []byte
-	StatusCode   int
-	JSON200      *ReplaceCronFlowResponse
-}
-
-type RestoreCronFlowResp struct {
-	HTTPResponse *http.Response
-	Body         []byte
-	StatusCode   int
-	JSON200      *RestoreCronFlowResponse
-}
-
 type ListCronJobsResp struct {
 	HTTPResponse *http.Response
 	Body         []byte
@@ -854,6 +812,48 @@ type ObserveCronRunResp struct {
 	Body         []byte
 	StatusCode   int
 	JSON200      *ObserveCronRunResponse
+}
+
+type ListCronWorkflowsResp struct {
+	HTTPResponse *http.Response
+	Body         []byte
+	StatusCode   int
+	JSON200      *ListCronWorkflowsResponse
+}
+
+type CreateCronWorkflowResp struct {
+	HTTPResponse *http.Response
+	Body         []byte
+	StatusCode   int
+	JSON201      *CreateCronWorkflowResponse
+}
+
+type ArchiveCronWorkflowResp struct {
+	HTTPResponse *http.Response
+	Body         []byte
+	StatusCode   int
+	JSON200      *ArchiveCronWorkflowResponse
+}
+
+type ShowCronWorkflowResp struct {
+	HTTPResponse *http.Response
+	Body         []byte
+	StatusCode   int
+	JSON200      *ShowCronWorkflowResponse
+}
+
+type ReplaceCronWorkflowResp struct {
+	HTTPResponse *http.Response
+	Body         []byte
+	StatusCode   int
+	JSON200      *ReplaceCronWorkflowResponse
+}
+
+type RestoreCronWorkflowResp struct {
+	HTTPResponse *http.Response
+	Body         []byte
+	StatusCode   int
+	JSON200      *RestoreCronWorkflowResponse
 }
 
 type DigestProjectResp struct {

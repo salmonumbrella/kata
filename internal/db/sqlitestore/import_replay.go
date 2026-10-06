@@ -202,7 +202,7 @@ func projectMergeOffsets(ctx context.Context, tx *sql.Tx) (db.ProjectMergeOffset
 		table string
 		value *int64
 	}{
-		{"cron_jobs", &offsets.CronJob}, {"cron_flows", &offsets.CronFlow}, {"cron_runs", &offsets.CronRun},
+		{"cron_jobs", &offsets.CronJob}, {"cron_workflows", &offsets.CronWorkflow}, {"cron_runs", &offsets.CronRun},
 	} {
 		if err := tx.QueryRowContext(ctx, "SELECT MAX((SELECT COALESCE(MAX(id),0) FROM "+entry.table+"),COALESCE((SELECT seq FROM sqlite_sequence WHERE name=$1),0))", entry.table).Scan(entry.value); err != nil {
 			return offsets, err
@@ -224,8 +224,8 @@ func refuseProjectMergeUIDCollisions(ctx context.Context, tx *sql.Tx, recs []db.
 			checks = append(checks, uidCheck{"comments", "uid", "comment", rec.UID})
 		case *db.CronJobExport:
 			checks = append(checks, uidCheck{"cron_jobs", "uid", "cron job", rec.UID})
-		case *db.CronFlowExport:
-			checks = append(checks, uidCheck{"cron_flows", "uid", "cron flow", rec.UID})
+		case *db.CronWorkflowExport:
+			checks = append(checks, uidCheck{"cron_workflows", "uid", "cron workflow", rec.UID})
 		case *db.CronRunExport:
 			checks = append(checks, uidCheck{"cron_runs", "uid", "cron run", rec.UID})
 		case *db.RecurrenceExport:
@@ -309,7 +309,7 @@ func clearReplayTarget(
 	}
 	// Virtual and shadow FTS tables are excluded by pragma_table_list's type;
 	// deleting issues/comments maintains them through the schema triggers.
-	for _, table := range []string{"cron_runs", "cron_jobs", "cron_flows"} {
+	for _, table := range []string{"cron_runs", "cron_jobs", "cron_workflows"} {
 		//nolint:gosec // Table comes from the fixed cron table list.
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table); err != nil {
 			return err
@@ -437,7 +437,7 @@ const (
 // per-reason aggregate notes.
 func importRecord(ctx context.Context, tx *sql.Tx, r db.ImportRecord, opts db.ImportOptions, skippedLinkIDs map[int64]struct{}) (linkSkip, error) {
 	switch rec := r.(type) {
-	case *db.CronJobExport, *db.CronFlowExport, *db.CronRunExport:
+	case *db.CronJobExport, *db.CronWorkflowExport, *db.CronRunExport:
 		return linkSkipNone, db.ReplayCronRecord(ctx, tx, rec, false)
 	case *db.MetaKV:
 		return linkSkipNone, importMeta(ctx, tx, rec, opts)

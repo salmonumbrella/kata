@@ -835,7 +835,7 @@ CREATE TABLE cron_jobs (
 );
 CREATE INDEX idx_cron_jobs_project_name ON cron_jobs(project_id,name) WHERE deleted_at IS NULL;
 
-CREATE TABLE cron_flows (
+CREATE TABLE cron_workflows (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   uid TEXT NOT NULL UNIQUE CHECK (uid ~ '^[0-7][0-9A-HJKMNP-TV-Z]{25}$'),
   project_id BIGINT NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
@@ -849,7 +849,7 @@ CREATE TABLE cron_flows (
   updated_at TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
   deleted_at TEXT
 );
-CREATE INDEX idx_cron_flows_project_name ON cron_flows(project_id,name) WHERE deleted_at IS NULL;
+CREATE INDEX idx_cron_workflows_project_name ON cron_workflows(project_id,name) WHERE deleted_at IS NULL;
 
 CREATE TABLE cron_runs (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -857,8 +857,8 @@ CREATE TABLE cron_runs (
   project_id BIGINT NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
   job_uid TEXT CHECK (job_uid IS NULL OR (job_uid ~ '^[0-7][0-9A-HJKMNP-TV-Z]{25}$')),
   definition_event_uid TEXT CHECK (definition_event_uid IS NULL OR (definition_event_uid ~ '^[0-7][0-9A-HJKMNP-TV-Z]{25}$')),
-  flow_uid TEXT CHECK (flow_uid IS NULL OR (flow_uid ~ '^[0-7][0-9A-HJKMNP-TV-Z]{25}$')),
-  flow_definition_event_uid TEXT CHECK (flow_definition_event_uid IS NULL OR (flow_definition_event_uid ~ '^[0-7][0-9A-HJKMNP-TV-Z]{25}$')),
+  workflow_uid TEXT CHECK (workflow_uid IS NULL OR (workflow_uid ~ '^[0-7][0-9A-HJKMNP-TV-Z]{25}$')),
+  workflow_definition_event_uid TEXT CHECK (workflow_definition_event_uid IS NULL OR (workflow_definition_event_uid ~ '^[0-7][0-9A-HJKMNP-TV-Z]{25}$')),
   occurrence_key TEXT CHECK (occurrence_key IS NULL OR length(occurrence_key) BETWEEN 1 AND 1024),
   issue_uid TEXT CHECK (issue_uid IS NULL OR (issue_uid ~ '^[0-7][0-9A-HJKMNP-TV-Z]{25}$')),
   actor TEXT NOT NULL CHECK (length(trim(actor)) > 0 AND octet_length(actor) <= 256),
@@ -872,8 +872,8 @@ CREATE TABLE cron_runs (
   ended_at TEXT,
   updated_at TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
   CHECK ((job_uid IS NULL) = (definition_event_uid IS NULL)),
-  CHECK ((flow_uid IS NULL) = (flow_definition_event_uid IS NULL)),
-  CHECK (job_uid IS NOT NULL OR flow_uid IS NOT NULL)
+  CHECK ((workflow_uid IS NULL) = (workflow_definition_event_uid IS NULL)),
+  CHECK (job_uid IS NOT NULL OR workflow_uid IS NOT NULL)
 );
 CREATE INDEX idx_cron_runs_project_time ON cron_runs(project_id,created_at);
 CREATE INDEX idx_cron_runs_job_time ON cron_runs(project_id,job_uid,created_at);

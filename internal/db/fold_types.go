@@ -30,7 +30,7 @@ type FoldClock struct {
 type FoldProjection struct {
 	CronRuns        map[string]FoldCronRun
 	CronJobs        map[string]FoldCronJob
-	CronFlows       map[string]FoldCronFlow
+	CronWorkflows   map[string]FoldCronWorkflow
 	Issues          map[string]FoldIssue
 	Comments        map[string]FoldComment
 	Labels          map[FoldLabelKey]FoldElementState
@@ -46,9 +46,9 @@ type FoldCronJob struct {
 	ProjectUID string
 }
 
-// FoldCronFlow retains project identity alongside the winning flow document.
-type FoldCronFlow struct {
-	CronFlow
+// FoldCronWorkflow retains project identity alongside the winning workflow document.
+type FoldCronWorkflow struct {
+	CronWorkflow
 	ProjectUID string
 }
 

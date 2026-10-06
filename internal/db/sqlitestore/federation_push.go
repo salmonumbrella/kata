@@ -45,7 +45,7 @@ func (d *Store) PendingFederationPushEvents(
 			WHERE e.project_id = ?
 			  AND e.origin_instance_uid = ?
 			  AND e.id > ?
-			  AND e.type IN ('issue.snapshot','cron.job.snapshot','cron.flow.snapshot','cron.run.snapshot')
+			  AND e.type IN ('issue.snapshot','cron.job.snapshot','cron.workflow.snapshot','cron.run.snapshot')
 			  AND NOT EXISTS (
 			    SELECT 1
 			      FROM events barrier
@@ -54,7 +54,7 @@ func (d *Store) PendingFederationPushEvents(
 			       AND barrier.id > ?
 			       AND barrier.id < e.id
 			       AND `+federationPushEventTypeCondition("barrier.type")+`
-			       AND barrier.type NOT IN ('issue.snapshot','cron.job.snapshot','cron.flow.snapshot','cron.run.snapshot')
+			       AND barrier.type NOT IN ('issue.snapshot','cron.job.snapshot','cron.workflow.snapshot','cron.run.snapshot')
 			  )
 			ORDER BY e.id ASC`, projectID, originInstanceUID, out[len(out)-1].ID, runStartAfterID)
 		if err != nil {
@@ -129,7 +129,7 @@ func (d *Store) PendingFederationPushStats(
 func federationPushEventTypeCondition(column string) string {
 	return column + ` IN (
 		'cron.job.created','cron.job.updated','cron.job.deleted','cron.job.restored','cron.job.snapshot',
- 'cron.flow.created','cron.flow.updated','cron.flow.deleted','cron.flow.restored','cron.flow.snapshot',
+ 'cron.workflow.created','cron.workflow.updated','cron.workflow.deleted','cron.workflow.restored','cron.workflow.snapshot',
  'cron.run.observed','cron.run.snapshot','project.metadata_updated',
 		'issue.created', 'issue.snapshot', 'issue.updated', 'issue.closed', 'issue.reopened',
 		'issue.soft_deleted', 'issue.restored', 'issue.commented', 'issue.comment_edited',
@@ -272,7 +272,7 @@ func (d *Store) resetFederatedProjectIfNoPendingPush(
 		          AND id > ?
 		          AND type IN (
 		            'cron.job.created','cron.job.updated','cron.job.deleted','cron.job.restored','cron.job.snapshot',
- 'cron.flow.created','cron.flow.updated','cron.flow.deleted','cron.flow.restored','cron.flow.snapshot',
+ 'cron.workflow.created','cron.workflow.updated','cron.workflow.deleted','cron.workflow.restored','cron.workflow.snapshot',
  'cron.run.observed','cron.run.snapshot','project.metadata_updated',
 		            'issue.created', 'issue.snapshot', 'issue.updated', 'issue.closed', 'issue.reopened',
 		            'issue.soft_deleted', 'issue.restored', 'issue.commented', 'issue.comment_edited',

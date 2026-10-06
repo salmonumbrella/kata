@@ -97,41 +97,41 @@ func TestCronDefinitionAPI(t *testing.T) {
 	require.Contains(t, []int{400, 422}, status)
 }
 
-func TestCronFlowAPI(t *testing.T) {
+func TestCronWorkflowAPI(t *testing.T) {
 	env := testenv.New(t, testenv.WithAuthToken("tok"))
-	project := seedProject(t, env, "flow-example")
-	path := fmt.Sprintf("/api/v1/projects/%d/cron/flows", project.ID)
-	definition := cron.FlowDefinition{Version: 1, Steps: []cron.FlowStep{{Key: "inspect", Kind: "command", Command: "true"}}}
-	body := map[string]any{"actor": "worker", "name": "Inspect flow", "definition": definition}
+	project := seedProject(t, env, "workflow-example")
+	path := fmt.Sprintf("/api/v1/projects/%d/cron/workflows", project.ID)
+	definition := cron.WorkflowDefinition{Version: 1, Steps: []cron.WorkflowStep{{Key: "inspect", Kind: "command", Command: "true"}}}
+	body := map[string]any{"actor": "worker", "name": "Inspect workflow", "definition": definition}
 	status, raw := cronHTTP(t, env, http.MethodPost, path, body)
 	require.Equalf(t, 201, status, "%s", raw)
 	var response struct {
-		Flow   db.CronFlow `json:"flow"`
-		Events []db.Event  `json:"events"`
+		Workflow db.CronWorkflow `json:"workflow"`
+		Events   []db.Event      `json:"events"`
 	}
 	require.NoError(t, json.Unmarshal(raw, &response))
 	require.Len(t, response.Events, 1)
 	status, raw = cronHTTP(t, env, http.MethodGet, path, nil)
 	require.Equalf(t, 200, status, "%s", raw)
-	require.Contains(t, string(raw), response.Flow.UID)
-	path += "/" + response.Flow.UID
-	body["expected_event_uid"] = response.Flow.DefinitionEventUID
-	body["name"] = "Edited flow"
+	require.Contains(t, string(raw), response.Workflow.UID)
+	path += "/" + response.Workflow.UID
+	body["expected_event_uid"] = response.Workflow.DefinitionEventUID
+	body["name"] = "Edited workflow"
 	status, raw = cronHTTP(t, env, http.MethodPut, path, body)
 	require.Equalf(t, 200, status, "%s", raw)
 	require.NoError(t, json.Unmarshal(raw, &response))
-	action := map[string]any{"actor": "worker", "expected_event_uid": response.Flow.DefinitionEventUID}
+	action := map[string]any{"actor": "worker", "expected_event_uid": response.Workflow.DefinitionEventUID}
 	status, raw = cronHTTP(t, env, http.MethodDelete, path, action)
 	require.Equalf(t, 200, status, "%s", raw)
 	require.NoError(t, json.Unmarshal(raw, &response))
-	require.NotNil(t, response.Flow.DeletedAt)
-	action["expected_event_uid"] = response.Flow.DefinitionEventUID
+	require.NotNil(t, response.Workflow.DeletedAt)
+	action["expected_event_uid"] = response.Workflow.DefinitionEventUID
 	status, raw = cronHTTP(t, env, http.MethodPost, path+"/restore", action)
 	require.Equalf(t, 200, status, "%s", raw)
 	require.NotContains(t, string(raw), `"deleted_at"`)
-	response.Flow = db.CronFlow{}
+	response.Workflow = db.CronWorkflow{}
 	require.NoError(t, json.Unmarshal(raw, &response))
-	require.Nil(t, response.Flow.DeletedAt)
+	require.Nil(t, response.Workflow.DeletedAt)
 }
 
 func TestCronDefinitionWritePolicy(t *testing.T) {

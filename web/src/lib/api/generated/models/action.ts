@@ -3,9 +3,9 @@
  */
 
 export interface Action {
-  flow_uid?: string
   kind: string
   message?: string
   prompt?: string
   recipient?: string
+  workflow_uid?: string
 }

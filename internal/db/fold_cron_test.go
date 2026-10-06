@@ -34,7 +34,7 @@ func cronFoldEvent(t testing.TB, kind string, index int, deleted bool) db.FoldEv
 	if kind == "job" {
 		payload["definition"] = map[string]any{"version": 1, "kind": "job", "enabled": false, "trigger": map[string]any{"kind": "interval", "interval_seconds": int64(index)}, "action": map[string]any{"kind": "execute", "prompt": fmt.Sprintf("Prompt %d", index)}, "issue": map[string]any{"kind": "per-run", "title": "Review"}, "overlap": "forbid", "catchup": "skip"}
 	} else {
-		payload["definition"] = cron.FlowDefinition{Version: 1, About: fmt.Sprintf("About %d", index), Steps: []cron.FlowStep{{Key: "review", Kind: "command", Command: fmt.Sprintf("echo %d", index)}}}
+		payload["definition"] = cron.WorkflowDefinition{Version: 1, About: fmt.Sprintf("About %d", index), Steps: []cron.WorkflowStep{{Key: "review", Kind: "command", Command: fmt.Sprintf("echo %d", index)}}}
 	}
 	raw, err := json.Marshal(payload)
 	require.NoError(t, err)
@@ -43,20 +43,20 @@ func cronFoldEvent(t testing.TB, kind string, index int, deleted bool) db.FoldEv
 
 // Decode the public fold value to test the whole-document contract, independent
 // of internal fold bookkeeping and backend-local IDs/revisions.
-func foldedDefinitions(t testing.TB, events []db.FoldEvent) (map[string]db.CronJob, map[string]db.CronFlow) {
+func foldedDefinitions(t testing.TB, events []db.FoldEvent) (map[string]db.CronJob, map[string]db.CronWorkflow) {
 	t.Helper()
 	raw, err := json.Marshal(db.FoldEvents(events))
 	require.NoError(t, err)
 	var out struct {
-		CronJobs  map[string]db.CronJob
-		CronFlows map[string]db.CronFlow
+		CronJobs      map[string]db.CronJob
+		CronWorkflows map[string]db.CronWorkflow
 	}
 	require.NoError(t, json.Unmarshal(raw, &out))
-	return out.CronJobs, out.CronFlows
+	return out.CronJobs, out.CronWorkflows
 }
 
 func TestCronFoldWholeDocumentsAndSnapshotClocks(t *testing.T) {
-	for _, kind := range []string{"job", "flow"} {
+	for _, kind := range []string{"job", "workflow"} {
 		t.Run(kind, func(t *testing.T) {
 			older := cronFoldEvent(t, kind, 1, false)
 			deleted := cronFoldEvent(t, kind, 2, true)
@@ -83,12 +83,12 @@ func TestCronFoldWholeDocumentsAndSnapshotClocks(t *testing.T) {
 				{"snapshot preserves original", []db.FoldEvent{snapshot}, older, false},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
-					jobs, flows := foldedDefinitions(t, tc.events)
+					jobs, workflows := foldedDefinitions(t, tc.events)
 					var actual db.CronDefinition
 					if kind == "job" {
 						actual = jobs[foldCronUID].CronDefinition
 					} else {
-						actual = flows[foldCronUID].CronDefinition
+						actual = workflows[foldCronUID].CronDefinition
 					}
 					require.Equal(t, tc.want.UID, actual.DefinitionEventUID)
 					require.Equal(t, tc.want.HLCPhysicalMS, actual.DefinitionHLC.PhysicalMS)
@@ -121,7 +121,7 @@ func FuzzCronFoldConvergence(f *testing.F) {
 	f.Add([]byte{})
 	f.Fuzz(func(t *testing.T, data []byte) {
 		count := max(1, min(len(data), 64))
-		for _, kind := range []string{"job", "flow"} {
+		for _, kind := range []string{"job", "workflow"} {
 			events := make([]db.FoldEvent, 0, count*2)
 			var winner db.FoldEvent
 			for i := range count {
@@ -154,15 +154,15 @@ func FuzzCronFoldConvergence(f *testing.F) {
 				}
 				events[i], events[j] = events[j], events[i]
 			}
-			jobs, flows := foldedDefinitions(t, events)
+			jobs, workflows := foldedDefinitions(t, events)
 			var actual db.CronDefinition
 			var document jsontext.Value
 			if kind == "job" {
 				actual = jobs[foldCronUID].CronDefinition
 				document, _ = json.Marshal(jobs[foldCronUID].Definition)
 			} else {
-				actual = flows[foldCronUID].CronDefinition
-				document, _ = json.Marshal(flows[foldCronUID].Definition)
+				actual = workflows[foldCronUID].CronDefinition
+				document, _ = json.Marshal(workflows[foldCronUID].Definition)
 			}
 			var expected struct {
 				Name       string         `json:"name"`

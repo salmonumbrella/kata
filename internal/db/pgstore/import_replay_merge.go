@@ -69,7 +69,7 @@ func pgProjectMergeOffsets(ctx context.Context, tx *sql.Tx) (db.ProjectMergeOffs
 		{"issue_sync_bindings", &offsets.SyncBinding},
 		{"recurrences", &offsets.Recurrence},
 		{"cron_jobs", &offsets.CronJob},
-		{"cron_flows", &offsets.CronFlow},
+		{"cron_workflows", &offsets.CronWorkflow},
 		{"cron_runs", &offsets.CronRun},
 
 		{"issues", &offsets.Issue},
@@ -140,8 +140,8 @@ func refusePGProjectMergeUIDCollisions(ctx context.Context, tx *sql.Tx, records 
 			checks = append(checks, uidCheck{"comments", "uid", "comment", record.UID})
 		case *db.CronJobExport:
 			checks = append(checks, uidCheck{"cron_jobs", "uid", "cron job", record.UID})
-		case *db.CronFlowExport:
-			checks = append(checks, uidCheck{"cron_flows", "uid", "cron flow", record.UID})
+		case *db.CronWorkflowExport:
+			checks = append(checks, uidCheck{"cron_workflows", "uid", "cron workflow", record.UID})
 		case *db.CronRunExport:
 			checks = append(checks, uidCheck{"cron_runs", "uid", "cron run", record.UID})
 		case *db.RecurrenceExport:

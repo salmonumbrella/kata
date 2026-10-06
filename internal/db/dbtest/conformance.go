@@ -41,7 +41,7 @@ type scenario struct {
 
 var storageScenarios = []scenario{
 	{name: "peer ingest committed events", methods: []string{"IngestFederationEvents"}, run: checkPeerIngestCommittedEvents},
-	{name: "independent run observations", methods: []string{"ObserveCronRun", "CronRun", "ListCronRuns", "ExportCronJobs", "ExportCronFlows", "ExportCronRuns"}, run: checkIndependentRunObservations},
+	{name: "independent run observations", methods: []string{"ObserveCronRun", "CronRun", "ListCronRuns", "ExportCronJobs", "ExportCronWorkflows", "ExportCronRuns"}, run: checkIndependentRunObservations},
 	{name: "run history instants", methods: []string{"ObserveCronRun", "ListCronRuns"}, run: checkRunHistoryInstants},
 	{name: "run reference restore", methods: []string{"ImportReplay"}, runWithBackend: checkRunReferenceRestore},
 	{name: "run reference federation", methods: []string{"InsertRemoteEvent", "IngestFederationEvents"}, run: checkRunReferenceFederation},
@@ -51,7 +51,7 @@ var storageScenarios = []scenario{
 	{name: "native cron adoption author", methods: []string{}, runWithBackend: checkNativeCronAdoptionAuthor},
 	{name: "native cron federation", methods: []string{"ReadFederation"}, runWithBackend: checkNativeCronFederation},
 	{name: "native cron push", methods: []string{}, runWithBackend: checkNativeCronPush},
-	{name: "native cron definitions", methods: []string{"PutCronJob", "PutCronFlow", "CronJob", "CronFlow", "ListCronJobs", "ListCronFlows"}, run: checkNativeCronDefinitions},
+	{name: "native cron definitions", methods: []string{"PutCronJob", "PutCronWorkflow", "CronJob", "CronWorkflow", "ListCronJobs", "ListCronWorkflows"}, run: checkNativeCronDefinitions},
 	{name: "native cron constraints", methods: []string{}, run: checkNativeCronConstraints},
 	{name: "native cron dormant storage", methods: []string{}, run: checkNativeCronDormancy},
 	{name: "external import derived status", methods: []string{"CreateProject", "ImportBatch", "ImportMappingBySource", "IssueByID", "EditIssue"}, run: checkImportDerivedStatus},

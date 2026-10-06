@@ -135,21 +135,21 @@ func checkIndependentRunObservations(t *testing.T, store db.Storage) error {
 		jobs = append(jobs, job)
 	}
 	require.Len(t, jobs, 1)
-	flow, _, err := store.PutCronFlow(ctx, db.PutCronFlow{ProjectID: project.ID, Name: "Review flow", Actor: "worker", Definition: cron.FlowDefinition{Version: 1, Steps: []cron.FlowStep{{Key: "review", Kind: "command", Command: "git status"}}}})
+	workflow, _, err := store.PutCronWorkflow(ctx, db.PutCronWorkflow{ProjectID: project.ID, Name: "Review workflow", Actor: "worker", Definition: cron.WorkflowDefinition{Version: 1, Steps: []cron.WorkflowStep{{Key: "review", Kind: "command", Command: "git status"}}}})
 	require.NoError(t, err)
-	flows := []db.CronFlowExport{}
-	for value, err := range store.ExportCronFlows(ctx, db.ExportFilter{ProjectID: &project.ID}) {
+	workflows := []db.CronWorkflowExport{}
+	for value, err := range store.ExportCronWorkflows(ctx, db.ExportFilter{ProjectID: &project.ID}) {
 		require.NoError(t, err)
-		flows = append(flows, value)
+		workflows = append(workflows, value)
 	}
-	require.Len(t, flows, 1)
-	require.Equal(t, flow.UID, flows[0].UID)
-	flowRunUID, err := uid.New()
+	require.Len(t, workflows, 1)
+	require.Equal(t, workflow.UID, workflows[0].UID)
+	workflowRunUID, err := uid.New()
 	require.NoError(t, err)
-	flowRun, err := store.ObserveCronRun(ctx, db.ObserveCronRun{ProjectID: project.ID, UID: flowRunUID, FlowUID: &flow.UID, FlowDefinitionEventUID: &flow.DefinitionEventUID, Actor: "worker", Status: "unknown", Summary: cron.Summary{Version: 1}})
+	workflowRun, err := store.ObserveCronRun(ctx, db.ObserveCronRun{ProjectID: project.ID, UID: workflowRunUID, WorkflowUID: &workflow.UID, WorkflowDefinitionEventUID: &workflow.DefinitionEventUID, Actor: "worker", Status: "unknown", Summary: cron.Summary{Version: 1}})
 	require.NoError(t, err)
-	require.Nil(t, flowRun.Run.JobUID)
-	require.Equal(t, &flow.UID, flowRun.Run.FlowUID)
+	require.Nil(t, workflowRun.Run.JobUID)
+	require.Equal(t, &workflow.UID, workflowRun.Run.WorkflowUID)
 
 	return nil
 }

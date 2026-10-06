@@ -22,7 +22,7 @@ func validateCronRun(value CronRun) error {
 	if !cronUID(value.UID) || value.ProjectID <= 0 || strings.TrimSpace(value.Actor) == "" || len(value.Actor) > 256 || !utf8.ValidString(value.Actor) {
 		return fmt.Errorf("%w: invalid run identity", cron.ErrInvalid)
 	}
-	for _, pair := range [][2]*string{{value.JobUID, value.DefinitionEventUID}, {value.FlowUID, value.FlowDefinitionEventUID}} {
+	for _, pair := range [][2]*string{{value.JobUID, value.DefinitionEventUID}, {value.WorkflowUID, value.WorkflowDefinitionEventUID}} {
 		if (pair[0] == nil) != (pair[1] == nil) {
 			return fmt.Errorf("%w: definition UID and event UID must be paired", cron.ErrInvalid)
 		}
@@ -30,8 +30,8 @@ func validateCronRun(value CronRun) error {
 			return fmt.Errorf("%w: invalid definition reference", cron.ErrInvalid)
 		}
 	}
-	if value.JobUID == nil && value.FlowUID == nil {
-		return fmt.Errorf("%w: a job or flow reference is required", cron.ErrInvalid)
+	if value.JobUID == nil && value.WorkflowUID == nil {
+		return fmt.Errorf("%w: a job or workflow reference is required", cron.ErrInvalid)
 	}
 	if value.IssueUID != nil && !cronUID(*value.IssueUID) {
 		return fmt.Errorf("%w: invalid issue reference", cron.ErrInvalid)
@@ -142,7 +142,7 @@ func (a CronSQL) Runs(ctx context.Context, in CronRunList) ([]CronRun, error) {
 // ObserveRun commits ordinary attributed evidence with identity and revision checks.
 func (a CronSQL) ObserveRun(ctx context.Context, in ObserveCronRun) (CronRunObservationResult, error) {
 	result := CronRunObservationResult{Events: []Event{}}
-	value := CronRun{UID: in.UID, ProjectID: in.ProjectID, JobUID: in.JobUID, DefinitionEventUID: in.DefinitionEventUID, FlowUID: in.FlowUID, FlowDefinitionEventUID: in.FlowDefinitionEventUID, OccurrenceKey: in.OccurrenceKey, IssueUID: in.IssueUID, Actor: in.Actor, Teammate: in.Teammate, ExecutorLabel: in.ExecutorLabel, Status: in.Status, Summary: in.Summary, StartedAt: in.StartedAt, EndedAt: in.EndedAt}
+	value := CronRun{UID: in.UID, ProjectID: in.ProjectID, JobUID: in.JobUID, DefinitionEventUID: in.DefinitionEventUID, WorkflowUID: in.WorkflowUID, WorkflowDefinitionEventUID: in.WorkflowDefinitionEventUID, OccurrenceKey: in.OccurrenceKey, IssueUID: in.IssueUID, Actor: in.Actor, Teammate: in.Teammate, ExecutorLabel: in.ExecutorLabel, Status: in.Status, Summary: in.Summary, StartedAt: in.StartedAt, EndedAt: in.EndedAt}
 	if err := validateCronRun(value); err != nil {
 		return result, err
 	}
@@ -205,7 +205,7 @@ func (a CronSQL) ObserveRun(ctx context.Context, in ObserveCronRun) (CronRunObse
 			for _, ref := range []struct {
 				kind      string
 				id, event *string
-			}{{"job", in.JobUID, in.DefinitionEventUID}, {"flow", in.FlowUID, in.FlowDefinitionEventUID}} {
+			}{{"job", in.JobUID, in.DefinitionEventUID}, {"workflow", in.WorkflowUID, in.WorkflowDefinitionEventUID}} {
 				if ref.id != nil {
 					if err := validator.validateLocalReference(ctx, project, ref.kind, *ref.id, *ref.event); err != nil {
 						return err

@@ -764,7 +764,7 @@ CREATE TABLE cron_jobs (
 );
 CREATE INDEX idx_cron_jobs_project_name ON cron_jobs(project_id,name) WHERE deleted_at IS NULL;
 
-CREATE TABLE cron_flows (
+CREATE TABLE cron_workflows (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   uid TEXT NOT NULL UNIQUE CHECK (length(uid) = 26 AND substr(uid,1,1) BETWEEN '0' AND '7' AND uid NOT GLOB '*[^0-9A-HJKMNP-TV-Z]*'),
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
@@ -778,7 +778,7 @@ CREATE TABLE cron_flows (
   updated_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   deleted_at DATETIME
 );
-CREATE INDEX idx_cron_flows_project_name ON cron_flows(project_id,name) WHERE deleted_at IS NULL;
+CREATE INDEX idx_cron_workflows_project_name ON cron_workflows(project_id,name) WHERE deleted_at IS NULL;
 
 CREATE TABLE cron_runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -786,8 +786,8 @@ CREATE TABLE cron_runs (
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
   job_uid TEXT CHECK (job_uid IS NULL OR (length(job_uid) = 26 AND substr(job_uid,1,1) BETWEEN '0' AND '7' AND job_uid NOT GLOB '*[^0-9A-HJKMNP-TV-Z]*')),
   definition_event_uid TEXT CHECK (definition_event_uid IS NULL OR (length(definition_event_uid) = 26 AND substr(definition_event_uid,1,1) BETWEEN '0' AND '7' AND definition_event_uid NOT GLOB '*[^0-9A-HJKMNP-TV-Z]*')),
-  flow_uid TEXT CHECK (flow_uid IS NULL OR (length(flow_uid) = 26 AND substr(flow_uid,1,1) BETWEEN '0' AND '7' AND flow_uid NOT GLOB '*[^0-9A-HJKMNP-TV-Z]*')),
-  flow_definition_event_uid TEXT CHECK (flow_definition_event_uid IS NULL OR (length(flow_definition_event_uid) = 26 AND substr(flow_definition_event_uid,1,1) BETWEEN '0' AND '7' AND flow_definition_event_uid NOT GLOB '*[^0-9A-HJKMNP-TV-Z]*')),
+  workflow_uid TEXT CHECK (workflow_uid IS NULL OR (length(workflow_uid) = 26 AND substr(workflow_uid,1,1) BETWEEN '0' AND '7' AND workflow_uid NOT GLOB '*[^0-9A-HJKMNP-TV-Z]*')),
+  workflow_definition_event_uid TEXT CHECK (workflow_definition_event_uid IS NULL OR (length(workflow_definition_event_uid) = 26 AND substr(workflow_definition_event_uid,1,1) BETWEEN '0' AND '7' AND workflow_definition_event_uid NOT GLOB '*[^0-9A-HJKMNP-TV-Z]*')),
   occurrence_key TEXT CHECK (occurrence_key IS NULL OR length(occurrence_key) BETWEEN 1 AND 1024),
   issue_uid TEXT CHECK (issue_uid IS NULL OR (length(issue_uid) = 26 AND substr(issue_uid,1,1) BETWEEN '0' AND '7' AND issue_uid NOT GLOB '*[^0-9A-HJKMNP-TV-Z]*')),
   actor TEXT NOT NULL CHECK (length(trim(actor)) > 0 AND length(CAST(actor AS BLOB)) <= 256),
@@ -801,8 +801,8 @@ CREATE TABLE cron_runs (
   ended_at DATETIME,
   updated_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   CHECK ((job_uid IS NULL) = (definition_event_uid IS NULL)),
-  CHECK ((flow_uid IS NULL) = (flow_definition_event_uid IS NULL)),
-  CHECK (job_uid IS NOT NULL OR flow_uid IS NOT NULL)
+  CHECK ((workflow_uid IS NULL) = (workflow_definition_event_uid IS NULL)),
+  CHECK (job_uid IS NOT NULL OR workflow_uid IS NOT NULL)
 );
 CREATE INDEX idx_cron_runs_project_time ON cron_runs(project_id,created_at);
 CREATE INDEX idx_cron_runs_job_time ON cron_runs(project_id,job_uid,created_at);

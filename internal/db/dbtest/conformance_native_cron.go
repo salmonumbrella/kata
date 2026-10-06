@@ -17,7 +17,7 @@ func checkNativeCronDormancy(t *testing.T, store db.Storage) error {
 	q := store.(interface {
 		QueryRowContext(context.Context, string, ...any) *sql.Row
 	})
-	for _, table := range []string{"cron_jobs", "cron_flows", "cron_runs"} {
+	for _, table := range []string{"cron_jobs", "cron_workflows", "cron_runs"} {
 		var count int
 		require.NoError(t, q.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM "+table).Scan(&count))
 		require.Zero(t, count)
@@ -65,7 +65,7 @@ func checkNativeCronConstraints(t *testing.T, store db.Storage) error {
 	require.NoError(t, err)
 	_, err = q.ExecContext(ctx, `INSERT INTO cron_runs(uid,project_id,job_uid,definition_event_uid,occurrence_key,actor,status) VALUES($1,$2,$3,$4,'same-occurrence','worker','running')`, "01ARZ3NDEKTSV4RRFFQ69G5FAY", project.ID, jobUID, eventUID)
 	require.NoError(t, err)
-	for _, statement := range []string{`UPDATE cron_runs SET status='invented' WHERE uid=$1`, `UPDATE cron_runs SET actor='' WHERE uid=$1`, `UPDATE cron_runs SET summary_json='{"version":1,"input_tokens":-1}' WHERE uid=$1`, `UPDATE cron_runs SET revision=-1 WHERE uid=$1`, `UPDATE cron_runs SET definition_event_uid=NULL WHERE uid=$1`, `UPDATE cron_runs SET flow_uid='invalid' WHERE uid=$1`} {
+	for _, statement := range []string{`UPDATE cron_runs SET status='invented' WHERE uid=$1`, `UPDATE cron_runs SET actor='' WHERE uid=$1`, `UPDATE cron_runs SET summary_json='{"version":1,"input_tokens":-1}' WHERE uid=$1`, `UPDATE cron_runs SET revision=-1 WHERE uid=$1`, `UPDATE cron_runs SET definition_event_uid=NULL WHERE uid=$1`, `UPDATE cron_runs SET workflow_uid='invalid' WHERE uid=$1`} {
 		_, err = q.ExecContext(ctx, statement, runUID)
 		require.Error(t, err)
 	}

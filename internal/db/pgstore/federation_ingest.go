@@ -321,12 +321,12 @@ func validateFederationBoundActorPayload(
 			return fmt.Errorf("%w: run actor differs from bound actor", db.ErrFederationIngestValidation)
 		}
 		return nil
-	case "cron.job.snapshot", "cron.flow.snapshot":
+	case "cron.job.snapshot", "cron.workflow.snapshot":
 		if allowSnapshotAuthorPreservation {
 			return nil
 		}
 		return validateFederationPayloadAuthor(event, boundActor)
-	case "cron.job.created", "cron.flow.created":
+	case "cron.job.created", "cron.workflow.created":
 		return validateFederationPayloadAuthor(event, boundActor)
 	case "issue.snapshot":
 		if allowSnapshotAuthorPreservation {

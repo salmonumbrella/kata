@@ -20,9 +20,9 @@ func ValidateCronRecord(record ImportRecord) error {
 			return err
 		}
 		return value.Definition.Validate()
-	case *CronFlowExport:
+	case *CronWorkflowExport:
 		if value == nil {
-			return fmt.Errorf("nil cron flow")
+			return fmt.Errorf("nil cron workflow")
 		}
 		if err := validateCronDefinition(value.CronDefinition); err != nil {
 			return err

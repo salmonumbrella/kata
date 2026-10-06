@@ -24,11 +24,11 @@ type Trigger struct {
 
 // Action selects process execution or ordinary issue notification.
 type Action struct {
-	Kind      string `json:"kind"`
-	Prompt    string `json:"prompt,omitempty"`
-	FlowUID   string `json:"flow_uid,omitempty"`
-	Recipient string `json:"recipient,omitempty"`
-	Message   string `json:"message,omitempty"`
+	Kind        string `json:"kind"`
+	Prompt      string `json:"prompt,omitempty"`
+	WorkflowUID string `json:"workflow_uid,omitempty"`
+	Recipient   string `json:"recipient,omitempty"`
+	Message     string `json:"message,omitempty"`
 }
 
 // IssuePolicy selects an existing issue or a separately created issue per run.
@@ -58,8 +58,8 @@ type JobDefinition struct {
 	Options        jsontext.Value    `json:"options,omitempty"`
 }
 
-// FlowStep is a portable command or prompt with earlier-step dependencies.
-type FlowStep struct {
+// WorkflowStep is a portable command or prompt with earlier-step dependencies.
+type WorkflowStep struct {
 	Key     string         `json:"key"`
 	Kind    string         `json:"kind"`
 	Command string         `json:"command,omitempty"`
@@ -69,11 +69,11 @@ type FlowStep struct {
 	Options jsontext.Value `json:"options,omitempty"`
 }
 
-// FlowDefinition retains an ordered portable workflow and consumer options.
-type FlowDefinition struct {
+// WorkflowDefinition retains an ordered portable workflow and consumer options.
+type WorkflowDefinition struct {
 	About   string         `json:"about,omitempty"`
 	Input   string         `json:"input,omitempty"`
 	Options jsontext.Value `json:"options,omitempty"`
 	Version int            `json:"version"`
-	Steps   []FlowStep     `json:"steps"`
+	Steps   []WorkflowStep `json:"steps"`
 }

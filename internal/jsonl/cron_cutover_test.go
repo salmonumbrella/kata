@@ -29,7 +29,7 @@ func TestNativeCronCutoverPreservesVersion30DueRequest(t *testing.T) {
 	require.True(t, due.Changed)
 	issue, err = source.IssueByID(ctx, issue.ID)
 	require.NoError(t, err)
-	for _, table := range []string{"cron_runs", "cron_jobs", "cron_flows"} {
+	for _, table := range []string{"cron_runs", "cron_jobs", "cron_workflows"} {
 		_, err = source.ExecContext(ctx, "DROP TABLE "+table)
 		require.NoError(t, err)
 	}

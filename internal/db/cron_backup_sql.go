@@ -90,7 +90,7 @@ func cronTimeValue(t *time.Time) any {
 	return t.UTC().Format(time.RFC3339Nano)
 }
 
-const cronRunColumns = `id,uid,project_id,job_uid,definition_event_uid,flow_uid,flow_definition_event_uid,occurrence_key,issue_uid,actor,teammate,executor_label,status,summary_json,revision,created_at,started_at,ended_at,updated_at`
+const cronRunColumns = `id,uid,project_id,job_uid,definition_event_uid,workflow_uid,workflow_definition_event_uid,occurrence_key,issue_uid,actor,teammate,executor_label,status,summary_json,revision,created_at,started_at,ended_at,updated_at`
 
 // ExportCronRunsSQL streams attributed observations within the export scope.
 func ExportCronRunsSQL(ctx context.Context, query CronQuery, filter ExportFilter) iter.Seq2[CronRunExport, error] {
@@ -100,7 +100,7 @@ func scanCronRun(row *sql.Rows) (CronRunExport, error) { return scanCronRunRow(r
 func scanCronRunRow(row interface{ Scan(...any) error }) (CronRunExport, error) {
 	var value CronRunExport
 	var summary string
-	if err := row.Scan(&value.ID, &value.UID, &value.ProjectID, &value.JobUID, &value.DefinitionEventUID, &value.FlowUID, &value.FlowDefinitionEventUID, &value.OccurrenceKey, &value.IssueUID, &value.Actor, &value.Teammate, &value.ExecutorLabel, &value.Status, &summary, &value.Revision, cronTime{&value.CreatedAt}, cronOptionalTime{&value.StartedAt}, cronOptionalTime{&value.EndedAt}, cronTime{&value.UpdatedAt}); err != nil {
+	if err := row.Scan(&value.ID, &value.UID, &value.ProjectID, &value.JobUID, &value.DefinitionEventUID, &value.WorkflowUID, &value.WorkflowDefinitionEventUID, &value.OccurrenceKey, &value.IssueUID, &value.Actor, &value.Teammate, &value.ExecutorLabel, &value.Status, &summary, &value.Revision, cronTime{&value.CreatedAt}, cronOptionalTime{&value.StartedAt}, cronOptionalTime{&value.EndedAt}, cronTime{&value.UpdatedAt}); err != nil {
 		return value, err
 	}
 	var err error
@@ -116,7 +116,7 @@ func insertCronRun(ctx context.Context, tx *sql.Tx, value CronRun, postgres, wit
 		return err
 	}
 	columns := cronRunColumns
-	args := []any{value.ID, value.UID, value.ProjectID, value.JobUID, value.DefinitionEventUID, value.FlowUID, value.FlowDefinitionEventUID, value.OccurrenceKey, value.IssueUID, value.Actor, value.Teammate, value.ExecutorLabel, value.Status, string(summary), value.Revision, value.CreatedAt.UTC().Format(time.RFC3339Nano), cronTimeValue(value.StartedAt), cronTimeValue(value.EndedAt), value.UpdatedAt.UTC().Format(time.RFC3339Nano)}
+	args := []any{value.ID, value.UID, value.ProjectID, value.JobUID, value.DefinitionEventUID, value.WorkflowUID, value.WorkflowDefinitionEventUID, value.OccurrenceKey, value.IssueUID, value.Actor, value.Teammate, value.ExecutorLabel, value.Status, string(summary), value.Revision, value.CreatedAt.UTC().Format(time.RFC3339Nano), cronTimeValue(value.StartedAt), cronTimeValue(value.EndedAt), value.UpdatedAt.UTC().Format(time.RFC3339Nano)}
 	override := ""
 	if !withID {
 		columns = strings.TrimPrefix(columns, "id,")
@@ -144,15 +144,15 @@ func ExportCronJobsSQL(ctx context.Context, query CronQuery, filter ExportFilter
 	})
 }
 
-// ExportCronFlowsSQL streams flow documents with their winning provenance.
-func ExportCronFlowsSQL(ctx context.Context, query CronQuery, filter ExportFilter) iter.Seq2[CronFlowExport, error] {
-	return cronExport(ctx, query, filter, "cron_flows", cronColumns(false), func(rows *sql.Rows) (CronFlowExport, error) {
+// ExportCronWorkflowsSQL streams workflow documents with their winning provenance.
+func ExportCronWorkflowsSQL(ctx context.Context, query CronQuery, filter ExportFilter) iter.Seq2[CronWorkflowExport, error] {
+	return cronExport(ctx, query, filter, "cron_workflows", cronColumns(false), func(rows *sql.Rows) (CronWorkflowExport, error) {
 		row, err := scanCron(rows, false)
 		if err != nil {
-			return CronFlowExport{}, err
+			return CronWorkflowExport{}, err
 		}
-		value, err := flowFromRow(row)
-		return CronFlowExport(value), err
+		value, err := workflowFromRow(row)
+		return CronWorkflowExport(value), err
 	})
 }
 
@@ -164,7 +164,7 @@ func ReplayCronRecord(ctx context.Context, tx *sql.Tx, record ImportRecord, post
 		return replayCronRun(ctx, tx, value, postgres)
 	case *CronJobExport:
 		return replayCronDefinition(ctx, tx, value.CronDefinition, value.Definition, true, postgres)
-	case *CronFlowExport:
+	case *CronWorkflowExport:
 		return replayCronDefinition(ctx, tx, value.CronDefinition, value.Definition, false, postgres)
 	default:
 		return fmt.Errorf("unsupported cron record %T", record)

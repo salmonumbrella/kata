@@ -67,7 +67,7 @@ func ProjectRequiredEventFeatures(ctx context.Context, q interface {
 	var present bool
 	err := q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM projects p WHERE p.uid=$1 AND (
  EXISTS(SELECT 1 FROM cron_jobs WHERE project_id=p.id) OR
- EXISTS(SELECT 1 FROM cron_flows WHERE project_id=p.id) OR
+ EXISTS(SELECT 1 FROM cron_workflows WHERE project_id=p.id) OR
  EXISTS(SELECT 1 FROM cron_runs WHERE project_id=p.id) OR
  EXISTS(SELECT 1 FROM events WHERE project_id=p.id AND type LIKE 'cron.%')))`, projectUID).Scan(&present)
 	if err != nil {
@@ -136,7 +136,7 @@ func ReadFederationTransaction(ctx context.Context, tx *sql.Tx, in FederationRea
 			}
 			out.Binding = binding
 		}
-		err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(id),$2) FROM events WHERE project_id=$1 AND id >= $2 AND (type='issue.snapshot' OR type IN ('cron.job.snapshot','cron.flow.snapshot','cron.run.snapshot'))`, project.ID, binding.ReplayHorizonEventID).Scan(&out.BaselineThroughEventID)
+		err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(id),$2) FROM events WHERE project_id=$1 AND id >= $2 AND (type='issue.snapshot' OR type IN ('cron.job.snapshot','cron.workflow.snapshot','cron.run.snapshot'))`, project.ID, binding.ReplayHorizonEventID).Scan(&out.BaselineThroughEventID)
 		return out, err
 	}
 	if reset.Int64 > 0 {

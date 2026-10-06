@@ -18,7 +18,7 @@ func CronDefinitionSnapshots(ctx context.Context, tx *sql.Tx, project Project) (
 	if err != nil {
 		return nil, err
 	}
-	flows, err := query.Flows(ctx, CronList{ProjectID: project.ID, IncludeDeleted: true})
+	workflows, err := query.Workflows(ctx, CronList{ProjectID: project.ID, IncludeDeleted: true})
 	if err != nil {
 		return nil, err
 	}
@@ -39,8 +39,8 @@ func CronDefinitionSnapshots(ctx context.Context, tx *sql.Tx, project Project) (
 			return nil, err
 		}
 	}
-	for _, flow := range flows {
-		if err := add("flow", flow.CronDefinition, flow.Definition); err != nil {
+	for _, workflow := range workflows {
+		if err := add("workflow", workflow.CronDefinition, workflow.Definition); err != nil {
 			return nil, err
 		}
 	}
@@ -86,8 +86,8 @@ func MaterializeCronDefinitions(ctx context.Context, tx *sql.Tx, projectID int64
 			return err
 		}
 	}
-	for _, flow := range p.CronFlows {
-		if err := put(false, flow.CronDefinition, flow.Definition, flow.ProjectUID); err != nil {
+	for _, workflow := range p.CronWorkflows {
+		if err := put(false, workflow.CronDefinition, workflow.Definition, workflow.ProjectUID); err != nil {
 			return err
 		}
 	}

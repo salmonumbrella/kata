@@ -497,7 +497,7 @@ func federationPushAdoptionBaselineShape(events []db.Event) federationPushBaseli
 				shape.valid = false
 				return shape
 			}
-		case "issue.snapshot", "cron.job.snapshot", "cron.flow.snapshot", "cron.run.snapshot":
+		case "issue.snapshot", "cron.job.snapshot", "cron.workflow.snapshot", "cron.run.snapshot":
 			shape.hasSnapshot = true
 		default:
 			shape.valid = false

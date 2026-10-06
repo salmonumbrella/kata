@@ -30,9 +30,9 @@ func (d *Store) PutCronJob(ctx context.Context, in db.PutCronJob) (db.CronJob, [
 	return d.cronSQL().PutJob(ctx, in)
 }
 
-// PutCronFlow validates and writes an attributed flow definition.
-func (d *Store) PutCronFlow(ctx context.Context, in db.PutCronFlow) (db.CronFlow, db.Event, error) {
-	return d.cronSQL().PutFlow(ctx, in)
+// PutCronWorkflow validates and writes an attributed workflow definition.
+func (d *Store) PutCronWorkflow(ctx context.Context, in db.PutCronWorkflow) (db.CronWorkflow, db.Event, error) {
+	return d.cronSQL().PutWorkflow(ctx, in)
 }
 
 // CronJob reads one project-scoped job definition.
@@ -40,9 +40,9 @@ func (d *Store) CronJob(ctx context.Context, project int64, id string) (db.CronJ
 	return d.cronSQL().Job(ctx, project, id)
 }
 
-// CronFlow reads one project-scoped flow definition.
-func (d *Store) CronFlow(ctx context.Context, project int64, id string) (db.CronFlow, error) {
-	return d.cronSQL().Flow(ctx, project, id)
+// CronWorkflow reads one project-scoped workflow definition.
+func (d *Store) CronWorkflow(ctx context.Context, project int64, id string) (db.CronWorkflow, error) {
+	return d.cronSQL().Workflow(ctx, project, id)
 }
 
 // ListCronJobs lists job definitions under the requested project filter.
@@ -50,7 +50,7 @@ func (d *Store) ListCronJobs(ctx context.Context, in db.CronList) ([]db.CronJob,
 	return d.cronSQL().Jobs(ctx, in)
 }
 
-// ListCronFlows lists flow definitions under the requested project filter.
-func (d *Store) ListCronFlows(ctx context.Context, in db.CronList) ([]db.CronFlow, error) {
-	return d.cronSQL().Flows(ctx, in)
+// ListCronWorkflows lists workflow definitions under the requested project filter.
+func (d *Store) ListCronWorkflows(ctx context.Context, in db.CronList) ([]db.CronWorkflow, error) {
+	return d.cronSQL().Workflows(ctx, in)
 }

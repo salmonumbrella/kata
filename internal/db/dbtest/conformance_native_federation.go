@@ -15,13 +15,13 @@ import (
 	"go.kenn.io/kata/internal/db"
 )
 
-func nativeFederationDefinitions(t *testing.T, store db.Storage, project db.Project) (db.CronJob, db.CronFlow) {
+func nativeFederationDefinitions(t *testing.T, store db.Storage, project db.Project) (db.CronJob, db.CronWorkflow) {
 	t.Helper()
-	flow, _, err := store.PutCronFlow(t.Context(), db.PutCronFlow{ProjectID: project.ID, Name: "Review flow", Actor: "worker", Definition: cron.FlowDefinition{Version: 1, Steps: []cron.FlowStep{{Key: "inspect", Kind: "command", Command: "git status"}}}})
+	workflow, _, err := store.PutCronWorkflow(t.Context(), db.PutCronWorkflow{ProjectID: project.ID, Name: "Review workflow", Actor: "worker", Definition: cron.WorkflowDefinition{Version: 1, Steps: []cron.WorkflowStep{{Key: "inspect", Kind: "command", Command: "git status"}}}})
 	require.NoError(t, err)
-	job, _, err := store.PutCronJob(t.Context(), db.PutCronJob{ProjectID: project.ID, Name: "Review job", Actor: "worker", Definition: cron.JobDefinition{Version: 1, Kind: "job", Trigger: cron.Trigger{Kind: "manual"}, Action: cron.Action{Kind: "execute", FlowUID: flow.UID}, Issue: &cron.IssuePolicy{Kind: "per-run", Title: "Review"}, Overlap: "forbid", Catchup: "skip"}})
+	job, _, err := store.PutCronJob(t.Context(), db.PutCronJob{ProjectID: project.ID, Name: "Review job", Actor: "worker", Definition: cron.JobDefinition{Version: 1, Kind: "job", Trigger: cron.Trigger{Kind: "manual"}, Action: cron.Action{Kind: "execute", WorkflowUID: workflow.UID}, Issue: &cron.IssuePolicy{Kind: "per-run", Title: "Review"}, Overlap: "forbid", Catchup: "skip"}})
 	require.NoError(t, err)
-	return job, flow
+	return job, workflow
 }
 
 func portableNativeEvent(event db.Event) db.RemoteEvent {
@@ -32,13 +32,13 @@ func checkNativeCronFederation(t *testing.T, hub db.Storage, backend Backend) er
 	ctx := t.Context()
 	project, err := hub.CreateProject(ctx, "hub-project")
 	require.NoError(t, err)
-	job, flow := nativeFederationDefinitions(t, hub, project)
+	job, workflow := nativeFederationDefinitions(t, hub, project)
 	binding, err := hub.EnableProjectFederation(ctx, project.ID, "worker")
 	require.NoError(t, err)
 	baseline, err := hub.EventsAfter(ctx, db.EventsAfterParams{ProjectID: project.ID, AfterID: binding.ReplayHorizonEventID - 1, Limit: 100})
 	require.NoError(t, err)
 	require.Contains(t, eventTypeNames(baseline), "cron.job.snapshot")
-	require.Contains(t, eventTypeNames(baseline), "cron.flow.snapshot")
+	require.Contains(t, eventTypeNames(baseline), "cron.workflow.snapshot")
 	lastBaseline, err := hub.MaxFederationBaselineEventID(ctx, project.ID, binding.ReplayHorizonEventID)
 	require.NoError(t, err)
 	require.Equal(t, baseline[len(baseline)-1].ID, lastBaseline, "cron snapshots belong to the bootstrap boundary")
@@ -50,7 +50,7 @@ func checkNativeCronFederation(t *testing.T, hub db.Storage, backend Backend) er
 	require.NoError(t, err)
 	require.Equal(t, baseline, page.Events)
 	// Fresh peers inherit pre-federation definitions. Each page is materialized
-	// separately, including the deliberately missing flow dependency first.
+	// separately, including the deliberately missing workflow dependency first.
 	for _, peerName := range []string{"first-peer", "second-peer"} {
 		t.Run(peerName, func(t *testing.T) {
 			peer := backend.Open(t)
@@ -59,16 +59,16 @@ func checkNativeCronFederation(t *testing.T, hub db.Storage, backend Backend) er
 			require.NoError(t, err)
 			adopted, err := peer.AdoptProjectIntoFederation(ctx, db.AdoptProjectIntoFederationParams{ProjectID: local.ID, HubURL: "https://daemon.example", HubProjectID: project.ID, HubProjectUID: project.UID, ReplayHorizonEventID: binding.ReplayHorizonEventID, Actor: "worker", EmptyOnly: true})
 			require.NoError(t, err)
-			var jobEvent, flowEvent db.Event
+			var jobEvent, workflowEvent db.Event
 			for _, event := range baseline {
 				if event.Type == "cron.job.snapshot" {
 					jobEvent = event
 				}
-				if event.Type == "cron.flow.snapshot" {
-					flowEvent = event
+				if event.Type == "cron.workflow.snapshot" {
+					workflowEvent = event
 				}
 			}
-			for _, event := range []db.Event{jobEvent, flowEvent} {
+			for _, event := range []db.Event{jobEvent, workflowEvent} {
 				inserted, err := peer.InsertRemoteEvent(ctx, local.ID, portableNativeEvent(event))
 				require.NoError(t, err)
 				require.True(t, inserted)
@@ -82,7 +82,7 @@ func checkNativeCronFederation(t *testing.T, hub db.Storage, backend Backend) er
 				})
 				dependencyErr := db.CheckCronDependencies(ctx, query, local.ID, visible.Definition)
 				if event.Type == "cron.job.snapshot" {
-					require.ErrorContains(t, dependencyErr, "missing flow dependency")
+					require.ErrorContains(t, dependencyErr, "missing workflow dependency")
 				} else {
 					require.NoError(t, dependencyErr)
 				}
@@ -95,15 +95,15 @@ func checkNativeCronFederation(t *testing.T, hub db.Storage, backend Backend) er
 			require.Equal(t, job.Definition, actual.Definition)
 			require.Equal(t, job.DefinitionEventUID, actual.DefinitionEventUID)
 			require.Equal(t, job.DefinitionHLC, actual.DefinitionHLC)
-			actualFlow, err := peer.CronFlow(ctx, local.ID, flow.UID)
+			actualWorkflow, err := peer.CronWorkflow(ctx, local.ID, workflow.UID)
 			require.NoError(t, err)
-			require.Equal(t, flow.Definition, actualFlow.Definition)
-			deleted := actualFlow
+			require.Equal(t, workflow.Definition, actualWorkflow.Definition)
+			deleted := actualWorkflow
 			deleted.DeletedAt = new(time.Now().UTC())
 			payload, err := json.Marshal(db.CronDefinitionEvent{UID: deleted.UID, ProjectUID: project.UID, Name: deleted.Name, Definition: mustNativeJSON(t, deleted.Definition), Author: deleted.Author, CreatedAt: deleted.CreatedAt, UpdatedAt: deleted.UpdatedAt, DeletedAt: deleted.DeletedAt})
 			require.NoError(t, err)
-			deleteEvent := portableNativeEvent(flowEvent)
-			deleteEvent.Type = "cron.flow.deleted"
+			deleteEvent := portableNativeEvent(workflowEvent)
+			deleteEvent.Type = "cron.workflow.deleted"
 			deleteEvent.EventUID, err = uid.New()
 			require.NoError(t, err)
 			deleteEvent.HLCPhysicalMS++
@@ -118,7 +118,7 @@ func checkNativeCronFederation(t *testing.T, hub db.Storage, backend Backend) er
 			require.NoError(t, err)
 			require.ErrorContains(t, db.CheckCronDependencies(ctx, peer.(interface {
 				QueryRowContext(context.Context, string, ...any) *sql.Row
-			}), local.ID, visible.Definition), "tombstoned flow dependency")
+			}), local.ID, visible.Definition), "tombstoned workflow dependency")
 			require.NoError(t, peer.ResetFederatedProject(ctx, local.ID, adopted.Binding.ReplayHorizonEventID, adopted.Binding.PullCursorEventID))
 			_, err = peer.CronJob(ctx, local.ID, job.UID)
 			require.ErrorIs(t, err, db.ErrNotFound)
@@ -155,7 +155,7 @@ func checkNativeCronPush(t *testing.T, store db.Storage, backend Backend) error 
 	require.NoError(t, err)
 	_, err = spoke.EnableFederationPush(ctx, local.ID, adopted.Binding.PushCursorEventID)
 	require.NoError(t, err)
-	job, flow := nativeFederationDefinitions(t, spoke, adopted.Project)
+	job, workflow := nativeFederationDefinitions(t, spoke, adopted.Project)
 	events, err := spoke.PendingFederationPushEvents(ctx, local.ID, spoke.InstanceUID(), adopted.Binding.PushCursorEventID, 100)
 	require.NoError(t, err)
 	require.Len(t, events, 2, "both cron definitions must be push eligible")
@@ -179,9 +179,9 @@ func checkNativeCronPush(t *testing.T, store db.Storage, backend Backend) error 
 	actual, err := store.CronJob(ctx, project.ID, job.UID)
 	require.NoError(t, err)
 	require.Equal(t, job.DefinitionEventUID, actual.DefinitionEventUID)
-	actualFlow, err := store.CronFlow(ctx, project.ID, flow.UID)
+	actualWorkflow, err := store.CronWorkflow(ctx, project.ID, workflow.UID)
 	require.NoError(t, err)
-	require.Equal(t, flow.DefinitionEventUID, actualFlow.DefinitionEventUID)
+	require.Equal(t, workflow.DefinitionEventUID, actualWorkflow.DefinitionEventUID)
 	duplicate, err := store.IngestFederationEvents(ctx, db.FederationIngestParams{EventFeatures: db.CronEventFeature, ProjectID: project.ID, SpokeInstanceUID: spoke.InstanceUID(), BoundActor: "worker", Events: batch})
 	require.NoError(t, err)
 	require.Equal(t, 2, duplicate.Duplicates)
@@ -192,7 +192,7 @@ func checkNativeCronAdoptionAuthor(t *testing.T, spoke db.Storage, backend Backe
 	ctx := t.Context()
 	project, err := spoke.CreateProject(ctx, "spoke-project")
 	require.NoError(t, err)
-	job, flow := nativeFederationDefinitions(t, spoke, project)
+	job, workflow := nativeFederationDefinitions(t, spoke, project)
 	runs := []db.CronRun{}
 	occurrence := "daily:2026-10-06"
 	for range 2 {
@@ -239,7 +239,7 @@ func checkNativeCronAdoptionAuthor(t *testing.T, spoke db.Storage, backend Backe
 		require.Equal(t, run.Actor, actual.Actor)
 		require.Equal(t, run.CreatedAt, actual.CreatedAt)
 	}
-	actual, err := hub.CronFlow(ctx, target.ID, flow.UID)
+	actual, err := hub.CronWorkflow(ctx, target.ID, workflow.UID)
 	require.NoError(t, err)
 	require.Equal(t, "operator", actual.Author)
 	for _, source := range events {
@@ -251,10 +251,10 @@ func checkNativeCronAdoptionAuthor(t *testing.T, spoke db.Storage, backend Backe
 	if err := spoke.MaterializeFederatedProject(ctx, project.ID); err != nil {
 		require.NoError(t, err)
 	}
-	actual, err = spoke.CronFlow(ctx, project.ID, flow.UID)
+	actual, err = spoke.CronWorkflow(ctx, project.ID, workflow.UID)
 	require.NoError(t, err)
 	require.Equal(t, "operator", actual.Author)
-	require.Equal(t, flow.DefinitionEventUID, actual.DefinitionEventUID)
+	require.Equal(t, workflow.DefinitionEventUID, actual.DefinitionEventUID)
 	return nil
 }
 

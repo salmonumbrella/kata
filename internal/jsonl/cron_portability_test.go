@@ -23,7 +23,7 @@ func TestNativeCronPostgresSequenceFloors(t *testing.T) {
 	require.NoError(t, jsonl.Import(ctx, bytes.NewReader(fixture.data), source))
 	// Purged or rolled-back allocations may leave sequence floors above all
 	// surviving rows. The portable backup must retain that allocation history.
-	for _, table := range []string{"cron_jobs", "cron_flows", "cron_runs"} {
+	for _, table := range []string{"cron_jobs", "cron_workflows", "cron_runs"} {
 		_, err = source.ExecContext(ctx, `SELECT setval(pg_get_serial_sequence($1,'id'),700,true)`, table)
 		require.NoError(t, err)
 	}
@@ -32,13 +32,13 @@ func TestNativeCronPostgresSequenceFloors(t *testing.T) {
 	target := openImportTargetDB(t)
 	require.NoError(t, jsonl.Import(ctx, bytes.NewReader(backup.Bytes()), target))
 	job := db.CronJob(*fixture.records[0].(*db.CronJobExport))
-	flow := db.CronFlow(*fixture.records[1].(*db.CronFlowExport))
+	workflow := db.CronWorkflow(*fixture.records[1].(*db.CronWorkflowExport))
 	nextJob, _, err := target.PutCronJob(ctx, db.PutCronJob{ProjectID: fixture.projectID, Name: "Next job", Actor: "worker", Definition: job.Definition})
 	require.NoError(t, err)
 	assert.Greater(t, nextJob.ID, int64(700), "job floor survives PG to SQLite")
-	nextFlow, _, err := target.PutCronFlow(ctx, db.PutCronFlow{ProjectID: fixture.projectID, Name: "Next flow", Actor: "worker", Definition: flow.Definition})
+	nextWorkflow, _, err := target.PutCronWorkflow(ctx, db.PutCronWorkflow{ProjectID: fixture.projectID, Name: "Next workflow", Actor: "worker", Definition: workflow.Definition})
 	require.NoError(t, err)
-	assert.Greater(t, nextFlow.ID, int64(700), "flow floor survives PG to SQLite")
+	assert.Greater(t, nextWorkflow.ID, int64(700), "workflow floor survives PG to SQLite")
 	var runID int64
 	err = target.QueryRowContext(ctx, `INSERT INTO cron_runs(uid,project_id,job_uid,definition_event_uid,occurrence_key,actor,status,summary_json)
  SELECT '01ARZ3NDEKTSV4RRFFQ69G5FAA',project_id,job_uid,definition_event_uid,occurrence_key,actor,status,summary_json FROM cron_runs LIMIT 1 RETURNING id`).Scan(&runID)

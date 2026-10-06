@@ -118,7 +118,7 @@ func Export(ctx context.Context, store db.Storage, w io.Writer, opts ExportOptio
 	if err := streamExport(enc, KindCronJob, store.ExportCronJobs(ctx, f)); err != nil {
 		return err
 	}
-	if err := streamExport(enc, KindCronFlow, store.ExportCronFlows(ctx, f)); err != nil {
+	if err := streamExport(enc, KindCronWorkflow, store.ExportCronWorkflows(ctx, f)); err != nil {
 		return err
 	}
 	if err := streamExport(enc, KindCronRun, store.ExportCronRuns(ctx, f)); err != nil {

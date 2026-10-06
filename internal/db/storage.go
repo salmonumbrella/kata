@@ -21,13 +21,13 @@ type Storage interface {
 	CronRun(context.Context, int64, string) (CronRun, error)
 	ListCronRuns(context.Context, CronRunList) ([]CronRun, error)
 	PutCronJob(context.Context, PutCronJob) (CronJob, []Event, error)
-	PutCronFlow(context.Context, PutCronFlow) (CronFlow, Event, error)
+	PutCronWorkflow(context.Context, PutCronWorkflow) (CronWorkflow, Event, error)
 	CronJob(context.Context, int64, string) (CronJob, error)
-	CronFlow(context.Context, int64, string) (CronFlow, error)
+	CronWorkflow(context.Context, int64, string) (CronWorkflow, error)
 	ListCronJobs(context.Context, CronList) ([]CronJob, error)
-	ListCronFlows(context.Context, CronList) ([]CronFlow, error)
+	ListCronWorkflows(context.Context, CronList) ([]CronWorkflow, error)
 	ExportCronJobs(context.Context, ExportFilter) iter.Seq2[CronJobExport, error]
-	ExportCronFlows(context.Context, ExportFilter) iter.Seq2[CronFlowExport, error]
+	ExportCronWorkflows(context.Context, ExportFilter) iter.Seq2[CronWorkflowExport, error]
 	ExportCronRuns(context.Context, ExportFilter) iter.Seq2[CronRunExport, error]
 
 	// identity / lifecycle

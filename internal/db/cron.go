@@ -36,10 +36,10 @@ type CronJob struct {
 	Definition cron.JobDefinition `json:"definition"`
 }
 
-// CronFlow combines durable document provenance with a portable flow.
-type CronFlow struct {
+// CronWorkflow combines durable document provenance with a portable workflow.
+type CronWorkflow struct {
 	CronDefinition
-	Definition cron.FlowDefinition `json:"definition"`
+	Definition cron.WorkflowDefinition `json:"definition"`
 }
 
 // PutCronJob replaces a complete definition. Empty UID allocates an
@@ -54,12 +54,12 @@ type PutCronJob struct {
 	Deleted          bool
 }
 
-// PutCronFlow replaces a complete flow using its expected winning event.
-type PutCronFlow struct {
+// PutCronWorkflow replaces a complete workflow using its expected winning event.
+type PutCronWorkflow struct {
 	UID              string
 	ProjectID        int64
 	Name             string
-	Definition       cron.FlowDefinition
+	Definition       cron.WorkflowDefinition
 	ExpectedEventUID string
 	Actor            string
 	Deleted          bool
@@ -74,9 +74,9 @@ type CronList struct {
 // CronDefinitions is the dormant shared configuration storage API.
 type CronDefinitions interface {
 	PutCronJob(context.Context, PutCronJob) (CronJob, []Event, error)
-	PutCronFlow(context.Context, PutCronFlow) (CronFlow, Event, error)
+	PutCronWorkflow(context.Context, PutCronWorkflow) (CronWorkflow, Event, error)
 	CronJob(context.Context, int64, string) (CronJob, error)
-	CronFlow(context.Context, int64, string) (CronFlow, error)
+	CronWorkflow(context.Context, int64, string) (CronWorkflow, error)
 	ListCronJobs(context.Context, CronList) ([]CronJob, error)
-	ListCronFlows(context.Context, CronList) ([]CronFlow, error)
+	ListCronWorkflows(context.Context, CronList) ([]CronWorkflow, error)
 }

@@ -20,9 +20,9 @@ const maxProjectMergeHLCValue int64 = maxProjectMergeID
 // TargetProjectID is the exact new project ID; every other value is added to
 // source IDs from the project snapshot.
 type ProjectMergeOffsets struct {
-	CronJob  int64
-	CronFlow int64
-	CronRun  int64
+	CronJob      int64
+	CronWorkflow int64
+	CronRun      int64
 
 	TargetProjectID int64
 	Alias           int64
@@ -144,10 +144,10 @@ func PrepareProjectMergeRecords(
 				payload.ProjectID = offsets.TargetProjectID
 				payload.ID, err = addMergeOffset(payload.ID, offsets.CronJob, payload.ImportKind())
 			}
-		case *CronFlowExport:
+		case *CronWorkflowExport:
 			if err = requireMergeProjectID(payload.ProjectID, projectID, payload.ImportKind()); err == nil {
 				payload.ProjectID = offsets.TargetProjectID
-				payload.ID, err = addMergeOffset(payload.ID, offsets.CronFlow, payload.ImportKind())
+				payload.ID, err = addMergeOffset(payload.ID, offsets.CronWorkflow, payload.ImportKind())
 			}
 		case *CronRunExport:
 			if err = requireMergeProjectID(payload.ProjectID, projectID, payload.ImportKind()); err == nil {
@@ -396,7 +396,7 @@ func cloneImportRecord(rec ImportRecord) ImportRecord {
 	case *CronJobExport:
 		value := *rec
 		return &value
-	case *CronFlowExport:
+	case *CronWorkflowExport:
 		value := *rec
 		return &value
 	case *CronRunExport:

@@ -9,8 +9,6 @@ export interface CronRun {
   definition_event_uid?: string
   ended_at?: string
   executor_label?: string
-  flow_definition_event_uid?: string
-  flow_uid?: string
   id: number
   issue_uid?: string
   job_uid?: string
@@ -23,5 +21,7 @@ export interface CronRun {
   teammate?: string
   uid: string
   updated_at: string
+  workflow_definition_event_uid?: string
+  workflow_uid?: string
   [key: string]: unknown
 }

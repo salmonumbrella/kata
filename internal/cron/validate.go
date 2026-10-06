@@ -36,13 +36,13 @@ func ParseJob(input []byte) (JobDefinition, error) {
 	return job, job.Validate()
 }
 
-// ParseFlow strictly decodes and validates one bounded flow document.
-func ParseFlow(input []byte) (FlowDefinition, error) {
-	var flow FlowDefinition
-	if err := decode(input, &flow, DefinitionLimit); err != nil {
-		return flow, err
+// ParseWorkflow strictly decodes and validates one bounded workflow document.
+func ParseWorkflow(input []byte) (WorkflowDefinition, error) {
+	var workflow WorkflowDefinition
+	if err := decode(input, &workflow, DefinitionLimit); err != nil {
+		return workflow, err
 	}
-	return flow, flow.Validate()
+	return workflow, workflow.Validate()
 }
 
 func validUID(value string) bool { return value == strings.ToUpper(value) && uid.Valid(value) }
@@ -83,7 +83,7 @@ func (j JobDefinition) Validate() error {
 	}
 	switch j.Action.Kind {
 	case "notify":
-		if j.Action.Prompt != "" || j.Action.FlowUID != "" || j.CheckoutKey != "" {
+		if j.Action.Prompt != "" || j.Action.WorkflowUID != "" || j.CheckoutKey != "" {
 			return invalid("notify cannot carry execution fields")
 		}
 		if !validRecipient(j.Action.Recipient) {
@@ -105,11 +105,11 @@ func (j JobDefinition) Validate() error {
 		if j.Action.Recipient != "" || j.Action.Message != "" {
 			return invalid("execute cannot carry notification fields")
 		}
-		if (strings.TrimSpace(j.Action.Prompt) == "") == (j.Action.FlowUID == "") {
-			return invalid("execute requires exactly one prompt or flow UID")
+		if (strings.TrimSpace(j.Action.Prompt) == "") == (j.Action.WorkflowUID == "") {
+			return invalid("execute requires exactly one prompt or workflow UID")
 		}
-		if j.Action.FlowUID != "" && !validUID(j.Action.FlowUID) {
-			return invalid("invalid flow UID")
+		if j.Action.WorkflowUID != "" && !validUID(j.Action.WorkflowUID) {
+			return invalid("invalid workflow UID")
 		}
 		if j.Issue == nil {
 			return invalid("execute requires an issue policy")
@@ -167,12 +167,12 @@ func validRecipient(value string) bool {
 }
 
 // Validate checks step identities, ordering and bounded retry settings.
-func (f FlowDefinition) Validate() error {
+func (f WorkflowDefinition) Validate() error {
 	if f.Version != 1 {
-		return invalid("unsupported flow version")
+		return invalid("unsupported workflow version")
 	}
 	if len(f.Steps) == 0 {
-		return invalid("flow requires steps")
+		return invalid("workflow requires steps")
 	}
 	seen := map[string]bool{}
 	for _, step := range f.Steps {

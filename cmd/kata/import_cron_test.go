@@ -111,7 +111,7 @@ func TestImportForceRefusesPreCronAndUnknownTargets(t *testing.T) {
 			marker := path
 			if kind == "legacy" {
 				target := openKataTestDB(t, path)
-				for _, table := range []string{"cron_runs", "cron_jobs", "cron_flows"} {
+				for _, table := range []string{"cron_runs", "cron_jobs", "cron_workflows"} {
 					_, err := target.ExecContext(t.Context(), "DROP TABLE "+table)
 					require.NoError(t, err)
 				}

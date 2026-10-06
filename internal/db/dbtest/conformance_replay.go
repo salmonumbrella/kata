@@ -375,7 +375,7 @@ func CollectImportRecords(
 			return nil, err
 		}
 	}
-	for value, err := range store.ExportCronFlows(ctx, filter) {
+	for value, err := range store.ExportCronWorkflows(ctx, filter) {
 		v := value
 		if err := appendRecord(&v, err); err != nil {
 			return nil, err

@@ -281,12 +281,12 @@ func validateFederationBoundActorPayload(
 			return fmt.Errorf("%w: run actor differs from bound actor", db.ErrFederationIngestValidation)
 		}
 		return nil
-	case "cron.job.snapshot", "cron.flow.snapshot":
+	case "cron.job.snapshot", "cron.workflow.snapshot":
 		if allowSnapshotAuthorPreservation {
 			return nil
 		}
 		return validateFederationPayloadAuthor(ev, boundActor)
-	case "cron.job.created", "cron.flow.created":
+	case "cron.job.created", "cron.workflow.created":
 		return validateFederationPayloadAuthor(ev, boundActor)
 	case "issue.snapshot":
 		if allowSnapshotAuthorPreservation {
@@ -582,7 +582,7 @@ func federationIngestAdoptionBaselineShape(events []db.FederationIngestEvent) fe
 				shape.valid = false
 				return shape
 			}
-		case "issue.snapshot", "cron.job.snapshot", "cron.flow.snapshot", "cron.run.snapshot":
+		case "issue.snapshot", "cron.job.snapshot", "cron.workflow.snapshot", "cron.run.snapshot":
 			shape.hasSnapshot = true
 		default:
 			shape.valid = false
@@ -608,7 +608,7 @@ func validateFederationIngestAdoptionBaselineBoundary(
 		  FROM events
 		 WHERE project_id = ?
 		   AND origin_instance_uid = ?
-		   AND type IN ('project.metadata_updated','issue.snapshot','cron.job.snapshot','cron.flow.snapshot','cron.run.snapshot')
+		   AND type IN ('project.metadata_updated','issue.snapshot','cron.job.snapshot','cron.workflow.snapshot','cron.run.snapshot')
 		 ORDER BY id ASC
 		 LIMIT 1`,
 		projectID, spokeInstanceUID).Scan(&hlcPhysicalMS, &hlcCounter)

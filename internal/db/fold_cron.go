@@ -28,7 +28,7 @@ type CronDefinitionEvent struct {
 func isCronDefinitionEvent(kind string) bool {
 	switch kind {
 	case "cron.job.created", "cron.job.updated", "cron.job.deleted", "cron.job.restored", "cron.job.snapshot",
-		"cron.flow.created", "cron.flow.updated", "cron.flow.deleted", "cron.flow.restored", "cron.flow.snapshot":
+		"cron.workflow.created", "cron.workflow.updated", "cron.workflow.deleted", "cron.workflow.restored", "cron.workflow.snapshot":
 		return true
 	}
 	return false
@@ -89,14 +89,14 @@ func (p *FoldProjection) applyCronDefinition(e FoldEvent) {
 			p.CronJobs[in.UID] = FoldCronJob{CronDefinition: value, Definition: definition, ProjectUID: in.ProjectUID}
 		}
 	} else {
-		definition, err := cron.ParseFlow(in.Definition)
+		definition, err := cron.ParseWorkflow(in.Definition)
 		if err != nil {
 			p.Warnings = append(p.Warnings, err.Error())
 			return
 		}
-		current, exists := p.CronFlows[in.UID]
+		current, exists := p.CronWorkflows[in.UID]
 		if !exists || compareClock(cronDefinitionClock(value), cronDefinitionClock(current.CronDefinition)) > 0 {
-			p.CronFlows[in.UID] = FoldCronFlow{CronDefinition: value, Definition: definition, ProjectUID: in.ProjectUID}
+			p.CronWorkflows[in.UID] = FoldCronWorkflow{CronDefinition: value, Definition: definition, ProjectUID: in.ProjectUID}
 		}
 	}
 }
@@ -123,7 +123,7 @@ func ValidateCronFederationEvent(event RemoteEvent) error {
 		if strings.HasPrefix(event.Type, "cron.job.") {
 			_, err = cron.ParseJob(in.Definition)
 		} else {
-			_, err = cron.ParseFlow(in.Definition)
+			_, err = cron.ParseWorkflow(in.Definition)
 		}
 	}
 	if err != nil {

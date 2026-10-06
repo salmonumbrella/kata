@@ -34,7 +34,7 @@ func buildNativeCronJSONLFixture(t *testing.T) nativeJSONLFixture {
 	require.NoError(t, jsonl.Export(ctx, source, &prior, jsonl.ExportOptions{IncludeDeleted: true}))
 	definition, err := cron.ParseJob([]byte(`{"version":1,"kind":"job","trigger":{"kind":"manual"},"action":{"kind":"execute","prompt":"Review"},"issue":{"kind":"per-run","title":"Review"},"overlap":"forbid","catchup":"skip","secret_refs":{"provider":"review-provider"},"checkout_key":"main"}`))
 	require.NoError(t, err)
-	flow, _, err := source.PutCronFlow(ctx, db.PutCronFlow{ProjectID: project.ID, Name: "Review flow", Actor: "worker", Definition: cron.FlowDefinition{Version: 1, Steps: []cron.FlowStep{{Key: "inspect", Kind: "command", Command: "git status"}}}})
+	workflow, _, err := source.PutCronWorkflow(ctx, db.PutCronWorkflow{ProjectID: project.ID, Name: "Review workflow", Actor: "worker", Definition: cron.WorkflowDefinition{Version: 1, Steps: []cron.WorkflowStep{{Key: "inspect", Kind: "command", Command: "git status"}}}})
 	require.NoError(t, err)
 	job, _, err := source.PutCronJob(ctx, db.PutCronJob{ProjectID: project.ID, Name: "Review", Definition: definition, Actor: "worker"})
 	require.NoError(t, err)
@@ -54,8 +54,8 @@ func buildNativeCronJSONLFixture(t *testing.T) nativeJSONLFixture {
 	var exported bytes.Buffer
 	require.NoError(t, jsonl.Export(ctx, source, &exported, jsonl.ExportOptions{IncludeDeleted: true}))
 	jobRecord := db.CronJobExport(job)
-	flowRecord := db.CronFlowExport(flow)
-	return nativeJSONLFixture{data: exported.Bytes(), beforeCron: prior.Bytes(), records: append([]db.ImportRecord{&jobRecord, &flowRecord}, runRecords...), projectID: project.ID}
+	workflowRecord := db.CronWorkflowExport(workflow)
+	return nativeJSONLFixture{data: exported.Bytes(), beforeCron: prior.Bytes(), records: append([]db.ImportRecord{&jobRecord, &workflowRecord}, runRecords...), projectID: project.ID}
 }
 
 func assertNativeCronRecords(t *testing.T, store db.Storage, fixture nativeJSONLFixture) {

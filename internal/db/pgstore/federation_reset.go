@@ -100,7 +100,7 @@ func clearFederatedProjectTx(ctx context.Context, tx *sql.Tx, projectID int64) e
 	if _, err := tx.ExecContext(ctx, `DELETE FROM cron_runs WHERE project_id=$1`, projectID); err != nil {
 		return err
 	}
-	for _, table := range []string{"cron_jobs", "cron_flows"} {
+	for _, table := range []string{"cron_jobs", "cron_workflows"} {
 		//nolint:gosec // Table comes from this fixed list; project ID is bound.
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE project_id=$1", projectID); err != nil {
 			return err

@@ -62,7 +62,7 @@ func cronRunReferences(projectID int64, run CronRun) ([]cronDefinitionReference,
 	for _, pair := range []struct {
 		kind       string
 		uid, event *string
-	}{{"job", run.JobUID, run.DefinitionEventUID}, {"flow", run.FlowUID, run.FlowDefinitionEventUID}} {
+	}{{"job", run.JobUID, run.DefinitionEventUID}, {"workflow", run.WorkflowUID, run.WorkflowDefinitionEventUID}} {
 		if pair.uid == nil && pair.event == nil {
 			continue
 		}
@@ -82,7 +82,7 @@ func (idx *cronReferenceIndex) event(projectID int64, e FoldEvent) ([]cronDefini
 		if err != nil {
 			return nil, invalidCronReference(err)
 		}
-		kind := "flow"
+		kind := "workflow"
 		if strings.HasPrefix(e.Type, "cron.job.") {
 			kind = "job"
 		}
@@ -131,8 +131,8 @@ func validateCronImportReferences(records []ImportRecord) error {
 			if err := idx.add(cronDefinitionReference{projectID: value.ProjectID, kind: "job", uid: value.UID, event: value.DefinitionEventUID}); err != nil {
 				return err
 			}
-		case *CronFlowExport:
-			if err := idx.add(cronDefinitionReference{projectID: value.ProjectID, kind: "flow", uid: value.UID, event: value.DefinitionEventUID}); err != nil {
+		case *CronWorkflowExport:
+			if err := idx.add(cronDefinitionReference{projectID: value.ProjectID, kind: "workflow", uid: value.UID, event: value.DefinitionEventUID}); err != nil {
 				return err
 			}
 		}
@@ -202,8 +202,8 @@ func (v *CronReplayValidator) loadKnown(ctx context.Context, ref cronDefinitionR
 	identity := cronDefinitionIdentity{ref.kind, ref.uid}
 	if !v.ownersLoaded[identity] {
 		table := "cron_jobs"
-		if ref.kind == "flow" {
-			table = "cron_flows"
+		if ref.kind == "workflow" {
+			table = "cron_workflows"
 		}
 		current := cronDefinitionReference{kind: ref.kind, uid: ref.uid}
 		err := v.tx.QueryRowContext(ctx, "SELECT project_id,definition_event_uid FROM "+table+" WHERE uid=$1", ref.uid).Scan(&current.projectID, &current.event)
@@ -265,7 +265,7 @@ func (v *CronReplayValidator) PrepareEvents(ctx context.Context, projectID int64
 			if err != nil {
 				return fmt.Errorf("%w: %v", ErrFederationIngestValidation, err)
 			}
-			kind := "flow"
+			kind := "workflow"
 			if strings.HasPrefix(event.Type, "cron.job.") {
 				kind = "job"
 			}
@@ -400,24 +400,24 @@ func cronHistoricalReferenceQueries(postgres bool) []string {
 		return []string{
 			`WITH requested_versions AS (SELECT jsonb_array_elements_text($1::jsonb) AS value)
 SELECT project_id,'job',uid,definition_event_uid FROM cron_jobs WHERE definition_event_uid IN (SELECT value FROM requested_versions)
-UNION ALL SELECT project_id,'flow',uid,definition_event_uid FROM cron_flows WHERE definition_event_uid IN (SELECT value FROM requested_versions)`,
+UNION ALL SELECT project_id,'workflow',uid,definition_event_uid FROM cron_workflows WHERE definition_event_uid IN (SELECT value FROM requested_versions)`,
 			`WITH requested_uids AS (SELECT jsonb_array_elements_text($1::jsonb) AS value), requested_versions AS (SELECT jsonb_array_elements_text($2::jsonb) AS value)
 SELECT DISTINCT project_id,'job',job_uid,definition_event_uid FROM cron_runs WHERE job_uid IN (SELECT value FROM requested_uids) OR definition_event_uid IN (SELECT value FROM requested_versions)
-UNION SELECT DISTINCT project_id,'flow',flow_uid,flow_definition_event_uid FROM cron_runs WHERE flow_uid IN (SELECT value FROM requested_uids) OR flow_definition_event_uid IN (SELECT value FROM requested_versions)`,
+UNION SELECT DISTINCT project_id,'workflow',workflow_uid,workflow_definition_event_uid FROM cron_runs WHERE workflow_uid IN (SELECT value FROM requested_uids) OR workflow_definition_event_uid IN (SELECT value FROM requested_versions)`,
 			`WITH requested_uids AS (SELECT jsonb_array_elements_text($1::jsonb) AS value), requested_versions AS (SELECT jsonb_array_elements_text($2::jsonb) AS value)
 SELECT project_id,uid,type,origin_instance_uid,hlc_physical_ms,hlc_counter,payload FROM events
-WHERE ((type LIKE 'cron.job.%' OR type LIKE 'cron.flow.%') AND ((payload::jsonb ->> 'uid') IN (SELECT value FROM requested_uids) OR (payload::jsonb ->> 'definition_event_uid') IN (SELECT value FROM requested_versions))) OR (type IN ('cron.run.observed','cron.run.snapshot') AND ((payload::jsonb ->> 'job_uid') IN (SELECT value FROM requested_uids) OR (payload::jsonb ->> 'flow_uid') IN (SELECT value FROM requested_uids) OR (payload::jsonb ->> 'definition_event_uid') IN (SELECT value FROM requested_versions) OR (payload::jsonb ->> 'flow_definition_event_uid') IN (SELECT value FROM requested_versions)))`,
+WHERE ((type LIKE 'cron.job.%' OR type LIKE 'cron.workflow.%') AND ((payload::jsonb ->> 'uid') IN (SELECT value FROM requested_uids) OR (payload::jsonb ->> 'definition_event_uid') IN (SELECT value FROM requested_versions))) OR (type IN ('cron.run.observed','cron.run.snapshot') AND ((payload::jsonb ->> 'job_uid') IN (SELECT value FROM requested_uids) OR (payload::jsonb ->> 'workflow_uid') IN (SELECT value FROM requested_uids) OR (payload::jsonb ->> 'definition_event_uid') IN (SELECT value FROM requested_versions) OR (payload::jsonb ->> 'workflow_definition_event_uid') IN (SELECT value FROM requested_versions)))`,
 		}
 	}
 	return []string{
 		`WITH requested_versions AS (SELECT value FROM json_each($1))
 SELECT project_id,'job',uid,definition_event_uid FROM cron_jobs WHERE definition_event_uid IN (SELECT value FROM requested_versions)
-UNION ALL SELECT project_id,'flow',uid,definition_event_uid FROM cron_flows WHERE definition_event_uid IN (SELECT value FROM requested_versions)`,
+UNION ALL SELECT project_id,'workflow',uid,definition_event_uid FROM cron_workflows WHERE definition_event_uid IN (SELECT value FROM requested_versions)`,
 		`WITH requested_uids AS (SELECT value FROM json_each($1)), requested_versions AS (SELECT value FROM json_each($2))
 SELECT DISTINCT project_id,'job',job_uid,definition_event_uid FROM cron_runs WHERE job_uid IN (SELECT value FROM requested_uids) OR definition_event_uid IN (SELECT value FROM requested_versions)
-UNION SELECT DISTINCT project_id,'flow',flow_uid,flow_definition_event_uid FROM cron_runs WHERE flow_uid IN (SELECT value FROM requested_uids) OR flow_definition_event_uid IN (SELECT value FROM requested_versions)`,
+UNION SELECT DISTINCT project_id,'workflow',workflow_uid,workflow_definition_event_uid FROM cron_runs WHERE workflow_uid IN (SELECT value FROM requested_uids) OR workflow_definition_event_uid IN (SELECT value FROM requested_versions)`,
 		`WITH requested_uids AS (SELECT value FROM json_each($1)), requested_versions AS (SELECT value FROM json_each($2))
 SELECT project_id,uid,type,origin_instance_uid,hlc_physical_ms,hlc_counter,payload FROM events
-WHERE ((type LIKE 'cron.job.%' OR type LIKE 'cron.flow.%') AND (json_extract(payload,'$.uid') IN (SELECT value FROM requested_uids) OR json_extract(payload,'$.definition_event_uid') IN (SELECT value FROM requested_versions))) OR (type IN ('cron.run.observed','cron.run.snapshot') AND (json_extract(payload,'$.job_uid') IN (SELECT value FROM requested_uids) OR json_extract(payload,'$.flow_uid') IN (SELECT value FROM requested_uids) OR json_extract(payload,'$.definition_event_uid') IN (SELECT value FROM requested_versions) OR json_extract(payload,'$.flow_definition_event_uid') IN (SELECT value FROM requested_versions)))`,
+WHERE ((type LIKE 'cron.job.%' OR type LIKE 'cron.workflow.%') AND (json_extract(payload,'$.uid') IN (SELECT value FROM requested_uids) OR json_extract(payload,'$.definition_event_uid') IN (SELECT value FROM requested_versions))) OR (type IN ('cron.run.observed','cron.run.snapshot') AND (json_extract(payload,'$.job_uid') IN (SELECT value FROM requested_uids) OR json_extract(payload,'$.workflow_uid') IN (SELECT value FROM requested_uids) OR json_extract(payload,'$.definition_event_uid') IN (SELECT value FROM requested_versions) OR json_extract(payload,'$.workflow_definition_event_uid') IN (SELECT value FROM requested_versions)))`,
 	}
 }

@@ -29,25 +29,25 @@ type CronCapabilitiesResponse struct {
 
 // ObserveCronRunBody replaces evidence for a caller-retained run UID.
 type ObserveCronRunBody struct {
-	Actor                  string       `json:"actor,omitempty"`
-	JobUID                 *string      `json:"job_uid,omitempty"`
-	DefinitionEventUID     *string      `json:"definition_event_uid,omitempty"`
-	FlowUID                *string      `json:"flow_uid,omitempty"`
-	FlowDefinitionEventUID *string      `json:"flow_definition_event_uid,omitempty"`
-	OccurrenceKey          *string      `json:"occurrence_key,omitempty"`
-	IssueUID               *string      `json:"issue_uid,omitempty"`
-	Teammate               *string      `json:"teammate,omitempty"`
-	ExecutorLabel          *string      `json:"executor_label,omitempty"`
-	Status                 string       `json:"status" enum:"running,succeeded,failed,cancelled,unknown"`
-	Summary                cron.Summary `json:"summary"`
-	StartedAt              *time.Time   `json:"started_at,omitempty"`
-	EndedAt                *time.Time   `json:"ended_at,omitempty"`
-	ExpectedRevision       int64        `json:"expected_revision" minimum:"0"`
+	Actor                      string       `json:"actor,omitempty"`
+	JobUID                     *string      `json:"job_uid,omitempty"`
+	DefinitionEventUID         *string      `json:"definition_event_uid,omitempty"`
+	WorkflowUID                *string      `json:"workflow_uid,omitempty"`
+	WorkflowDefinitionEventUID *string      `json:"workflow_definition_event_uid,omitempty"`
+	OccurrenceKey              *string      `json:"occurrence_key,omitempty"`
+	IssueUID                   *string      `json:"issue_uid,omitempty"`
+	Teammate                   *string      `json:"teammate,omitempty"`
+	ExecutorLabel              *string      `json:"executor_label,omitempty"`
+	Status                     string       `json:"status" enum:"running,succeeded,failed,cancelled,unknown"`
+	Summary                    cron.Summary `json:"summary"`
+	StartedAt                  *time.Time   `json:"started_at,omitempty"`
+	EndedAt                    *time.Time   `json:"ended_at,omitempty"`
+	ExpectedRevision           int64        `json:"expected_revision" minimum:"0"`
 }
 
 // Native applies the admitted actor and project to the portable input.
 func (b ObserveCronRunBody) Native(projectID int64, runUID, actor string) db.ObserveCronRun {
-	return db.ObserveCronRun{ProjectID: projectID, UID: runUID, Actor: actor, JobUID: b.JobUID, DefinitionEventUID: b.DefinitionEventUID, FlowUID: b.FlowUID, FlowDefinitionEventUID: b.FlowDefinitionEventUID, OccurrenceKey: b.OccurrenceKey, IssueUID: b.IssueUID, Teammate: b.Teammate, ExecutorLabel: b.ExecutorLabel, Status: b.Status, Summary: b.Summary, StartedAt: b.StartedAt, EndedAt: b.EndedAt, ExpectedRevision: b.ExpectedRevision}
+	return db.ObserveCronRun{ProjectID: projectID, UID: runUID, Actor: actor, JobUID: b.JobUID, DefinitionEventUID: b.DefinitionEventUID, WorkflowUID: b.WorkflowUID, WorkflowDefinitionEventUID: b.WorkflowDefinitionEventUID, OccurrenceKey: b.OccurrenceKey, IssueUID: b.IssueUID, Teammate: b.Teammate, ExecutorLabel: b.ExecutorLabel, Status: b.Status, Summary: b.Summary, StartedAt: b.StartedAt, EndedAt: b.EndedAt, ExpectedRevision: b.ExpectedRevision}
 }
 
 // CronRunRequest identifies one independent run within its project.

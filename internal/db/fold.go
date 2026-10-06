@@ -13,7 +13,7 @@ func FoldEvents(events []FoldEvent) FoldProjection {
 	p := FoldProjection{
 		CronRuns:        map[string]FoldCronRun{},
 		CronJobs:        map[string]FoldCronJob{},
-		CronFlows:       map[string]FoldCronFlow{},
+		CronWorkflows:   map[string]FoldCronWorkflow{},
 		Issues:          map[string]FoldIssue{},
 		Comments:        map[string]FoldComment{},
 		Labels:          map[FoldLabelKey]FoldElementState{},

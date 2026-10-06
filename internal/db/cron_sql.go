@@ -81,7 +81,7 @@ func cronTable(job bool) string {
 	if job {
 		return "cron_jobs"
 	}
-	return "cron_flows"
+	return "cron_workflows"
 }
 func cronColumns(_ bool) string { return cronDefinitionColumns }
 
@@ -94,9 +94,9 @@ func jobFromRow(row cronRow) (CronJob, error) {
 	}
 	return result, err
 }
-func flowFromRow(row cronRow) (CronFlow, error) {
-	definition, err := cron.ParseFlow(row.document)
-	return CronFlow{CronDefinition: row.CronDefinition, Definition: definition}, err
+func workflowFromRow(row cronRow) (CronWorkflow, error) {
+	definition, err := cron.ParseWorkflow(row.document)
+	return CronWorkflow{CronDefinition: row.CronDefinition, Definition: definition}, err
 }
 
 // Job reads one project-scoped definition, including a retained tombstone.
@@ -108,13 +108,13 @@ func (a CronSQL) Job(ctx context.Context, project int64, id string) (CronJob, er
 	return jobFromRow(row)
 }
 
-// Flow reads one project-scoped definition, including a retained tombstone.
-func (a CronSQL) Flow(ctx context.Context, project int64, id string) (CronFlow, error) {
-	row, err := scanCron(a.Query.QueryRowContext(ctx, "SELECT "+cronColumns(false)+" FROM cron_flows WHERE project_id=$1 AND uid=$2", project, strings.ToUpper(id)), false)
+// Workflow reads one project-scoped definition, including a retained tombstone.
+func (a CronSQL) Workflow(ctx context.Context, project int64, id string) (CronWorkflow, error) {
+	row, err := scanCron(a.Query.QueryRowContext(ctx, "SELECT "+cronColumns(false)+" FROM cron_workflows WHERE project_id=$1 AND uid=$2", project, strings.ToUpper(id)), false)
 	if err != nil {
-		return CronFlow{}, err
+		return CronWorkflow{}, err
 	}
-	return flowFromRow(row)
+	return workflowFromRow(row)
 }
 
 func (a CronSQL) list(ctx context.Context, in CronList, job bool) ([]cronRow, error) {
@@ -156,15 +156,15 @@ func (a CronSQL) Jobs(ctx context.Context, in CronList) ([]CronJob, error) {
 	return result, nil
 }
 
-// Flows lists project-scoped flow documents under the requested tombstone policy.
-func (a CronSQL) Flows(ctx context.Context, in CronList) ([]CronFlow, error) {
+// Workflows lists project-scoped workflow documents under the requested tombstone policy.
+func (a CronSQL) Workflows(ctx context.Context, in CronList) ([]CronWorkflow, error) {
 	rows, err := a.list(ctx, in, false)
 	if err != nil {
 		return nil, err
 	}
-	result := []CronFlow{}
+	result := []CronWorkflow{}
 	for _, row := range rows {
-		value, err := flowFromRow(row)
+		value, err := workflowFromRow(row)
 		if err != nil {
 			return nil, err
 		}
@@ -186,21 +186,21 @@ func (a CronSQL) PutJob(ctx context.Context, in PutCronJob) (CronJob, []Event, e
 	return value, event, err
 }
 
-// PutFlow validates and replaces a flow using the expected whole-document revision.
-func (a CronSQL) PutFlow(ctx context.Context, in PutCronFlow) (CronFlow, Event, error) {
+// PutWorkflow validates and replaces a workflow using the expected whole-document revision.
+func (a CronSQL) PutWorkflow(ctx context.Context, in PutCronWorkflow) (CronWorkflow, Event, error) {
 	if err := in.Definition.Validate(); err != nil {
-		return CronFlow{}, Event{}, err
+		return CronWorkflow{}, Event{}, err
 	}
 	row, events, err := a.put(ctx, false, in.UID, in.ProjectID, in.Name, in.ExpectedEventUID, in.Actor, in.Deleted, in.Definition)
 	if err != nil {
-		return CronFlow{}, Event{}, err
+		return CronWorkflow{}, Event{}, err
 	}
-	value, err := flowFromRow(row)
+	value, err := workflowFromRow(row)
 	if err != nil {
-		return CronFlow{}, Event{}, err
+		return CronWorkflow{}, Event{}, err
 	}
 	if len(events) != 1 {
-		return CronFlow{}, Event{}, fmt.Errorf("definition write produced %d events", len(events))
+		return CronWorkflow{}, Event{}, fmt.Errorf("definition write produced %d events", len(events))
 	}
 	return value, events[0], nil
 }
@@ -259,7 +259,7 @@ func (a CronSQL) put(ctx context.Context, job bool, id string, projectID int64, 
 				return err
 			}
 		}
-		kind := "flow"
+		kind := "workflow"
 		if job {
 			kind = "job"
 		}

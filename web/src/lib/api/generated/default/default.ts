@@ -7,8 +7,8 @@ import type {
   AddLabelPathParameters,
   AddLabelRequestBody,
   AddLabelResponseBody,
-  ArchiveCronFlowPathParameters,
   ArchiveCronJobPathParameters,
+  ArchiveCronWorkflowPathParameters,
   AssignIssuePathParameters,
   AssignRequestBody,
   AuditClosesParams,
@@ -33,8 +33,8 @@ import type {
   ConnectorListResponseBody,
   ConnectorOut,
   CreateCommentPathParameters,
-  CreateCronFlowPathParameters,
   CreateCronJobPathParameters,
+  CreateCronWorkflowPathParameters,
   CreateFederationEnrollmentRequestBody,
   CreateFederationReplicaRequestBody,
   CreateFederationReplicaResponseBody,
@@ -50,10 +50,10 @@ import type {
   CreateTokenResponseBody,
   CronCapabilitiesResponseBody,
   CronDefinitionActionBody,
-  CronFlowResponseBody,
   CronJobResponseBody,
   CronRunResponseBody,
   CronRunsResponseBody,
+  CronWorkflowResponseBody,
   DeleteIssuePathParameters,
   DeleteLinkParams,
   DeleteLinkPathParameters,
@@ -121,14 +121,14 @@ import type {
   ListAllIssuesParams,
   ListAllIssuesResponseBody,
   ListConnectorFieldsPathParameters,
-  ListCronFlowsParams,
-  ListCronFlowsPathParameters,
-  ListCronFlowsResponseBody,
   ListCronJobsParams,
   ListCronJobsPathParameters,
   ListCronJobsResponseBody,
   ListCronRunsParams,
   ListCronRunsPathParameters,
+  ListCronWorkflowsParams,
+  ListCronWorkflowsPathParameters,
+  ListCronWorkflowsResponseBody,
   ListFederationEnrollmentsBody,
   ListIssuesParams,
   ListIssuesPathParameters,
@@ -176,8 +176,8 @@ import type {
   PurgeIssuePathParameters,
   PurgeProjectPathParameters,
   PurgeResponseBody,
-  PutCronFlowBody,
   PutCronJobBody,
+  PutCronWorkflowBody,
   ReachableGraphResponseBody,
   ReachableIssueGraphParams,
   ReachableIssueGraphPathParameters,
@@ -205,16 +205,16 @@ import type {
   RenameProjectRequestBody,
   RenewIssueLeasePathParameters,
   ReopenIssuePathParameters,
-  ReplaceCronFlowPathParameters,
   ReplaceCronJobPathParameters,
+  ReplaceCronWorkflowPathParameters,
   ResolveExternalCommentPathParameters,
   ResolveExternalCommentRequestBody,
   ResolveExternalFieldPathParameters,
   ResolveExternalFieldRequestBody,
   ResolveProjectRequestBody,
   ResolveUIIssueReferenceParams,
-  RestoreCronFlowPathParameters,
   RestoreCronJobPathParameters,
+  RestoreCronWorkflowPathParameters,
   RestoreIssuePathParameters,
   RestoreProjectParams,
   RestoreProjectPathParameters,
@@ -238,9 +238,9 @@ import type {
   SearchIssuesPathParameters,
   SearchResponseBody,
   SetIssuePriorityPathParameters,
-  ShowCronFlowPathParameters,
   ShowCronJobPathParameters,
   ShowCronRunPathParameters,
+  ShowCronWorkflowPathParameters,
   ShowIssueByUIDParams,
   ShowIssueByUIDPathParameters,
   ShowIssueParams,
@@ -1762,264 +1762,6 @@ export const getCronCapabilities = async (
   })
 }
 
-export type listCronFlowsResponse200 = {
-  data: ListCronFlowsResponseBody
-  status: 200
-}
-
-export type listCronFlowsResponseDefault = {
-  data: ErrorEnvelope
-  status: Exclude<HTTPStatusCodes, 200>
-}
-
-export type listCronFlowsResponseSuccess = listCronFlowsResponse200 & {
-  headers: Headers
-}
-export type listCronFlowsResponseError = listCronFlowsResponseDefault & {
-  headers: Headers
-}
-
-export type listCronFlowsResponse = listCronFlowsResponseSuccess | listCronFlowsResponseError
-
-export const getListCronFlowsUrl = (
-  { projectId }: ListCronFlowsPathParameters,
-  params?: ListCronFlowsParams,
-) => {
-  const normalizedParams = new URLSearchParams()
-
-  Object.entries(params || {}).forEach(([key, value]) => {
-    if (value !== undefined) {
-      normalizedParams.append(key, value === null ? 'null' : String(value))
-    }
-  })
-
-  const stringifiedParams = normalizedParams.toString()
-
-  return stringifiedParams.length > 0
-    ? `/api/v1/projects/${encodeURIComponent(String(projectId))}/cron/flows?${stringifiedParams}`
-    : `/api/v1/projects/${encodeURIComponent(String(projectId))}/cron/flows`
-}
-
-export const listCronFlows = async (
-  { projectId }: ListCronFlowsPathParameters,
-  params?: ListCronFlowsParams,
-  options?: Parameters<typeof orvalFetch>[1],
-): Promise<listCronFlowsResponse> => {
-  return orvalFetch<listCronFlowsResponse>(getListCronFlowsUrl({ projectId }, params), {
-    ...options,
-    method: 'GET',
-  })
-}
-
-export type createCronFlowResponse201 = {
-  data: CronFlowResponseBody
-  status: 201
-}
-
-export type createCronFlowResponseDefault = {
-  data: ErrorEnvelope
-  status: Exclude<HTTPStatusCodes, 201>
-}
-
-export type createCronFlowResponseSuccess = createCronFlowResponse201 & {
-  headers: Headers
-}
-export type createCronFlowResponseError = createCronFlowResponseDefault & {
-  headers: Headers
-}
-
-export type createCronFlowResponse = createCronFlowResponseSuccess | createCronFlowResponseError
-
-export const getCreateCronFlowUrl = ({ projectId }: CreateCronFlowPathParameters) => {
-  return `/api/v1/projects/${encodeURIComponent(String(projectId))}/cron/flows`
-}
-
-export const createCronFlow = async (
-  { projectId }: CreateCronFlowPathParameters,
-  putCronFlowBody: PutCronFlowBody,
-  options?: Parameters<typeof orvalFetch>[1],
-): Promise<createCronFlowResponse> => {
-  const getHeaders = (
-    h?: NonNullable<RequestInit['headers']>,
-  ): Record<string, string | readonly string[]> => {
-    if (!h) return {}
-    if (h instanceof Headers) return Object.fromEntries(h.entries())
-    if (Array.isArray(h)) return Object.fromEntries(h)
-    return h
-  }
-  return orvalFetch<createCronFlowResponse>(getCreateCronFlowUrl({ projectId }), {
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(putCronFlowBody),
-  })
-}
-
-export type archiveCronFlowResponse200 = {
-  data: CronFlowResponseBody
-  status: 200
-}
-
-export type archiveCronFlowResponseDefault = {
-  data: ErrorEnvelope
-  status: Exclude<HTTPStatusCodes, 200>
-}
-
-export type archiveCronFlowResponseSuccess = archiveCronFlowResponse200 & {
-  headers: Headers
-}
-export type archiveCronFlowResponseError = archiveCronFlowResponseDefault & {
-  headers: Headers
-}
-
-export type archiveCronFlowResponse = archiveCronFlowResponseSuccess | archiveCronFlowResponseError
-
-export const getArchiveCronFlowUrl = ({ projectId, cronUid }: ArchiveCronFlowPathParameters) => {
-  return `/api/v1/projects/${encodeURIComponent(String(projectId))}/cron/flows/${encodeURIComponent(String(cronUid))}`
-}
-
-export const archiveCronFlow = async (
-  { projectId, cronUid }: ArchiveCronFlowPathParameters,
-  cronDefinitionActionBody: CronDefinitionActionBody,
-  options?: Parameters<typeof orvalFetch>[1],
-): Promise<archiveCronFlowResponse> => {
-  const getHeaders = (
-    h?: NonNullable<RequestInit['headers']>,
-  ): Record<string, string | readonly string[]> => {
-    if (!h) return {}
-    if (h instanceof Headers) return Object.fromEntries(h.entries())
-    if (Array.isArray(h)) return Object.fromEntries(h)
-    return h
-  }
-  return orvalFetch<archiveCronFlowResponse>(getArchiveCronFlowUrl({ projectId, cronUid }), {
-    ...options,
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(cronDefinitionActionBody),
-  })
-}
-
-export type showCronFlowResponse200 = {
-  data: CronFlowResponseBody
-  status: 200
-}
-
-export type showCronFlowResponseDefault = {
-  data: ErrorEnvelope
-  status: Exclude<HTTPStatusCodes, 200>
-}
-
-export type showCronFlowResponseSuccess = showCronFlowResponse200 & {
-  headers: Headers
-}
-export type showCronFlowResponseError = showCronFlowResponseDefault & {
-  headers: Headers
-}
-
-export type showCronFlowResponse = showCronFlowResponseSuccess | showCronFlowResponseError
-
-export const getShowCronFlowUrl = ({ projectId, cronUid }: ShowCronFlowPathParameters) => {
-  return `/api/v1/projects/${encodeURIComponent(String(projectId))}/cron/flows/${encodeURIComponent(String(cronUid))}`
-}
-
-export const showCronFlow = async (
-  { projectId, cronUid }: ShowCronFlowPathParameters,
-  options?: Parameters<typeof orvalFetch>[1],
-): Promise<showCronFlowResponse> => {
-  return orvalFetch<showCronFlowResponse>(getShowCronFlowUrl({ projectId, cronUid }), {
-    ...options,
-    method: 'GET',
-  })
-}
-
-export type replaceCronFlowResponse200 = {
-  data: CronFlowResponseBody
-  status: 200
-}
-
-export type replaceCronFlowResponseDefault = {
-  data: ErrorEnvelope
-  status: Exclude<HTTPStatusCodes, 200>
-}
-
-export type replaceCronFlowResponseSuccess = replaceCronFlowResponse200 & {
-  headers: Headers
-}
-export type replaceCronFlowResponseError = replaceCronFlowResponseDefault & {
-  headers: Headers
-}
-
-export type replaceCronFlowResponse = replaceCronFlowResponseSuccess | replaceCronFlowResponseError
-
-export const getReplaceCronFlowUrl = ({ projectId, cronUid }: ReplaceCronFlowPathParameters) => {
-  return `/api/v1/projects/${encodeURIComponent(String(projectId))}/cron/flows/${encodeURIComponent(String(cronUid))}`
-}
-
-export const replaceCronFlow = async (
-  { projectId, cronUid }: ReplaceCronFlowPathParameters,
-  putCronFlowBody: PutCronFlowBody,
-  options?: Parameters<typeof orvalFetch>[1],
-): Promise<replaceCronFlowResponse> => {
-  const getHeaders = (
-    h?: NonNullable<RequestInit['headers']>,
-  ): Record<string, string | readonly string[]> => {
-    if (!h) return {}
-    if (h instanceof Headers) return Object.fromEntries(h.entries())
-    if (Array.isArray(h)) return Object.fromEntries(h)
-    return h
-  }
-  return orvalFetch<replaceCronFlowResponse>(getReplaceCronFlowUrl({ projectId, cronUid }), {
-    ...options,
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(putCronFlowBody),
-  })
-}
-
-export type restoreCronFlowResponse200 = {
-  data: CronFlowResponseBody
-  status: 200
-}
-
-export type restoreCronFlowResponseDefault = {
-  data: ErrorEnvelope
-  status: Exclude<HTTPStatusCodes, 200>
-}
-
-export type restoreCronFlowResponseSuccess = restoreCronFlowResponse200 & {
-  headers: Headers
-}
-export type restoreCronFlowResponseError = restoreCronFlowResponseDefault & {
-  headers: Headers
-}
-
-export type restoreCronFlowResponse = restoreCronFlowResponseSuccess | restoreCronFlowResponseError
-
-export const getRestoreCronFlowUrl = ({ projectId, cronUid }: RestoreCronFlowPathParameters) => {
-  return `/api/v1/projects/${encodeURIComponent(String(projectId))}/cron/flows/${encodeURIComponent(String(cronUid))}/restore`
-}
-
-export const restoreCronFlow = async (
-  { projectId, cronUid }: RestoreCronFlowPathParameters,
-  cronDefinitionActionBody: CronDefinitionActionBody,
-  options?: Parameters<typeof orvalFetch>[1],
-): Promise<restoreCronFlowResponse> => {
-  const getHeaders = (
-    h?: NonNullable<RequestInit['headers']>,
-  ): Record<string, string | readonly string[]> => {
-    if (!h) return {}
-    if (h instanceof Headers) return Object.fromEntries(h.entries())
-    if (Array.isArray(h)) return Object.fromEntries(h)
-    return h
-  }
-  return orvalFetch<restoreCronFlowResponse>(getRestoreCronFlowUrl({ projectId, cronUid }), {
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(cronDefinitionActionBody),
-  })
-}
-
 export type listCronJobsResponse200 = {
   data: ListCronJobsResponseBody
   status: 200
@@ -2402,6 +2144,294 @@ export const observeCronRun = async (
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(observeCronRunBody),
   })
+}
+
+export type listCronWorkflowsResponse200 = {
+  data: ListCronWorkflowsResponseBody
+  status: 200
+}
+
+export type listCronWorkflowsResponseDefault = {
+  data: ErrorEnvelope
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type listCronWorkflowsResponseSuccess = listCronWorkflowsResponse200 & {
+  headers: Headers
+}
+export type listCronWorkflowsResponseError = listCronWorkflowsResponseDefault & {
+  headers: Headers
+}
+
+export type listCronWorkflowsResponse =
+  | listCronWorkflowsResponseSuccess
+  | listCronWorkflowsResponseError
+
+export const getListCronWorkflowsUrl = (
+  { projectId }: ListCronWorkflowsPathParameters,
+  params?: ListCronWorkflowsParams,
+) => {
+  const normalizedParams = new URLSearchParams()
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  })
+
+  const stringifiedParams = normalizedParams.toString()
+
+  return stringifiedParams.length > 0
+    ? `/api/v1/projects/${encodeURIComponent(String(projectId))}/cron/workflows?${stringifiedParams}`
+    : `/api/v1/projects/${encodeURIComponent(String(projectId))}/cron/workflows`
+}
+
+export const listCronWorkflows = async (
+  { projectId }: ListCronWorkflowsPathParameters,
+  params?: ListCronWorkflowsParams,
+  options?: Parameters<typeof orvalFetch>[1],
+): Promise<listCronWorkflowsResponse> => {
+  return orvalFetch<listCronWorkflowsResponse>(getListCronWorkflowsUrl({ projectId }, params), {
+    ...options,
+    method: 'GET',
+  })
+}
+
+export type createCronWorkflowResponse201 = {
+  data: CronWorkflowResponseBody
+  status: 201
+}
+
+export type createCronWorkflowResponseDefault = {
+  data: ErrorEnvelope
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type createCronWorkflowResponseSuccess = createCronWorkflowResponse201 & {
+  headers: Headers
+}
+export type createCronWorkflowResponseError = createCronWorkflowResponseDefault & {
+  headers: Headers
+}
+
+export type createCronWorkflowResponse =
+  | createCronWorkflowResponseSuccess
+  | createCronWorkflowResponseError
+
+export const getCreateCronWorkflowUrl = ({ projectId }: CreateCronWorkflowPathParameters) => {
+  return `/api/v1/projects/${encodeURIComponent(String(projectId))}/cron/workflows`
+}
+
+export const createCronWorkflow = async (
+  { projectId }: CreateCronWorkflowPathParameters,
+  putCronWorkflowBody: PutCronWorkflowBody,
+  options?: Parameters<typeof orvalFetch>[1],
+): Promise<createCronWorkflowResponse> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit['headers']>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {}
+    if (h instanceof Headers) return Object.fromEntries(h.entries())
+    if (Array.isArray(h)) return Object.fromEntries(h)
+    return h
+  }
+  return orvalFetch<createCronWorkflowResponse>(getCreateCronWorkflowUrl({ projectId }), {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(putCronWorkflowBody),
+  })
+}
+
+export type archiveCronWorkflowResponse200 = {
+  data: CronWorkflowResponseBody
+  status: 200
+}
+
+export type archiveCronWorkflowResponseDefault = {
+  data: ErrorEnvelope
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type archiveCronWorkflowResponseSuccess = archiveCronWorkflowResponse200 & {
+  headers: Headers
+}
+export type archiveCronWorkflowResponseError = archiveCronWorkflowResponseDefault & {
+  headers: Headers
+}
+
+export type archiveCronWorkflowResponse =
+  | archiveCronWorkflowResponseSuccess
+  | archiveCronWorkflowResponseError
+
+export const getArchiveCronWorkflowUrl = ({
+  projectId,
+  cronUid,
+}: ArchiveCronWorkflowPathParameters) => {
+  return `/api/v1/projects/${encodeURIComponent(String(projectId))}/cron/workflows/${encodeURIComponent(String(cronUid))}`
+}
+
+export const archiveCronWorkflow = async (
+  { projectId, cronUid }: ArchiveCronWorkflowPathParameters,
+  cronDefinitionActionBody: CronDefinitionActionBody,
+  options?: Parameters<typeof orvalFetch>[1],
+): Promise<archiveCronWorkflowResponse> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit['headers']>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {}
+    if (h instanceof Headers) return Object.fromEntries(h.entries())
+    if (Array.isArray(h)) return Object.fromEntries(h)
+    return h
+  }
+  return orvalFetch<archiveCronWorkflowResponse>(
+    getArchiveCronWorkflowUrl({ projectId, cronUid }),
+    {
+      ...options,
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+      body: JSON.stringify(cronDefinitionActionBody),
+    },
+  )
+}
+
+export type showCronWorkflowResponse200 = {
+  data: CronWorkflowResponseBody
+  status: 200
+}
+
+export type showCronWorkflowResponseDefault = {
+  data: ErrorEnvelope
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type showCronWorkflowResponseSuccess = showCronWorkflowResponse200 & {
+  headers: Headers
+}
+export type showCronWorkflowResponseError = showCronWorkflowResponseDefault & {
+  headers: Headers
+}
+
+export type showCronWorkflowResponse =
+  | showCronWorkflowResponseSuccess
+  | showCronWorkflowResponseError
+
+export const getShowCronWorkflowUrl = ({ projectId, cronUid }: ShowCronWorkflowPathParameters) => {
+  return `/api/v1/projects/${encodeURIComponent(String(projectId))}/cron/workflows/${encodeURIComponent(String(cronUid))}`
+}
+
+export const showCronWorkflow = async (
+  { projectId, cronUid }: ShowCronWorkflowPathParameters,
+  options?: Parameters<typeof orvalFetch>[1],
+): Promise<showCronWorkflowResponse> => {
+  return orvalFetch<showCronWorkflowResponse>(getShowCronWorkflowUrl({ projectId, cronUid }), {
+    ...options,
+    method: 'GET',
+  })
+}
+
+export type replaceCronWorkflowResponse200 = {
+  data: CronWorkflowResponseBody
+  status: 200
+}
+
+export type replaceCronWorkflowResponseDefault = {
+  data: ErrorEnvelope
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type replaceCronWorkflowResponseSuccess = replaceCronWorkflowResponse200 & {
+  headers: Headers
+}
+export type replaceCronWorkflowResponseError = replaceCronWorkflowResponseDefault & {
+  headers: Headers
+}
+
+export type replaceCronWorkflowResponse =
+  | replaceCronWorkflowResponseSuccess
+  | replaceCronWorkflowResponseError
+
+export const getReplaceCronWorkflowUrl = ({
+  projectId,
+  cronUid,
+}: ReplaceCronWorkflowPathParameters) => {
+  return `/api/v1/projects/${encodeURIComponent(String(projectId))}/cron/workflows/${encodeURIComponent(String(cronUid))}`
+}
+
+export const replaceCronWorkflow = async (
+  { projectId, cronUid }: ReplaceCronWorkflowPathParameters,
+  putCronWorkflowBody: PutCronWorkflowBody,
+  options?: Parameters<typeof orvalFetch>[1],
+): Promise<replaceCronWorkflowResponse> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit['headers']>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {}
+    if (h instanceof Headers) return Object.fromEntries(h.entries())
+    if (Array.isArray(h)) return Object.fromEntries(h)
+    return h
+  }
+  return orvalFetch<replaceCronWorkflowResponse>(
+    getReplaceCronWorkflowUrl({ projectId, cronUid }),
+    {
+      ...options,
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+      body: JSON.stringify(putCronWorkflowBody),
+    },
+  )
+}
+
+export type restoreCronWorkflowResponse200 = {
+  data: CronWorkflowResponseBody
+  status: 200
+}
+
+export type restoreCronWorkflowResponseDefault = {
+  data: ErrorEnvelope
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type restoreCronWorkflowResponseSuccess = restoreCronWorkflowResponse200 & {
+  headers: Headers
+}
+export type restoreCronWorkflowResponseError = restoreCronWorkflowResponseDefault & {
+  headers: Headers
+}
+
+export type restoreCronWorkflowResponse =
+  | restoreCronWorkflowResponseSuccess
+  | restoreCronWorkflowResponseError
+
+export const getRestoreCronWorkflowUrl = ({
+  projectId,
+  cronUid,
+}: RestoreCronWorkflowPathParameters) => {
+  return `/api/v1/projects/${encodeURIComponent(String(projectId))}/cron/workflows/${encodeURIComponent(String(cronUid))}/restore`
+}
+
+export const restoreCronWorkflow = async (
+  { projectId, cronUid }: RestoreCronWorkflowPathParameters,
+  cronDefinitionActionBody: CronDefinitionActionBody,
+  options?: Parameters<typeof orvalFetch>[1],
+): Promise<restoreCronWorkflowResponse> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit['headers']>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {}
+    if (h instanceof Headers) return Object.fromEntries(h.entries())
+    if (Array.isArray(h)) return Object.fromEntries(h)
+    return h
+  }
+  return orvalFetch<restoreCronWorkflowResponse>(
+    getRestoreCronWorkflowUrl({ projectId, cronUid }),
+    {
+      ...options,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+      body: JSON.stringify(cronDefinitionActionBody),
+    },
+  )
 }
 
 export type digestProjectResponse200 = {

@@ -151,7 +151,7 @@ func exportSnapshot(ctx context.Context, d exportQuerier, w io.Writer, opts Expo
 		if err := streamExport(enc, KindCronJob, db.ExportCronJobsSQL(ctx, d.QueryContext, f)); err != nil {
 			return err
 		}
-		if err := streamExport(enc, KindCronFlow, db.ExportCronFlowsSQL(ctx, d.QueryContext, f)); err != nil {
+		if err := streamExport(enc, KindCronWorkflow, db.ExportCronWorkflowsSQL(ctx, d.QueryContext, f)); err != nil {
 			return err
 		}
 		if err := streamExport(enc, KindCronRun, db.ExportCronRunsSQL(ctx, d.QueryContext, f)); err != nil {

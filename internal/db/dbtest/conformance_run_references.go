@@ -11,7 +11,7 @@ import (
 	"go.kenn.io/kata/internal/uid"
 )
 
-func runReferenceCases(job, otherJob, foreignJob db.CronJob, flow, otherFlow, foreignFlow db.CronFlow, ordinaryEvent string) []struct {
+func runReferenceCases(job, otherJob, foreignJob db.CronJob, workflow, otherWorkflow, foreignWorkflow db.CronWorkflow, ordinaryEvent string) []struct {
 	name string
 	edit func(*db.CronRun)
 } {
@@ -22,14 +22,14 @@ func runReferenceCases(job, otherJob, foreignJob db.CronJob, flow, otherFlow, fo
 		{"foreign job", func(r *db.CronRun) {
 			r.JobUID, r.DefinitionEventUID = &foreignJob.UID, &foreignJob.DefinitionEventUID
 		}},
-		{"foreign flow", func(r *db.CronRun) {
-			r.FlowUID, r.FlowDefinitionEventUID = &foreignFlow.UID, &foreignFlow.DefinitionEventUID
+		{"foreign workflow", func(r *db.CronRun) {
+			r.WorkflowUID, r.WorkflowDefinitionEventUID = &foreignWorkflow.UID, &foreignWorkflow.DefinitionEventUID
 		}},
 		{"mismatched job event", func(r *db.CronRun) { r.JobUID, r.DefinitionEventUID = &job.UID, &otherJob.DefinitionEventUID }},
-		{"mismatched flow event", func(r *db.CronRun) {
-			r.FlowUID, r.FlowDefinitionEventUID = &flow.UID, &otherFlow.DefinitionEventUID
+		{"mismatched workflow event", func(r *db.CronRun) {
+			r.WorkflowUID, r.WorkflowDefinitionEventUID = &workflow.UID, &otherWorkflow.DefinitionEventUID
 		}},
-		{"wrong definition kind", func(r *db.CronRun) { r.JobUID, r.DefinitionEventUID = &job.UID, &flow.DefinitionEventUID }},
+		{"wrong definition kind", func(r *db.CronRun) { r.JobUID, r.DefinitionEventUID = &job.UID, &workflow.DefinitionEventUID }},
 		{"ordinary issue event", func(r *db.CronRun) { r.DefinitionEventUID = &ordinaryEvent }},
 	}
 }
@@ -39,18 +39,18 @@ func checkRunReferenceRestore(t *testing.T, source db.Storage, backend Backend) 
 	require.NoError(t, err)
 	foreign, err := source.CreateProject(t.Context(), "other-project")
 	require.NoError(t, err)
-	job, flow := nativeFederationDefinitions(t, source, project)
-	otherJob, otherFlow := nativeFederationDefinitions(t, source, project)
-	foreignJob, foreignFlow := nativeFederationDefinitions(t, source, foreign)
+	job, workflow := nativeFederationDefinitions(t, source, project)
+	otherJob, otherWorkflow := nativeFederationDefinitions(t, source, project)
+	foreignJob, foreignWorkflow := nativeFederationDefinitions(t, source, foreign)
 	_, ordinaryEvent, err := source.CreateIssue(t.Context(), db.CreateIssueParams{ProjectID: project.ID, Title: "Review", Author: "worker"})
 	require.NoError(t, err)
 	runUID, err := uid.New()
 	require.NoError(t, err)
-	observed, err := source.ObserveCronRun(t.Context(), db.ObserveCronRun{ProjectID: project.ID, UID: runUID, JobUID: &job.UID, DefinitionEventUID: &job.DefinitionEventUID, FlowUID: &flow.UID, FlowDefinitionEventUID: &flow.DefinitionEventUID, Actor: "worker", Status: "running", Summary: cron.Summary{Version: 1}})
+	observed, err := source.ObserveCronRun(t.Context(), db.ObserveCronRun{ProjectID: project.ID, UID: runUID, JobUID: &job.UID, DefinitionEventUID: &job.DefinitionEventUID, WorkflowUID: &workflow.UID, WorkflowDefinitionEventUID: &workflow.DefinitionEventUID, Actor: "worker", Status: "running", Summary: cron.Summary{Version: 1}})
 	require.NoError(t, err)
 	records, err := CollectImportRecords(t.Context(), source, db.ExportFilter{IncludeDeleted: true})
 	require.NoError(t, err)
-	for _, tc := range runReferenceCases(job, otherJob, foreignJob, flow, otherFlow, foreignFlow, ordinaryEvent.UID) {
+	for _, tc := range runReferenceCases(job, otherJob, foreignJob, workflow, otherWorkflow, foreignWorkflow, ordinaryEvent.UID) {
 		t.Run(tc.name, func(t *testing.T) {
 			target := backend.Open(t)
 			t.Cleanup(func() { require.NoError(t, target.Close()) })
@@ -100,9 +100,9 @@ func checkRunReferenceFederation(t *testing.T, store db.Storage) error {
 	require.NoError(t, err)
 	foreign, err := store.CreateProject(t.Context(), "other-project")
 	require.NoError(t, err)
-	job, flow := nativeFederationDefinitions(t, store, project)
-	otherJob, otherFlow := nativeFederationDefinitions(t, store, project)
-	foreignJob, foreignFlow := nativeFederationDefinitions(t, store, foreign)
+	job, workflow := nativeFederationDefinitions(t, store, project)
+	otherJob, otherWorkflow := nativeFederationDefinitions(t, store, project)
+	foreignJob, foreignWorkflow := nativeFederationDefinitions(t, store, foreign)
 	_, ordinaryEvent, err := store.CreateIssue(t.Context(), db.CreateIssueParams{ProjectID: project.ID, Title: "Review", Author: "worker"})
 	require.NoError(t, err)
 	_, err = store.EnableProjectFederation(t.Context(), project.ID, "worker")
@@ -111,13 +111,13 @@ func checkRunReferenceFederation(t *testing.T, store db.Storage) error {
 	require.NoError(t, err)
 	grant, err := store.CreateFederationEnrollment(t.Context(), db.CreateFederationEnrollmentParams{SpokeInstanceUID: origin, ProjectID: &project.ID, Actor: "worker", Capabilities: "pull,push"})
 	require.NoError(t, err)
-	for _, tc := range runReferenceCases(job, otherJob, foreignJob, flow, otherFlow, foreignFlow, ordinaryEvent.UID) {
+	for _, tc := range runReferenceCases(job, otherJob, foreignJob, workflow, otherWorkflow, foreignWorkflow, ordinaryEvent.UID) {
 		for _, path := range []string{"pull", "push"} {
 			t.Run(tc.name+"/"+path, func(t *testing.T) {
 				id, err := uid.New()
 				require.NoError(t, err)
 				at := time.Now().UTC().Truncate(time.Millisecond)
-				run := db.CronRun{UID: id, JobUID: &job.UID, DefinitionEventUID: &job.DefinitionEventUID, FlowUID: &flow.UID, FlowDefinitionEventUID: &flow.DefinitionEventUID, Actor: "worker", Status: "running", Summary: cron.Summary{Version: 1}, Revision: 1, CreatedAt: at, UpdatedAt: at}
+				run := db.CronRun{UID: id, JobUID: &job.UID, DefinitionEventUID: &job.DefinitionEventUID, WorkflowUID: &workflow.UID, WorkflowDefinitionEventUID: &workflow.DefinitionEventUID, Actor: "worker", Status: "running", Summary: cron.Summary{Version: 1}, Revision: 1, CreatedAt: at, UpdatedAt: at}
 				tc.edit(&run)
 				payload, err := json.Marshal(db.NewCronRunObservation(run, project.UID))
 				require.NoError(t, err)
@@ -151,20 +151,20 @@ func checkRunCompactedProvenance(t *testing.T, _ db.Storage, backend Backend) er
 			t.Cleanup(func() { require.NoError(t, source.Close()) })
 			project, err := source.CreateProject(t.Context(), "hub-project")
 			require.NoError(t, err)
-			job, flow := nativeFederationDefinitions(t, source, project)
-			oldJobEvent, oldFlowEvent := job.DefinitionEventUID, flow.DefinitionEventUID
+			job, workflow := nativeFederationDefinitions(t, source, project)
+			oldJobEvent, oldWorkflowEvent := job.DefinitionEventUID, workflow.DefinitionEventUID
 			id, err := uid.New()
 			require.NoError(t, err)
-			_, err = source.ObserveCronRun(t.Context(), db.ObserveCronRun{ProjectID: project.ID, UID: id, JobUID: &job.UID, DefinitionEventUID: &oldJobEvent, FlowUID: &flow.UID, FlowDefinitionEventUID: &oldFlowEvent, Actor: "worker", Status: "succeeded", Summary: cron.Summary{Version: 1}})
+			_, err = source.ObserveCronRun(t.Context(), db.ObserveCronRun{ProjectID: project.ID, UID: id, JobUID: &job.UID, DefinitionEventUID: &oldJobEvent, WorkflowUID: &workflow.UID, WorkflowDefinitionEventUID: &oldWorkflowEvent, Actor: "worker", Status: "succeeded", Summary: cron.Summary{Version: 1}})
 			require.NoError(t, err)
 			job, _, err = source.PutCronJob(t.Context(), db.PutCronJob{ProjectID: project.ID, UID: job.UID, ExpectedEventUID: job.DefinitionEventUID, Name: "Edited review", Actor: "worker", Definition: job.Definition})
 			require.NoError(t, err)
-			flow, _, err = source.PutCronFlow(t.Context(), db.PutCronFlow{ProjectID: project.ID, UID: flow.UID, ExpectedEventUID: flow.DefinitionEventUID, Name: "Edited flow", Actor: "worker", Definition: flow.Definition})
+			workflow, _, err = source.PutCronWorkflow(t.Context(), db.PutCronWorkflow{ProjectID: project.ID, UID: workflow.UID, ExpectedEventUID: workflow.DefinitionEventUID, Name: "Edited workflow", Actor: "worker", Definition: workflow.Definition})
 			require.NoError(t, err)
 			if tombstone {
 				_, _, err = source.PutCronJob(t.Context(), db.PutCronJob{ProjectID: project.ID, UID: job.UID, ExpectedEventUID: job.DefinitionEventUID, Name: job.Name, Definition: job.Definition, Actor: "worker", Deleted: true})
 				require.NoError(t, err)
-				_, _, err = source.PutCronFlow(t.Context(), db.PutCronFlow{ProjectID: project.ID, UID: flow.UID, ExpectedEventUID: flow.DefinitionEventUID, Name: flow.Name, Definition: flow.Definition, Actor: "worker", Deleted: true})
+				_, _, err = source.PutCronWorkflow(t.Context(), db.PutCronWorkflow{ProjectID: project.ID, UID: workflow.UID, ExpectedEventUID: workflow.DefinitionEventUID, Name: workflow.Name, Definition: workflow.Definition, Actor: "worker", Deleted: true})
 				require.NoError(t, err)
 			}
 			binding, err := source.EnableProjectFederation(t.Context(), project.ID, "worker")
@@ -183,7 +183,7 @@ func checkRunCompactedProvenance(t *testing.T, _ db.Storage, backend Backend) er
 				if replay == 1 {
 					require.NoError(t, peer.ResetFederatedProject(t.Context(), local.ID, adopted.Binding.ReplayHorizonEventID, adopted.Binding.PullCursorEventID))
 				}
-				for _, kind := range []string{"cron.run.snapshot", "cron.job.snapshot", "cron.flow.snapshot"} {
+				for _, kind := range []string{"cron.run.snapshot", "cron.job.snapshot", "cron.workflow.snapshot"} {
 					for _, event := range baseline {
 						if event.Type != kind {
 							continue
@@ -198,17 +198,17 @@ func checkRunCompactedProvenance(t *testing.T, _ db.Storage, backend Backend) er
 			prior, err := peer.CronRun(t.Context(), local.ID, id)
 			require.NoError(t, err)
 			require.Equal(t, &oldJobEvent, prior.DefinitionEventUID)
-			require.Equal(t, &oldFlowEvent, prior.FlowDefinitionEventUID)
+			require.Equal(t, &oldWorkflowEvent, prior.WorkflowDefinitionEventUID)
 			current, err := peer.FederationBindingByProject(t.Context(), local.ID)
 			require.NoError(t, err)
 			_, err = peer.EnableFederationPush(t.Context(), local.ID, current.PushCursorEventID)
 			require.NoError(t, err)
 			bufferedUID, err := uid.New()
 			require.NoError(t, err)
-			buffered, err := peer.ObserveCronRun(t.Context(), db.ObserveCronRun{ProjectID: local.ID, UID: bufferedUID, JobUID: &job.UID, DefinitionEventUID: &oldJobEvent, FlowUID: &flow.UID, FlowDefinitionEventUID: &oldFlowEvent, Actor: "worker", Status: "succeeded", Summary: cron.Summary{Version: 1}})
-			require.NoError(t, err, "a distinct buffered execution retains its compacted job and flow versions")
+			buffered, err := peer.ObserveCronRun(t.Context(), db.ObserveCronRun{ProjectID: local.ID, UID: bufferedUID, JobUID: &job.UID, DefinitionEventUID: &oldJobEvent, WorkflowUID: &workflow.UID, WorkflowDefinitionEventUID: &oldWorkflowEvent, Actor: "worker", Status: "succeeded", Summary: cron.Summary{Version: 1}})
+			require.NoError(t, err, "a distinct buffered execution retains its compacted job and workflow versions")
 			require.Equal(t, &oldJobEvent, buffered.Run.DefinitionEventUID)
-			require.Equal(t, &oldFlowEvent, buffered.Run.FlowDefinitionEventUID)
+			require.Equal(t, &oldWorkflowEvent, buffered.Run.WorkflowDefinitionEventUID)
 		})
 	}
 	return nil

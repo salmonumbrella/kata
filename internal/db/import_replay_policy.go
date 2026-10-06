@@ -255,7 +255,7 @@ func validateReplayBindingScopedMappings(records []ImportRecord) error {
 
 func validateImportRecord(record ImportRecord) error {
 	switch rec := record.(type) {
-	case *CronJobExport, *CronFlowExport, *CronRunExport:
+	case *CronJobExport, *CronWorkflowExport, *CronRunExport:
 		return ValidateCronRecord(record)
 	case nil:
 		return errors.New("nil record")
@@ -361,7 +361,7 @@ func OrderImportRecords(records []ImportRecord) []ImportRecord {
 
 func importReplayRank(kind string) int {
 	switch kind {
-	case ImportKindCronJob, ImportKindCronFlow, ImportKindCronRun:
+	case ImportKindCronJob, ImportKindCronWorkflow, ImportKindCronRun:
 		return 2
 	case ImportKindMeta:
 		return 0

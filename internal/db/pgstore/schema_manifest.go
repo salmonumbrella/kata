@@ -24,8 +24,8 @@ const (
 
 //nolint:gosec // Catalog column names only, never credential values.
 var canonicalTableColumns = map[string]string{
-	"cron_runs":               "id,uid,project_id,job_uid,definition_event_uid,flow_uid,flow_definition_event_uid,occurrence_key,issue_uid,actor,teammate,executor_label,status,summary_json,revision,created_at,started_at,ended_at,updated_at",
-	"cron_flows":              "id,uid,project_id,name,definition_json,definition_event_uid,definition_hlc_json,author,revision,created_at,updated_at,deleted_at",
+	"cron_runs":               "id,uid,project_id,job_uid,definition_event_uid,workflow_uid,workflow_definition_event_uid,occurrence_key,issue_uid,actor,teammate,executor_label,status,summary_json,revision,created_at,started_at,ended_at,updated_at",
+	"cron_workflows":          "id,uid,project_id,name,definition_json,definition_event_uid,definition_hlc_json,author,revision,created_at,updated_at,deleted_at",
 	"cron_jobs":               "id,uid,project_id,name,definition_json,definition_event_uid,definition_hlc_json,author,revision,created_at,updated_at,deleted_at",
 	"api_tokens":              "id,token_hash,actor,name,scope_kind,scope_project_uid,scope_root_issue_uid,expires_at,created_at,last_used_at,revoked_at",
 	"comments":                "id,uid,issue_id,author,body,created_at,teammate",
@@ -62,7 +62,7 @@ var optionalVectorTableColumns = map[string]string{
 }
 
 var canonicalIndexes = strings.Fields(`
-idx_cron_jobs_project_name idx_cron_flows_project_name idx_cron_runs_project_time idx_cron_runs_job_time
+idx_cron_jobs_project_name idx_cron_workflows_project_name idx_cron_runs_project_time idx_cron_runs_job_time
 idx_projects_active idx_project_aliases_project recurrences_project
 idx_issues_project_status_updated idx_issues_project_updated idx_issues_owner idx_issues_assignment_expires_on
 uniq_issues_project_short_id issues_recurrence_occurrence_uniq idx_comments_issue

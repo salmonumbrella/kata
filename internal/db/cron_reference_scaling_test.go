@@ -68,22 +68,22 @@ func referenceWorkFixture(t *testing.T, history int) (*sql.Tx, *referenceWork, R
 	for _, q := range []string{
 		`CREATE TABLE projects(id INTEGER PRIMARY KEY,uid TEXT,name TEXT,deleted_at TEXT)`,
 		`CREATE TABLE cron_jobs(project_id INTEGER,uid TEXT PRIMARY KEY,definition_event_uid TEXT)`,
-		`CREATE TABLE cron_flows(project_id INTEGER,uid TEXT PRIMARY KEY,definition_event_uid TEXT)`,
+		`CREATE TABLE cron_workflows(project_id INTEGER,uid TEXT PRIMARY KEY,definition_event_uid TEXT)`,
 		`CREATE TABLE events(project_id INTEGER,uid TEXT PRIMARY KEY,type TEXT,origin_instance_uid TEXT,hlc_physical_ms INTEGER,hlc_counter INTEGER,payload TEXT)`,
-		`CREATE TABLE cron_runs(id INTEGER PRIMARY KEY,uid TEXT UNIQUE,project_id INTEGER,job_uid TEXT,definition_event_uid TEXT,flow_uid TEXT,flow_definition_event_uid TEXT,occurrence_key TEXT,issue_uid TEXT,actor TEXT,teammate TEXT,executor_label TEXT,status TEXT,summary_json TEXT,revision INTEGER,created_at TEXT,started_at TEXT,ended_at TEXT,updated_at TEXT)`,
+		`CREATE TABLE cron_runs(id INTEGER PRIMARY KEY,uid TEXT UNIQUE,project_id INTEGER,job_uid TEXT,definition_event_uid TEXT,workflow_uid TEXT,workflow_definition_event_uid TEXT,occurrence_key TEXT,issue_uid TEXT,actor TEXT,teammate TEXT,executor_label TEXT,status TEXT,summary_json TEXT,revision INTEGER,created_at TEXT,started_at TEXT,ended_at TEXT,updated_at TEXT)`,
 	} {
 		_, err := pool.ExecContext(t.Context(), q)
 		require.NoError(t, err)
 	}
-	job, version, flow, flowVersion, project := "01M40000000000000000000001", "01M40000000000000000000002", "01M40000000000000000000007", "01M40000000000000000000008", "01M40000000000000000000003"
+	job, version, workflow, workflowVersion, project := "01M40000000000000000000001", "01M40000000000000000000002", "01M40000000000000000000007", "01M40000000000000000000008", "01M40000000000000000000003"
 	_, err := pool.ExecContext(t.Context(), `INSERT INTO projects VALUES(1,$1,'example-project',NULL)`, project)
 	require.NoError(t, err)
 	_, err = pool.ExecContext(t.Context(), `INSERT INTO cron_jobs VALUES(1,$1,$2)`, job, version)
 	require.NoError(t, err)
-	_, err = pool.ExecContext(t.Context(), `INSERT INTO cron_flows VALUES(1,$1,$2)`, flow, flowVersion)
+	_, err = pool.ExecContext(t.Context(), `INSERT INTO cron_workflows VALUES(1,$1,$2)`, workflow, workflowVersion)
 	require.NoError(t, err)
 	at := time.Date(2026, 10, 6, 9, 0, 0, 0, time.UTC)
-	run := CronRun{UID: "01M40000000000000000000004", ProjectID: 1, JobUID: &job, DefinitionEventUID: &version, FlowUID: &flow, FlowDefinitionEventUID: &flowVersion, Actor: "worker", Status: "running", Summary: cron.Summary{Version: 1}, Revision: 1, CreatedAt: at, UpdatedAt: at}
+	run := CronRun{UID: "01M40000000000000000000004", ProjectID: 1, JobUID: &job, DefinitionEventUID: &version, WorkflowUID: &workflow, WorkflowDefinitionEventUID: &workflowVersion, Actor: "worker", Status: "running", Summary: cron.Summary{Version: 1}, Revision: 1, CreatedAt: at, UpdatedAt: at}
 	body, err := json.Marshal(NewCronRunObservation(run, project))
 	require.NoError(t, err)
 	event := RemoteEvent{Type: "cron.run.observed", EventUID: "01M40000000000000000000005", ProjectUID: project, OriginInstanceUID: "01M40000000000000000000006", HLCPhysicalMS: at.UnixMilli(), Payload: body}
@@ -96,8 +96,8 @@ func referenceWorkFixture(t *testing.T, history int) (*sql.Tx, *referenceWork, R
 		previous.UID = fmt.Sprintf("01M5%022d", i+10)
 		previous.JobUID = &otherJob
 		previous.DefinitionEventUID = &otherVersion
-		previous.FlowUID = nil
-		previous.FlowDefinitionEventUID = nil
+		previous.WorkflowUID = nil
+		previous.WorkflowDefinitionEventUID = nil
 		raw, err := json.Marshal(NewCronRunObservation(previous, project))
 		require.NoError(t, err)
 		_, err = pool.ExecContext(t.Context(), `INSERT INTO events VALUES(2,$1,'cron.run.observed',$2,$3,0,$4)`, previous.UID, event.OriginInstanceUID, event.HLCPhysicalMS, string(raw))
@@ -119,7 +119,7 @@ func TestCronReferenceWorkIgnoresUnrelatedHistory(t *testing.T) {
 			var in CronRunObservation
 			require.NoError(t, json.Unmarshal(event.Payload, &in))
 			sqlCron := CronSQL{Transact: func(_ context.Context, fn func(*sql.Tx) error) error { return fn(tx) }, WriteGate: func(context.Context, *sql.Tx, int64) error { return nil }, InsertEvent: func(context.Context, *sql.Tx, CronEvent) (Event, error) { return Event{UID: event.EventUID}, nil }}
-			observed, err := sqlCron.ObserveRun(t.Context(), ObserveCronRun{ProjectID: 1, UID: in.UID, JobUID: in.JobUID, DefinitionEventUID: in.DefinitionEventUID, FlowUID: in.FlowUID, FlowDefinitionEventUID: in.FlowDefinitionEventUID, Actor: in.Actor, Status: in.Status, Summary: in.Summary})
+			observed, err := sqlCron.ObserveRun(t.Context(), ObserveCronRun{ProjectID: 1, UID: in.UID, JobUID: in.JobUID, DefinitionEventUID: in.DefinitionEventUID, WorkflowUID: in.WorkflowUID, WorkflowDefinitionEventUID: in.WorkflowDefinitionEventUID, Actor: in.Actor, Status: in.Status, Summary: in.Summary})
 			require.NoError(t, err)
 			require.False(t, observed.Replayed)
 			t.Logf("history=%d queries=%d rows=%d", history, w.queries, w.rows)
@@ -175,8 +175,8 @@ func TestCronReferenceEscapedHistoricalOwnership(t *testing.T) {
 	require.NoError(t, json.Unmarshal(event.Payload, &body))
 	body.JobUID = &otherJob
 	body.DefinitionEventUID = &otherVersion
-	body.FlowUID = nil
-	body.FlowDefinitionEventUID = nil
+	body.WorkflowUID = nil
+	body.WorkflowDefinitionEventUID = nil
 	event.Payload, err = json.Marshal(body)
 	require.NoError(t, err)
 	require.ErrorIs(t, ValidateCronRunReplay(t.Context(), tx, 1, event), ErrFederationIngestValidation)
@@ -186,9 +186,9 @@ func TestCronReferenceCompactedWrongKind(t *testing.T) {
 	tx, _, event := referenceWorkFixture(t, 0)
 	var body CronRunObservation
 	require.NoError(t, json.Unmarshal(event.Payload, &body))
-	body.DefinitionEventUID = body.FlowDefinitionEventUID
-	body.FlowUID = nil
-	body.FlowDefinitionEventUID = nil
+	body.DefinitionEventUID = body.WorkflowDefinitionEventUID
+	body.WorkflowUID = nil
+	body.WorkflowDefinitionEventUID = nil
 	var err error
 	event.Payload, err = json.Marshal(body)
 	require.NoError(t, err)
@@ -202,8 +202,8 @@ func TestCronReplayBatchRejectsLaterUnrelatedVersion(t *testing.T) {
 	job, version := "01M80000000000000000000001", "01M80000000000000000000002"
 	body.JobUID = &job
 	body.DefinitionEventUID = &version
-	body.FlowUID = nil
-	body.FlowDefinitionEventUID = nil
+	body.WorkflowUID = nil
+	body.WorkflowDefinitionEventUID = nil
 	var err error
 	event.Payload, err = json.Marshal(body)
 	require.NoError(t, err)
@@ -273,8 +273,8 @@ func TestCronReplayDistinctColdPairsWork(t *testing.T) {
 				body.UID = fmt.Sprintf("01MB%022d", i+10)
 				body.JobUID = &job
 				body.DefinitionEventUID = &version
-				body.FlowUID = nil
-				body.FlowDefinitionEventUID = nil
+				body.WorkflowUID = nil
+				body.WorkflowDefinitionEventUID = nil
 				event := template
 				var err error
 				event.Payload, err = json.Marshal(body)

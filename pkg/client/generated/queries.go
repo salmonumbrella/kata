@@ -119,10 +119,6 @@ func (d DetachProjectAliasQuery) Validate() error {
 	return runtime.ConvertValidatorError(typesValidator.Struct(d))
 }
 
-type ListCronFlowsQuery struct {
-	IncludeDeleted *bool `json:"include_deleted,omitempty"`
-}
-
 type ListCronJobsQuery struct {
 	IncludeDeleted *bool `json:"include_deleted,omitempty"`
 }
@@ -135,6 +131,10 @@ type ListCronRunsQuery struct {
 
 func (l ListCronRunsQuery) Validate() error {
 	return runtime.ConvertValidatorError(typesValidator.Struct(l))
+}
+
+type ListCronWorkflowsQuery struct {
+	IncludeDeleted *bool `json:"include_deleted,omitempty"`
 }
 
 type DigestProjectQuery struct {

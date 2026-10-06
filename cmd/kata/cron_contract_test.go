@@ -21,7 +21,7 @@ func TestCronNamespaceExecutesAgainstDaemon(t *testing.T) {
 	for _, command := range [][]string{
 		{"capabilities"},
 		{"job", "list"},
-		{"flow", "list"},
+		{"workflow", "list"},
 		{"run", "list", "--limit", "100"},
 	} {
 		t.Run(command[0]+fmt.Sprint(command[1:]), func(t *testing.T) {

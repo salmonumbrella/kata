@@ -16,37 +16,37 @@ func checkNativeCronDefinitions(t *testing.T, store db.Storage) error {
 	require.NoError(t, err)
 	other, err := store.CreateProject(ctx, "other-cron")
 	require.NoError(t, err)
-	flowDef := cron.FlowDefinition{Version: 1, Steps: []cron.FlowStep{{Key: "inspect", Kind: "command", Command: "git status"}}}
-	flow, event, err := store.PutCronFlow(ctx, db.PutCronFlow{ProjectID: project.ID, Name: "Review", Definition: flowDef, Actor: "worker"})
+	workflowDef := cron.WorkflowDefinition{Version: 1, Steps: []cron.WorkflowStep{{Key: "inspect", Kind: "command", Command: "git status"}}}
+	workflow, event, err := store.PutCronWorkflow(ctx, db.PutCronWorkflow{ProjectID: project.ID, Name: "Review", Definition: workflowDef, Actor: "worker"})
 	require.NoError(t, err)
-	require.Equal(t, event.UID, flow.DefinitionEventUID)
-	require.Equal(t, "cron.flow.created", event.Type)
-	require.Equal(t, int64(1), flow.Revision)
-	flowRead, err := store.CronFlow(ctx, project.ID, flow.UID)
+	require.Equal(t, event.UID, workflow.DefinitionEventUID)
+	require.Equal(t, "cron.workflow.created", event.Type)
+	require.Equal(t, int64(1), workflow.Revision)
+	workflowRead, err := store.CronWorkflow(ctx, project.ID, workflow.UID)
 	require.NoError(t, err)
-	require.Equal(t, flow, flowRead)
-	flows, err := store.ListCronFlows(ctx, db.CronList{ProjectID: project.ID})
+	require.Equal(t, workflow, workflowRead)
+	workflows, err := store.ListCronWorkflows(ctx, db.CronList{ProjectID: project.ID})
 	require.NoError(t, err)
-	require.Equal(t, []db.CronFlow{flow}, flows)
-	_, err = store.CronFlow(ctx, other.ID, flow.UID)
+	require.Equal(t, []db.CronWorkflow{workflow}, workflows)
+	_, err = store.CronWorkflow(ctx, other.ID, workflow.UID)
 	require.ErrorIs(t, err, db.ErrNotFound)
 
 	jobDef, err := cron.ParseJob([]byte(`{"version":1,"kind":"job","trigger":{"kind":"manual"},"action":{"kind":"execute","prompt":"Review"},"issue":{"kind":"per-run","title":"Review"},"overlap":"forbid","catchup":"skip"}`))
 	require.NoError(t, err)
 	jobDef.Action.Prompt = ""
-	jobDef.Action.FlowUID = flow.UID
+	jobDef.Action.WorkflowUID = workflow.UID
 	t.Run("dependency diagnostics", func(t *testing.T) {
 		missing := jobDef
-		missing.Action.FlowUID = "01ARZ3NDEKTSV4RRFFQ69G5FAA"
+		missing.Action.WorkflowUID = "01ARZ3NDEKTSV4RRFFQ69G5FAA"
 		_, _, err := store.PutCronJob(ctx, db.PutCronJob{ProjectID: project.ID, Name: "Missing", Definition: missing, Actor: "worker"})
 		require.ErrorIs(t, err, cron.ErrInvalid)
-		require.ErrorContains(t, err, "missing flow dependency")
-		deleted, _, err := store.PutCronFlow(ctx, db.PutCronFlow{UID: flow.UID, ProjectID: project.ID, Name: flow.Name, Definition: flow.Definition, ExpectedEventUID: flow.DefinitionEventUID, Actor: "worker", Deleted: true})
+		require.ErrorContains(t, err, "missing workflow dependency")
+		deleted, _, err := store.PutCronWorkflow(ctx, db.PutCronWorkflow{UID: workflow.UID, ProjectID: project.ID, Name: workflow.Name, Definition: workflow.Definition, ExpectedEventUID: workflow.DefinitionEventUID, Actor: "worker", Deleted: true})
 		require.NoError(t, err)
 		_, _, err = store.PutCronJob(ctx, db.PutCronJob{ProjectID: project.ID, Name: "Deleted", Definition: jobDef, Actor: "worker"})
 		require.ErrorIs(t, err, cron.ErrInvalid)
-		require.ErrorContains(t, err, "tombstoned flow dependency")
-		flow, _, err = store.PutCronFlow(ctx, db.PutCronFlow{UID: flow.UID, ProjectID: project.ID, Name: flow.Name, Definition: flow.Definition, ExpectedEventUID: deleted.DefinitionEventUID, Actor: "worker"})
+		require.ErrorContains(t, err, "tombstoned workflow dependency")
+		workflow, _, err = store.PutCronWorkflow(ctx, db.PutCronWorkflow{UID: workflow.UID, ProjectID: project.ID, Name: workflow.Name, Definition: workflow.Definition, ExpectedEventUID: deleted.DefinitionEventUID, Actor: "worker"})
 		require.NoError(t, err)
 	})
 	_, _, err = store.PutCronJob(ctx, db.PutCronJob{ProjectID: other.ID, Name: "Wrong project", Definition: jobDef, Actor: "worker"})
@@ -102,7 +102,7 @@ func checkNativeCronDefinitions(t *testing.T, store db.Storage) error {
 	update.ExpectedEventUID = restored.DefinitionEventUID
 	_, _, err = store.PutCronJob(ctx, update)
 	require.Error(t, err)
-	_, _, err = store.PutCronFlow(ctx, db.PutCronFlow{ProjectID: project.ID, Name: "Archived", Definition: flowDef, Actor: "worker"})
+	_, _, err = store.PutCronWorkflow(ctx, db.PutCronWorkflow{ProjectID: project.ID, Name: "Archived", Definition: workflowDef, Actor: "worker"})
 	require.Error(t, err)
 	return nil
 }

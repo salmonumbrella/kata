@@ -3,10 +3,10 @@
  */
 
 export interface ActionResponse {
-  flow_uid?: string
   kind: string
   message?: string
   prompt?: string
   recipient?: string
+  workflow_uid?: string
   [key: string]: unknown
 }

@@ -12,9 +12,9 @@ func (s *Store) ExportCronJobs(ctx context.Context, filter db.ExportFilter) iter
 	return db.ExportCronJobsSQL(ctx, s.readQ.QueryContext, filter)
 }
 
-// ExportCronFlows streams portable flow definitions for export.
-func (s *Store) ExportCronFlows(ctx context.Context, filter db.ExportFilter) iter.Seq2[db.CronFlowExport, error] {
-	return db.ExportCronFlowsSQL(ctx, s.readQ.QueryContext, filter)
+// ExportCronWorkflows streams portable workflow definitions for export.
+func (s *Store) ExportCronWorkflows(ctx context.Context, filter db.ExportFilter) iter.Seq2[db.CronWorkflowExport, error] {
+	return db.ExportCronWorkflowsSQL(ctx, s.readQ.QueryContext, filter)
 }
 
 // ExportCronRuns streams attributed run history for export.

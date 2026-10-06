@@ -11,7 +11,7 @@ import (
 
 func TestRejectLegacyCronSchema31(t *testing.T) {
 	d, path := openTestDBWithPath(t)
-	for _, table := range []string{"cron_issue_holders", "cron_run_claims", "cron_runs", "cron_jobs", "cron_flows"} {
+	for _, table := range []string{"cron_issue_holders", "cron_run_claims", "cron_runs", "cron_jobs", "cron_workflows"} {
 		_, err := d.ExecContext(t.Context(), "DROP TABLE IF EXISTS "+table)
 		require.NoError(t, err)
 	}
@@ -51,7 +51,7 @@ func TestRejectOccurrenceExclusiveCronSchema31(t *testing.T) {
 }
 func TestRejectLegacyCronReplacementTarget31(t *testing.T) {
 	d, path := openTestDBWithPath(t)
-	for _, table := range []string{"cron_runs", "cron_jobs", "cron_flows"} {
+	for _, table := range []string{"cron_runs", "cron_jobs", "cron_workflows"} {
 		_, err := d.ExecContext(t.Context(), "DROP TABLE "+table)
 		require.NoError(t, err)
 	}
