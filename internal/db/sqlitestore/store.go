@@ -53,6 +53,7 @@ type Store struct {
 	externalRootNow              func() time.Time
 	relayHistoryFullScanObserver func()
 	relayHistoryCache            *relayHistoryValidationCache
+	replaceTargetMetadata        bool
 }
 
 // readQuerier is the read-only query surface shared between *sql.DB and *sql.Tx.

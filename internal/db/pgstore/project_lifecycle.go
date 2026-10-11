@@ -408,6 +408,9 @@ func deleteProjectScopedTx(ctx context.Context, tx *sql.Tx, project db.Project) 
 		return err
 	}
 	projectID := project.ID
+	if err := db.DeleteCronProject(ctx, tx, projectID); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM events WHERE project_id = $1`, projectID); err != nil {
 		return mapSQLError(err, nil)
 	}

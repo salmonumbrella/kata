@@ -26,16 +26,19 @@ var expiringAssignmentsMigrationSQL string
 //go:embed migrations/000030_issue_status_sync.up.sql
 var issueStatusSyncMigrationSQL string
 
-//go:embed migrations/000031_project_access.up.sql
+//go:embed migrations/000031_native_cron.up.sql
+var nativeCronMigrationSQL string
+
+//go:embed migrations/000032_project_access.up.sql
 var projectAccessMigrationSQL string
 
-//go:embed migrations/000032_federation_provenance.up.sql
+//go:embed migrations/000033_federation_provenance.up.sql
 var federationProvenanceMigrationSQL string
 
-//go:embed migrations/000033_project_relay.up.sql
+//go:embed migrations/000034_project_relay.up.sql
 var projectRelayMigrationSQL string
 
-//go:embed migrations/000034_embedding_artifacts.up.sql
+//go:embed migrations/000035_embedding_artifacts.up.sql
 var embeddingArtifactsMigrationSQL string
 
 // Migration is one immutable Postgres schema transition. Assets form an exact
@@ -82,10 +85,11 @@ var migrationAssets = []Migration{
 		Name:        "000030_issue_status_sync.up.sql",
 		SQL:         issueStatusSyncMigrationSQL,
 	},
-	{FromVersion: 30, ToVersion: 31, Name: "000031_project_access.up.sql", SQL: projectAccessMigrationSQL},
-	{FromVersion: 31, ToVersion: 32, Name: "000032_federation_provenance.up.sql", SQL: federationProvenanceMigrationSQL},
-	{FromVersion: 32, ToVersion: 33, Name: "000033_project_relay.up.sql", SQL: projectRelayMigrationSQL},
-	{FromVersion: 33, ToVersion: 34, Name: "000034_embedding_artifacts.up.sql", SQL: embeddingArtifactsMigrationSQL},
+	{FromVersion: 30, ToVersion: 31, Name: "000031_native_cron.up.sql", SQL: nativeCronMigrationSQL},
+	{FromVersion: 31, ToVersion: 32, Name: "000032_project_access.up.sql", SQL: projectAccessMigrationSQL},
+	{FromVersion: 32, ToVersion: 33, Name: "000033_federation_provenance.up.sql", SQL: federationProvenanceMigrationSQL},
+	{FromVersion: 33, ToVersion: 34, Name: "000034_project_relay.up.sql", SQL: projectRelayMigrationSQL},
+	{FromVersion: 34, ToVersion: 35, Name: "000035_embedding_artifacts.up.sql", SQL: embeddingArtifactsMigrationSQL},
 }
 
 // Migrations returns forward migrations from previously released Postgres

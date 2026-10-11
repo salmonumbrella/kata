@@ -11,11 +11,11 @@ import (
 	"go.kenn.io/kata/internal/testenv"
 )
 
-//go:embed testdata/schema_v31.sql
-var provenanceSchema31 string
+//go:embed testdata/schema_v32.sql
+var provenanceSchema32 string
 
-func TestProvenanceMigrationUpgradesFrozenVersion31(t *testing.T) {
-	require.Greater(t, db.CurrentSchemaVersion(), 31, "real next schema must exercise native migration")
+func TestProvenanceMigrationUpgradesFrozenVersion32(t *testing.T) {
+	require.Greater(t, db.CurrentSchemaVersion(), 32, "real next schema must exercise native migration")
 	ctx := t.Context()
 	dsn, cleanup := testenv.NewPostgresContainer(t, ctx)
 	t.Cleanup(cleanup)
@@ -25,7 +25,7 @@ func TestProvenanceMigrationUpgradesFrozenVersion31(t *testing.T) {
 	tx, err := admin.BeginTx(ctx, nil)
 	require.NoError(t, err)
 	defer func() { _ = tx.Rollback() }()
-	_, err = tx.ExecContext(ctx, "CREATE SCHEMA provenance_upgrade;SET LOCAL search_path TO provenance_upgrade,pg_catalog,pg_temp;"+provenanceSchema31+"\nINSERT INTO meta(key,value) VALUES('schema_version','31'),('instance_uid','00000000000000000000000009');\nUPDATE meta SET value='47' WHERE key='project_access_revision';\nINSERT INTO projects(uid,name) VALUES('00000000000000000000000001','shared-project'),('00000000000000000000000002','empty-teams-project');\nINSERT INTO teams(uid,name,revision) VALUES('00000000000000000000000003','members',3);\nINSERT INTO team_memberships(team_uid,actor) VALUES('00000000000000000000000003','member');\nINSERT INTO project_access_policies(project_uid,visibility,revision) VALUES('00000000000000000000000001','teams',7),('00000000000000000000000002','teams',9);\nINSERT INTO project_access_teams(project_uid,team_uid) VALUES('00000000000000000000000001','00000000000000000000000003');\nINSERT INTO issues(uid,project_id,short_id,title,author) SELECT '00000000000000000000000004',id,'0004','Existing source task','assistant' FROM projects WHERE uid='00000000000000000000000001';\n")
+	_, err = tx.ExecContext(ctx, "CREATE SCHEMA provenance_upgrade;SET LOCAL search_path TO provenance_upgrade,pg_catalog,pg_temp;"+provenanceSchema32+"\nINSERT INTO meta(key,value) VALUES('schema_version','32'),('instance_uid','00000000000000000000000009');\nUPDATE meta SET value='47' WHERE key='project_access_revision';\nINSERT INTO projects(uid,name) VALUES('00000000000000000000000001','shared-project'),('00000000000000000000000002','empty-teams-project');\nINSERT INTO teams(uid,name,revision) VALUES('00000000000000000000000003','members',3);\nINSERT INTO team_memberships(team_uid,actor) VALUES('00000000000000000000000003','member');\nINSERT INTO project_access_policies(project_uid,visibility,revision) VALUES('00000000000000000000000001','teams',7),('00000000000000000000000002','teams',9);\nINSERT INTO project_access_teams(project_uid,team_uid) VALUES('00000000000000000000000001','00000000000000000000000003');\nINSERT INTO issues(uid,project_id,short_id,title,author) SELECT '00000000000000000000000004',id,'0004','Existing source task','assistant' FROM projects WHERE uid='00000000000000000000000001';\n")
 	require.NoError(t, err)
 	require.NoError(t, tx.Commit())
 	upgraded, err := pgstore.OpenWithConfig(ctx, dsn, pgstore.Config{Schema: "provenance_upgrade", SchemaMode: pgstore.SchemaModeBootstrap})

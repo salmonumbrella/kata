@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	canonicalColumnFingerprint     = "272e758189661c6afe37e08a62d5c0f77fe482de0c39af19b96a798f439f960f"
-	canonicalConstraintFingerprint = "6c1de7abc135022175767d2c2fe687e92c3c0df24ec93a133117a28094ff45fd"
-	canonicalIndexFingerprint      = "71ac0d97673661974a1f48518fc63b180905e8ded32c54e69cea5f4221fa14f0"
+	canonicalColumnFingerprint     = "433ed648f06749daf193dde66dd2cac59434b7c315843f7e530708d8ec664002"
+	canonicalConstraintFingerprint = "3d24c94a0242090c2a1ce423a1399d3f3d6d9d67bbb9063f08bc1112fb7c86ef"
+	canonicalIndexFingerprint      = "573f8ac2285e68c9eb61430b425f9f851811194be6b88e53567b54dbfefdb496"
 	vectorColumnFingerprint        = "b8c7cb5e43f3c17502fc3e1deba77a772c3e9a486be623a96729de8866381c31"
 	vectorConstraintFingerprint    = "3a39a82331175295586fb3399dff2221fe511171f21e31a88410dd091c3a3cf4"
 	vectorIndexFingerprint         = "7868c4a815ebee6451cef203509dcedcd21401c76f49fb666e9facaad2f7aef3"
@@ -60,9 +60,12 @@ var canonicalTableColumns = map[string]string{
 	"projects":                       "id,uid,name,created_at,deleted_at,metadata,revision",
 	"purge_log":                      "id,uid,origin_instance_uid,project_id,purged_issue_id,issue_uid,project_uid,project_name,issue_title,issue_author,comment_count,link_count,label_count,event_count,events_deleted_min_id,events_deleted_max_id,purge_reset_after_event_id,short_id,actor,reason,purged_at",
 	"recurrences":                    "id,uid,project_id,rrule,dtstart,timezone,template_title,template_body,template_owner,template_priority,template_labels,template_metadata,next_occurrence_key,last_materialized_uid,author,revision,created_at,updated_at,deleted_at",
+	"cron_runs":                      "id,uid,project_id,job_uid,definition_event_uid,workflow_uid,workflow_definition_event_uid,occurrence_key,issue_uid,actor,teammate,executor_label,status,summary_json,revision,created_at,started_at,ended_at,updated_at",
+	"cron_workflows":                 "id,uid,project_id,name,definition_json,definition_event_uid,definition_hlc_json,author,revision,created_at,updated_at,deleted_at",
+	"cron_jobs":                      "id,uid,project_id,name,definition_json,definition_event_uid,definition_hlc_json,author,revision,created_at,updated_at,deleted_at",
 }
 
-var optionalVectorTableColumns = map[string]string{ //nolint:gosec // Catalog column names, not credential values.
+var optionalVectorTableColumns = map[string]string{
 	"issue_vector_chunks":      "gen_key,issue_uid,chunk_index,embedding",
 	"issue_vector_generations": "ordinal,gen_key,model,dimensions,state",
 	"issue_vector_mirror":      "issue_uid,project_uid,content,content_revision,embed_gen",
@@ -74,6 +77,7 @@ idx_embedding_artifacts_input idx_embedding_artifacts_staging
 idx_relay_outbox_pending idx_relay_inbox_prefix
 uniq_federation_root_active
 idx_team_memberships_actor idx_project_access_teams_team
+idx_cron_jobs_project_name idx_cron_workflows_project_name idx_cron_runs_project_time idx_cron_runs_job_time idx_events_project_cron
 idx_projects_active idx_project_aliases_project recurrences_project
 idx_issues_project_status_updated idx_issues_project_updated idx_issues_owner idx_issues_assignment_expires_on
 uniq_issues_project_short_id issues_recurrence_occurrence_uniq idx_comments_issue

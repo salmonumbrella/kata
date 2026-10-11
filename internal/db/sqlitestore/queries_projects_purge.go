@@ -140,6 +140,9 @@ func deleteProjectScoped(ctx context.Context, c connExec, projectID int64) error
 	if err := deleteProjectRelayMetadata(ctx, c, projectUID); err != nil {
 		return fmt.Errorf("delete project relay metadata: %w", err)
 	}
+	if err := db.DeleteCronProject(ctx, c, projectID); err != nil {
+		return err
+	}
 	const sub = `(SELECT id FROM issues WHERE project_id = ?)`
 	stmts := []struct {
 		q    string

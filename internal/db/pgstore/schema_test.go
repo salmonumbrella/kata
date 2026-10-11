@@ -71,6 +71,7 @@ var expectedTables = []string{
 	"federation_relay_outbox", "federation_relay_inbox", "federation_relay_cursors",
 	"federation_root_keys", "federation_event_provenance", "federation_entity_provenance",
 	"teams", "team_memberships", "project_access_policies", "project_access_teams",
+	"cron_jobs", "cron_workflows", "cron_runs",
 	"api_tokens",
 	"comments",
 	"events",

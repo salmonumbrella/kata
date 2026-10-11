@@ -3687,6 +3687,7 @@ func TestLeaveFederationReplicaRoutePreflight(t *testing.T) {
 		if !strings.Contains(string(raw), "project_has_open_issues") {
 			t.Fatalf("want project_has_open_issues, got %s", raw)
 		}
+		assert.Contains(t, string(raw), `"hint":"close the open issues first, or pass --force"`)
 		if _, err := env.DB.FederationBindingByProject(ctx, project.ID); err != nil {
 			t.Fatalf("binding must be untouched by preflight: %v", err)
 		}
@@ -3883,6 +3884,7 @@ func TestLeaveFederationReplicaRouteArchiveOpenIssuesDoesNotDetach(t *testing.T)
 	if !strings.Contains(string(raw), "project_has_open_issues") {
 		t.Fatalf("want project_has_open_issues code, got %s", raw)
 	}
+	assert.Contains(t, string(raw), `"hint":"close the open issues first, or pass --force"`)
 
 	// The binding must still be present (no detach happened).
 	if _, err := env.DB.FederationBindingByProject(ctx, project.ID); err != nil {
@@ -4303,4 +4305,58 @@ func TestFederationEnrollmentPrivateHTTPRequiresExplicitOptIn(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+// A committed ingest must publish retained transaction events even when an
+// unrelated response-only event lookup would fail.
+type ingestEventReadFailureStore struct{ db.Storage }
+
+func (s ingestEventReadFailureStore) EventsByUIDs(context.Context, int64, []string) ([]db.Event, error) {
+	return nil, errors.New("event lookup unavailable")
+}
+
+func TestFederationIngestRetainsCommittedEvents(t *testing.T) {
+	env := testenv.New(t, func(cfg *daemon.ServerConfig) { cfg.DB = ingestEventReadFailureStore{cfg.DB} })
+	project := createFederatedHubProject(t, env, "hub-project")
+	created, err := env.DB.CreateFederationEnrollment(t.Context(), db.CreateFederationEnrollmentParams{Token: "ingest-token", SpokeInstanceUID: federationTestSpokeUID, ProjectID: &project.ID, Capabilities: "push", Actor: "tester"})
+	require.NoError(t, err)
+	event := federationRemoteIssueCreatedEvent(t, project, federationTestSpokeUID)
+	sub := env.Broadcaster.Subscribe(daemon.SubFilter{ProjectID: project.ID})
+	defer sub.Unsub()
+	response, raw := envDoRaw(t, env, http.MethodPost, projectPath(project.ID)+"/federation/events:ingest", federationIngestBody(federationIngestEnvelope(t, int64(17), event)), bearer(created.Token))
+	require.Equal(t, http.StatusOK, response.StatusCode, "%s", raw)
+	message := receiveMsg(t, sub.Ch, time.Second, "retained ingest event")
+	require.NotNil(t, message.Event)
+	require.Equal(t, event.EventUID, message.Event.UID)
+}
+
+type retainedPeerIngestEventsStore struct {
+	db.Storage
+	events *[]db.Event
+}
+
+func (s retainedPeerIngestEventsStore) IngestFederationEvents(_ context.Context, _ db.FederationIngestParams) (db.FederationIngestResult, error) {
+	return db.FederationIngestResult{Accepted: 1, Events: *s.events}, nil
+}
+func TestFederationIngestPublishesCommittedPeerEvents(t *testing.T) {
+	var retained []db.Event
+	env := testenv.New(t, func(cfg *daemon.ServerConfig) {
+		cfg.DB = retainedPeerIngestEventsStore{Storage: cfg.DB, events: &retained}
+	})
+	project := createFederatedHubProject(t, env, "hub-project")
+	peer, err := env.DB.CreateProject(t.Context(), "peer-project")
+	require.NoError(t, err)
+	_, event, err := env.DB.CreateIssue(t.Context(), db.CreateIssueParams{ProjectID: peer.ID, Title: "Peer evidence", Author: "worker"})
+	require.NoError(t, err)
+	retained = []db.Event{event}
+	enrollment, err := env.DB.CreateFederationEnrollment(t.Context(), db.CreateFederationEnrollmentParams{Token: "ingest-token", SpokeInstanceUID: federationTestSpokeUID, ProjectID: &project.ID, Capabilities: "push", Actor: "tester"})
+	require.NoError(t, err)
+	sub := env.Broadcaster.Subscribe(daemon.SubFilter{ProjectID: peer.ID})
+	defer sub.Unsub()
+	remote := federationRemoteIssueCreatedEvent(t, project, federationTestSpokeUID)
+	response, raw := envDoRaw(t, env, http.MethodPost, projectPath(project.ID)+"/federation/events:ingest", federationIngestBody(federationIngestEnvelope(t, int64(17), remote)), bearer(enrollment.Token))
+	require.Equalf(t, 200, response.StatusCode, "%s", raw)
+	message := receiveMsg(t, sub.Ch, time.Second, "committed peer event")
+	require.Equal(t, peer.ID, message.ProjectID)
+	require.Equal(t, event.UID, message.Event.UID)
 }

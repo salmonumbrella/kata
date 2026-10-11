@@ -13,9 +13,9 @@ import (
 	"go.kenn.io/kata/internal/db"
 )
 
-// FrozenRelay32Fixture is owner-created signed state whose source event was
+// FrozenRelay33Fixture is owner-created signed state whose source event was
 // compacted before the next upgrade. Historical verification keys must survive.
-func FrozenRelay32Fixture(t *testing.T) (string, db.RootKeyPin, db.AttributionReceipt) {
+func FrozenRelay33Fixture(t *testing.T) (string, db.RootKeyPin, db.AttributionReceipt) {
 	public, private, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	pin := db.RootKeyPin{ProjectUID: "00000000000000000000000001", AuthorityUID: "00000000000000000000000009", KeyID: db.RootPublicKeyID(public), PublicKey: public}
@@ -24,7 +24,7 @@ func FrozenRelay32Fixture(t *testing.T) (string, db.RootKeyPin, db.AttributionRe
 	raw, err := json.Marshal(receipt)
 	require.NoError(t, err)
 	sql := fmt.Sprintf(`
- INSERT INTO meta(key,value) VALUES('schema_version','32'),('instance_uid','00000000000000000000000009');
+ INSERT INTO meta(key,value) VALUES('schema_version','33'),('instance_uid','00000000000000000000000009');
  UPDATE meta SET value='47' WHERE key='project_access_revision';
  INSERT INTO projects(uid,name) VALUES('00000000000000000000000001','shared-project');
  INSERT INTO teams(uid,name,revision) VALUES('00000000000000000000000003','members',3);
@@ -39,8 +39,8 @@ func FrozenRelay32Fixture(t *testing.T) (string, db.RootKeyPin, db.AttributionRe
 	return sql, pin, receipt
 }
 
-// AssertFrozenRelay32 checks upgrade preservation against the frozen schema-32 fixture.
-func AssertFrozenRelay32(t *testing.T, store db.Storage, pin db.RootKeyPin, receipt db.AttributionReceipt) {
+// AssertFrozenRelay33 checks upgrade preservation against the frozen schema-32 fixture.
+func AssertFrozenRelay33(t *testing.T, store db.Storage, pin db.RootKeyPin, receipt db.AttributionReceipt) {
 	ctx := t.Context()
 	actual, err := store.RootAuthority(ctx, pin.ProjectUID)
 	require.NoError(t, err)

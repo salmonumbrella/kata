@@ -10,6 +10,22 @@ components:
       required:
         - changed
       type: object
+    Action:
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+        message:
+          type: string
+        prompt:
+          type: string
+        recipient:
+          type: string
+        workflow_uid:
+          type: string
+      required:
+        - kind
+      type: object
     ActionRequestBody:
       additionalProperties: false
       properties:
@@ -37,6 +53,22 @@ components:
             - tui
             - ""
           type: string
+      type: object
+    ActionResponse:
+      additionalProperties: true
+      properties:
+        kind:
+          type: string
+        message:
+          type: string
+        prompt:
+          type: string
+        recipient:
+          type: string
+        workflow_uid:
+          type: string
+      required:
+        - kind
       type: object
     AddLabelRequestBody:
       additionalProperties: false
@@ -261,6 +293,25 @@ components:
       type: object
     ChunkArtifact:
       additionalProperties: false
+      properties:
+        index:
+          format: int64
+          type: integer
+        input_hash:
+          type: string
+        vector_bytes:
+          contentEncoding: base64
+          type: string
+        vector_digest:
+          type: string
+      required:
+        - index
+        - input_hash
+        - vector_digest
+        - vector_bytes
+      type: object
+    ChunkArtifactResponse:
+      additionalProperties: true
       properties:
         index:
           format: int64
@@ -850,6 +901,404 @@ components:
         - token
         - plaintext
       type: object
+    CronCapabilitiesResponseBody:
+      additionalProperties: true
+      properties:
+        event_features:
+          items:
+            type: string
+          type: array
+        project_uid:
+          type: string
+      required:
+        - project_uid
+        - event_features
+      type: object
+    CronDefinitionActionBody:
+      additionalProperties: false
+      properties:
+        actor:
+          type: string
+        expected_event_uid:
+          type: string
+      required:
+        - expected_event_uid
+      type: object
+    CronJob:
+      additionalProperties: true
+      properties:
+        author:
+          type: string
+        created_at:
+          format: date-time
+          type: string
+        definition:
+          $ref: "#/components/schemas/CronJobDefinitionResponse"
+        definition_event_uid:
+          type: string
+        definition_hlc:
+          $ref: "#/components/schemas/HLC"
+        deleted_at:
+          format: date-time
+          type: string
+        id:
+          format: int64
+          type: integer
+        name:
+          type: string
+        project_id:
+          format: int64
+          type: integer
+        revision:
+          format: int64
+          type: integer
+        uid:
+          type: string
+        updated_at:
+          format: date-time
+          type: string
+      required:
+        - definition
+        - id
+        - uid
+        - project_id
+        - name
+        - definition_event_uid
+        - definition_hlc
+        - author
+        - revision
+        - created_at
+        - updated_at
+      type: object
+    CronJobDefinition:
+      additionalProperties: false
+      properties:
+        action:
+          $ref: "#/components/schemas/Action"
+        catchup:
+          type: string
+        checkout_key:
+          type: string
+        enabled:
+          type: boolean
+        grace_seconds:
+          format: int64
+          type: integer
+        issue:
+          $ref: "#/components/schemas/IssuePolicy"
+        kind:
+          type: string
+        options:
+          additionalProperties: true
+          type: object
+        overlap:
+          type: string
+        secret_refs:
+          additionalProperties:
+            type: string
+          type: object
+        timeout_seconds:
+          format: int64
+          type: integer
+        trigger:
+          $ref: "#/components/schemas/Trigger"
+        version:
+          format: int64
+          type: integer
+      required:
+        - version
+        - kind
+        - enabled
+        - trigger
+        - action
+        - overlap
+        - catchup
+      type: object
+    CronJobDefinitionResponse:
+      additionalProperties: true
+      properties:
+        action:
+          $ref: "#/components/schemas/ActionResponse"
+        catchup:
+          type: string
+        checkout_key:
+          type: string
+        enabled:
+          type: boolean
+        grace_seconds:
+          format: int64
+          type: integer
+        issue:
+          $ref: "#/components/schemas/IssuePolicyResponse"
+        kind:
+          type: string
+        options:
+          additionalProperties: true
+          type: object
+        overlap:
+          type: string
+        secret_refs:
+          additionalProperties:
+            type: string
+          type: object
+        timeout_seconds:
+          format: int64
+          type: integer
+        trigger:
+          $ref: "#/components/schemas/TriggerResponse"
+        version:
+          format: int64
+          type: integer
+      required:
+        - version
+        - kind
+        - enabled
+        - trigger
+        - action
+        - overlap
+        - catchup
+      type: object
+    CronJobResponseBody:
+      additionalProperties: true
+      properties:
+        events:
+          items:
+            $ref: "#/components/schemas/Event"
+          type: array
+        job:
+          $ref: "#/components/schemas/CronJob"
+      required:
+        - job
+      type: object
+    CronRun:
+      additionalProperties: true
+      properties:
+        actor:
+          type: string
+        created_at:
+          format: date-time
+          type: string
+        definition_event_uid:
+          type: string
+        ended_at:
+          format: date-time
+          type: string
+        executor_label:
+          type: string
+        id:
+          format: int64
+          type: integer
+        issue_uid:
+          type: string
+        job_uid:
+          type: string
+        occurrence_key:
+          type: string
+        project_id:
+          format: int64
+          type: integer
+        revision:
+          format: int64
+          type: integer
+        started_at:
+          format: date-time
+          type: string
+        status:
+          type: string
+        summary:
+          $ref: "#/components/schemas/SummaryResponse"
+        teammate:
+          type: string
+        uid:
+          type: string
+        updated_at:
+          format: date-time
+          type: string
+        workflow_definition_event_uid:
+          type: string
+        workflow_uid:
+          type: string
+      required:
+        - id
+        - uid
+        - project_id
+        - actor
+        - status
+        - summary
+        - revision
+        - created_at
+        - updated_at
+      type: object
+    CronRunResponseBody:
+      additionalProperties: true
+      properties:
+        run:
+          $ref: "#/components/schemas/CronRun"
+      required:
+        - run
+      type: object
+    CronRunsResponseBody:
+      additionalProperties: true
+      properties:
+        next_before_uid:
+          type: string
+        runs:
+          items:
+            $ref: "#/components/schemas/CronRun"
+          type: array
+      required:
+        - runs
+      type: object
+    CronWorkflow:
+      additionalProperties: true
+      properties:
+        author:
+          type: string
+        created_at:
+          format: date-time
+          type: string
+        definition:
+          $ref: "#/components/schemas/CronWorkflowDefinitionResponse"
+        definition_event_uid:
+          type: string
+        definition_hlc:
+          $ref: "#/components/schemas/HLC"
+        deleted_at:
+          format: date-time
+          type: string
+        id:
+          format: int64
+          type: integer
+        name:
+          type: string
+        project_id:
+          format: int64
+          type: integer
+        revision:
+          format: int64
+          type: integer
+        uid:
+          type: string
+        updated_at:
+          format: date-time
+          type: string
+      required:
+        - definition
+        - id
+        - uid
+        - project_id
+        - name
+        - definition_event_uid
+        - definition_hlc
+        - author
+        - revision
+        - created_at
+        - updated_at
+      type: object
+    CronWorkflowDefinition:
+      additionalProperties: false
+      properties:
+        about:
+          type: string
+        input:
+          type: string
+        options:
+          additionalProperties: true
+          type: object
+        steps:
+          items:
+            $ref: "#/components/schemas/CronWorkflowStep"
+          type: array
+        version:
+          format: int64
+          type: integer
+      required:
+        - version
+        - steps
+      type: object
+    CronWorkflowDefinitionResponse:
+      additionalProperties: true
+      properties:
+        about:
+          type: string
+        input:
+          type: string
+        options:
+          additionalProperties: true
+          type: object
+        steps:
+          items:
+            $ref: "#/components/schemas/CronWorkflowStepResponse"
+          type: array
+        version:
+          format: int64
+          type: integer
+      required:
+        - version
+        - steps
+      type: object
+    CronWorkflowResponseBody:
+      additionalProperties: true
+      properties:
+        events:
+          items:
+            $ref: "#/components/schemas/Event"
+          type: array
+        workflow:
+          $ref: "#/components/schemas/CronWorkflow"
+      required:
+        - workflow
+      type: object
+    CronWorkflowStep:
+      additionalProperties: false
+      properties:
+        after:
+          items:
+            type: string
+          type: array
+        command:
+          type: string
+        key:
+          type: string
+        kind:
+          type: string
+        options:
+          additionalProperties: true
+          type: object
+        prompt:
+          type: string
+        retries:
+          format: int64
+          type: integer
+      required:
+        - key
+        - kind
+      type: object
+    CronWorkflowStepResponse:
+      additionalProperties: true
+      properties:
+        after:
+          items:
+            type: string
+          type: array
+        command:
+          type: string
+        key:
+          type: string
+        kind:
+          type: string
+        options:
+          additionalProperties: true
+          type: object
+        prompt:
+          type: string
+        retries:
+          format: int64
+          type: integer
+      required:
+        - key
+        - kind
+      type: object
     DestructiveActionRequestBody:
       additionalProperties: false
       properties:
@@ -1101,6 +1550,66 @@ components:
         chunks:
           items:
             $ref: "#/components/schemas/ChunkArtifact"
+          type: array
+        digest:
+          type: string
+        dimensions:
+          format: int64
+          type: integer
+        encoding:
+          type: string
+        input_hash:
+          type: string
+        input_type:
+          type: string
+        issue_uid:
+          type: string
+        model:
+          type: string
+        model_revision:
+          type: string
+        normalization:
+          type: string
+        preprocessing:
+          type: string
+        producer_instance_uid:
+          type: string
+        project_uid:
+          type: string
+        provider:
+          type: string
+        recipe_fingerprint:
+          type: string
+        recipe_version:
+          format: int64
+          type: integer
+        split_max_runes:
+          format: int64
+          type: integer
+        split_overlap:
+          format: int64
+          type: integer
+      required:
+        - chunks
+        - digest
+        - recipe_fingerprint
+        - provider
+        - model
+        - dimensions
+        - input_type
+        - normalization
+        - preprocessing
+        - recipe_version
+        - split_max_runes
+        - split_overlap
+        - encoding
+      type: object
+    EmbeddingArtifactResponse:
+      additionalProperties: true
+      properties:
+        chunks:
+          items:
+            $ref: "#/components/schemas/ChunkArtifactResponse"
           type: array
         digest:
           type: string
@@ -2226,6 +2735,26 @@ components:
       required:
         - issue
       type: object
+    HLC:
+      additionalProperties: true
+      properties:
+        counter:
+          format: int64
+          type: integer
+        origin_instance_uid:
+          type: string
+        physical_ms:
+          format: int64
+          type: integer
+        version:
+          format: int64
+          type: integer
+      required:
+        - version
+        - physical_ms
+        - counter
+        - origin_instance_uid
+      type: object
     HealthResponseBody:
       additionalProperties: true
       properties:
@@ -2854,6 +3383,124 @@ components:
         - created_at
         - updated_at
       type: object
+    IssuePlanningDate:
+      additionalProperties: false
+      properties:
+        field:
+          type: string
+        instant:
+          format: date-time
+          type: string
+        timezone:
+          type: string
+        value:
+          type: string
+      required:
+        - field
+        - value
+        - timezone
+        - instant
+      type: object
+    IssuePlanningDates:
+      additionalProperties: true
+      properties:
+        deadline_on:
+          additionalProperties: true
+          properties:
+            field:
+              type: string
+            instant:
+              format: date-time
+              type: string
+            timezone:
+              type: string
+            value:
+              type: string
+          required:
+            - field
+            - value
+            - timezone
+            - instant
+          type:
+            - object
+            - "null"
+          x-omitempty: false
+        issue_uid:
+          type: string
+        project_id:
+          format: int64
+          type: integer
+        revision:
+          format: int64
+          type: integer
+        scheduled_on:
+          additionalProperties: true
+          properties:
+            field:
+              type: string
+            instant:
+              format: date-time
+              type: string
+            timezone:
+              type: string
+            value:
+              type: string
+          required:
+            - field
+            - value
+            - timezone
+            - instant
+          type:
+            - object
+            - "null"
+          x-omitempty: false
+      required:
+        - project_id
+        - issue_uid
+        - revision
+        - scheduled_on
+        - deadline_on
+      type: object
+    IssuePolicy:
+      additionalProperties: false
+      properties:
+        body:
+          type: string
+        deadline_offset_seconds:
+          format: int64
+          type: integer
+        kind:
+          type: string
+        scheduled_offset_seconds:
+          format: int64
+          type: integer
+        title:
+          type: string
+        uid:
+          type: string
+      required:
+        - kind
+      type: object
+    IssuePolicyResponse:
+      additionalProperties: true
+      properties:
+        body:
+          type: string
+        deadline_offset_seconds:
+          format: int64
+          type: integer
+        kind:
+          type: string
+        scheduled_offset_seconds:
+          format: int64
+          type: integer
+        title:
+          type: string
+        uid:
+          type: string
+      required:
+        - kind
+      type: object
     IssueRef:
       additionalProperties: true
       properties:
@@ -3203,6 +3850,26 @@ components:
       required:
         - issues
       type: object
+    ListCronJobsResponseBody:
+      additionalProperties: true
+      properties:
+        jobs:
+          items:
+            $ref: "#/components/schemas/CronJob"
+          type: array
+      required:
+        - jobs
+      type: object
+    ListCronWorkflowsResponseBody:
+      additionalProperties: true
+      properties:
+        workflows:
+          items:
+            $ref: "#/components/schemas/CronWorkflow"
+          type: array
+      required:
+        - workflows
+      type: object
     ListFederationEnrollmentsBody:
       additionalProperties: true
       properties:
@@ -3520,6 +4187,70 @@ components:
         - issue
         - event
         - changed
+      type: object
+    ObserveCronRunBody:
+      additionalProperties: false
+      properties:
+        actor:
+          type: string
+        definition_event_uid:
+          type: string
+        ended_at:
+          format: date-time
+          type: string
+        executor_label:
+          type: string
+        expected_revision:
+          format: int64
+          minimum: 0
+          type: integer
+        issue_uid:
+          type: string
+        job_uid:
+          type: string
+        occurrence_key:
+          type: string
+        started_at:
+          format: date-time
+          type: string
+        status:
+          enum:
+            - running
+            - succeeded
+            - failed
+            - cancelled
+            - unknown
+          type: string
+        summary:
+          $ref: "#/components/schemas/Summary"
+        teammate:
+          type:
+            - string
+            - "null"
+        workflow_definition_event_uid:
+          type: string
+        workflow_uid:
+          type: string
+      required:
+        - status
+        - summary
+        - expected_revision
+      type: object
+    ObserveCronRunResponseBody:
+      additionalProperties: true
+      properties:
+        events:
+          items:
+            $ref: "#/components/schemas/Event"
+          type: array
+        replayed:
+          type: boolean
+        run:
+          $ref: "#/components/schemas/CronRun"
+      required:
+        - run
+        - events
+        - replayed
       type: object
     PatchIssueMetadataRequestBody:
       additionalProperties: false
@@ -4073,6 +4804,36 @@ components:
       required:
         - purge_log
       type: object
+    PutCronJobBody:
+      additionalProperties: false
+      properties:
+        actor:
+          type: string
+        definition:
+          $ref: "#/components/schemas/CronJobDefinition"
+        expected_event_uid:
+          type: string
+        name:
+          type: string
+      required:
+        - name
+        - definition
+      type: object
+    PutCronWorkflowBody:
+      additionalProperties: false
+      properties:
+        actor:
+          type: string
+        definition:
+          $ref: "#/components/schemas/CronWorkflowDefinition"
+        expected_event_uid:
+          type: string
+        name:
+          type: string
+      required:
+        - name
+        - definition
+      type: object
     ReachableGraphEdge:
       additionalProperties: true
       properties:
@@ -4587,6 +5348,27 @@ components:
         - after
         - envelopes
       type: object
+    RelayBatchResponse:
+      additionalProperties: true
+      properties:
+        after:
+          format: int64
+          type: integer
+        artifacts:
+          items:
+            $ref: "#/components/schemas/EmbeddingArtifactResponse"
+          type: array
+        envelopes:
+          items:
+            $ref: "#/components/schemas/RelayEnvelopeResponse"
+          type: array
+        stream:
+          type: string
+      required:
+        - stream
+        - after
+        - envelopes
+      type: object
     RelayBindingConfig:
       additionalProperties: true
       properties:
@@ -4640,6 +5422,59 @@ components:
       type: object
     RelayEnvelope:
       additionalProperties: false
+      properties:
+        authority_uid:
+          type: string
+        binding_uid:
+          type: string
+        body:
+          contentEncoding: base64
+          type: string
+        digest:
+          type: string
+        epoch:
+          format: int64
+          type: integer
+        path:
+          items:
+            type: string
+          type: array
+        project_uid:
+          type: string
+        receiver_instance_uid:
+          type: string
+        sender_instance_uid:
+          type: string
+        sequence:
+          format: int64
+          type: integer
+        source_hash:
+          type: string
+        source_uid:
+          type: string
+        stream:
+          type: string
+        version:
+          format: int64
+          type: integer
+      required:
+        - version
+        - binding_uid
+        - project_uid
+        - authority_uid
+        - sender_instance_uid
+        - receiver_instance_uid
+        - epoch
+        - sequence
+        - stream
+        - path
+        - source_uid
+        - source_hash
+        - body
+        - digest
+      type: object
+    RelayEnvelopeResponse:
+      additionalProperties: true
       properties:
         authority_uid:
           type: string
@@ -5356,6 +6191,40 @@ components:
       required:
         - actor
       type: object
+    Summary:
+      additionalProperties: false
+      properties:
+        input_tokens:
+          format: int64
+          type: integer
+        message:
+          type: string
+        output_tokens:
+          format: int64
+          type: integer
+        version:
+          format: int64
+          type: integer
+      required:
+        - version
+      type: object
+    SummaryResponse:
+      additionalProperties: true
+      properties:
+        input_tokens:
+          format: int64
+          type: integer
+        message:
+          type: string
+        output_tokens:
+          format: int64
+          type: integer
+        version:
+          format: int64
+          type: integer
+      required:
+        - version
+      type: object
     Team:
       additionalProperties: true
       properties:
@@ -5473,6 +6342,50 @@ components:
       required:
         - agent
         - session_id
+      type: object
+    Trigger:
+      additionalProperties: false
+      properties:
+        at:
+          type: string
+        cron:
+          type: string
+        interval_seconds:
+          format: int64
+          type: integer
+        issue_uid:
+          type: string
+        kind:
+          type: string
+        lead_seconds:
+          format: int64
+          type: integer
+        timezone:
+          type: string
+      required:
+        - kind
+      type: object
+    TriggerResponse:
+      additionalProperties: true
+      properties:
+        at:
+          type: string
+        cron:
+          type: string
+        interval_seconds:
+          format: int64
+          type: integer
+        issue_uid:
+          type: string
+        kind:
+          type: string
+        lead_seconds:
+          format: int64
+          type: integer
+        timezone:
+          type: string
+      required:
+        - kind
       type: object
     UICapabilities:
       additionalProperties: true
@@ -6180,6 +7093,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/PollEventsBody"
           description: OK
+          headers:
+            X-Kata-Event-Features:
+              schema:
+                type: string
+            X-Kata-Required-Event-Features:
+              schema:
+                type: string
         default:
           content:
             application/json:
@@ -6985,6 +7905,503 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
           description: Error
+  /api/v1/projects/{project_id}/cron/capabilities:
+    get:
+      operationId: getCronCapabilities
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CronCapabilitiesResponseBody"
+          description: OK
+          headers:
+            X-Kata-Event-Features:
+              schema:
+                type: string
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+          description: Error
+  /api/v1/projects/{project_id}/cron/jobs:
+    get:
+      operationId: listCronJobs
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - explode: false
+          in: query
+          name: include_deleted
+          schema:
+            type: boolean
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListCronJobsResponseBody"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+          description: Error
+    post:
+      operationId: createCronJob
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutCronJobBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CronJobResponseBody"
+          description: Created
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+          description: Error
+  /api/v1/projects/{project_id}/cron/jobs/{cron_uid}:
+    delete:
+      operationId: archiveCronJob
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - in: path
+          name: cron_uid
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CronDefinitionActionBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CronJobResponseBody"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+          description: Error
+    get:
+      operationId: showCronJob
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - in: path
+          name: cron_uid
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CronJobResponseBody"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+          description: Error
+    put:
+      operationId: replaceCronJob
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - in: path
+          name: cron_uid
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutCronJobBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CronJobResponseBody"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+          description: Error
+  /api/v1/projects/{project_id}/cron/jobs/{cron_uid}/restore:
+    post:
+      operationId: restoreCronJob
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - in: path
+          name: cron_uid
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CronDefinitionActionBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CronJobResponseBody"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+          description: Error
+  /api/v1/projects/{project_id}/cron/runs:
+    get:
+      operationId: listCronRuns
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - explode: false
+          in: query
+          name: job_uid
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            format: int64
+            maximum: 100
+            minimum: 0
+            type: integer
+        - explode: false
+          in: query
+          name: before_uid
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CronRunsResponseBody"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+          description: Error
+  /api/v1/projects/{project_id}/cron/runs/{run_uid}:
+    get:
+      operationId: showCronRun
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - in: path
+          name: run_uid
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CronRunResponseBody"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+          description: Error
+    put:
+      operationId: observeCronRun
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - in: path
+          name: run_uid
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ObserveCronRunBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ObserveCronRunResponseBody"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+          description: Error
+  /api/v1/projects/{project_id}/cron/workflows:
+    get:
+      operationId: listCronWorkflows
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - explode: false
+          in: query
+          name: include_deleted
+          schema:
+            type: boolean
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListCronWorkflowsResponseBody"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+          description: Error
+    post:
+      operationId: createCronWorkflow
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutCronWorkflowBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CronWorkflowResponseBody"
+          description: Created
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+          description: Error
+  /api/v1/projects/{project_id}/cron/workflows/{cron_uid}:
+    delete:
+      operationId: archiveCronWorkflow
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - in: path
+          name: cron_uid
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CronDefinitionActionBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CronWorkflowResponseBody"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+          description: Error
+    get:
+      operationId: showCronWorkflow
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - in: path
+          name: cron_uid
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CronWorkflowResponseBody"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+          description: Error
+    put:
+      operationId: replaceCronWorkflow
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - in: path
+          name: cron_uid
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutCronWorkflowBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CronWorkflowResponseBody"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+          description: Error
+  /api/v1/projects/{project_id}/cron/workflows/{cron_uid}/restore:
+    post:
+      operationId: restoreCronWorkflow
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - in: path
+          name: cron_uid
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CronDefinitionActionBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CronWorkflowResponseBody"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+          description: Error
   /api/v1/projects/{project_id}/digest:
     get:
       operationId: digestProject
@@ -7055,6 +8472,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/PollEventsBody"
           description: OK
+          headers:
+            X-Kata-Event-Features:
+              schema:
+                type: string
+            X-Kata-Required-Event-Features:
+              schema:
+                type: string
         default:
           content:
             application/json:
@@ -7078,6 +8502,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProjectFederationBody"
           description: OK
+          headers:
+            X-Kata-Event-Features:
+              schema:
+                type: string
+            X-Kata-Required-Event-Features:
+              schema:
+                type: string
         default:
           content:
             application/json:
@@ -7107,6 +8538,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProjectFederationBody"
           description: OK
+          headers:
+            X-Kata-Event-Features:
+              schema:
+                type: string
+            X-Kata-Required-Event-Features:
+              schema:
+                type: string
         default:
           content:
             application/json:
@@ -7117,6 +8555,10 @@ paths:
     get:
       operationId: pollFederationProjectEvents
       parameters:
+        - in: header
+          name: X-Kata-Event-Features
+          schema:
+            type: string
         - in: path
           name: project_id
           required: true
@@ -7146,6 +8588,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/PollEventsBody"
           description: OK
+          headers:
+            X-Kata-Event-Features:
+              schema:
+                type: string
+            X-Kata-Required-Event-Features:
+              schema:
+                type: string
         default:
           content:
             application/json:
@@ -7156,6 +8605,10 @@ paths:
     post:
       operationId: ingestFederationProjectEvents
       parameters:
+        - in: header
+          name: X-Kata-Event-Features
+          schema:
+            type: string
         - in: path
           name: project_id
           required: true
@@ -7179,6 +8632,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/FederationIngestEventsBody"
           description: OK
+          headers:
+            X-Kata-Event-Features:
+              schema:
+                type: string
+            X-Kata-Required-Event-Features:
+              schema:
+                type: string
         default:
           content:
             application/json:
@@ -7189,6 +8649,10 @@ paths:
     get:
       operationId: getFederationProjectMetadata
       parameters:
+        - in: header
+          name: X-Kata-Event-Features
+          schema:
+            type: string
         - in: path
           name: project_id
           required: true
@@ -7206,6 +8670,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProjectFederationBody"
           description: OK
+          headers:
+            X-Kata-Event-Features:
+              schema:
+                type: string
+            X-Kata-Required-Event-Features:
+              schema:
+                type: string
         default:
           content:
             application/json:
@@ -7342,7 +8813,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RelayBatch"
+                $ref: "#/components/schemas/RelayBatchResponse"
           description: OK
         default:
           content:
@@ -9118,6 +10589,39 @@ paths:
             ETag:
               schema:
                 type: string
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+          description: Error
+  /api/v1/projects/{project_id}/issues/{ref}/planning-dates:
+    get:
+      operationId: issuePlanningDates
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            format: int64
+            type: integer
+        - in: path
+          name: ref
+          required: true
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: include_deleted
+          schema:
+            type: boolean
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssuePlanningDates"
+          description: OK
         default:
           content:
             application/json:

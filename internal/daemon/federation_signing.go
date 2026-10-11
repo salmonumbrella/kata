@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -15,34 +16,34 @@ import (
 
 // These operation IDs are the explicit restricted-ingress allowlist. Paths
 // come from native registration so ingress cannot drift from actual routes.
-var signingCapabilities = map[string]string{
-	"getFederationProjectMetadata":  "pull",
-	"pollFederationProjectEvents":   "pull",
-	"ingestFederationProjectEvents": "push",
-	"disconnectRelayEnrollment":     "push",
-	"getRelayReset":                 "pull",
-	"offerRelayDeliveries":          "pull",
-	"acceptRelayDeliveries":         "push",
-	"ackRelayDeliveries":            "pull",
-	"claimIssue":                    "claim",
-	"acquireIssueLease":             "claim",
-	"renewIssueLease":               "claim",
-	"releaseIssueLease":             "claim",
-	"getIssueLeaseStatus":           "claim",
+var signingCapabilities = map[string][]string{
+	"getFederationProjectMetadata":  {"pull", "push"},
+	"pollFederationProjectEvents":   {"pull"},
+	"ingestFederationProjectEvents": {"push"},
+	"disconnectRelayEnrollment":     {"push"},
+	"getRelayReset":                 {"pull"},
+	"offerRelayDeliveries":          {"pull"},
+	"acceptRelayDeliveries":         {"push"},
+	"ackRelayDeliveries":            {"pull"},
+	"claimIssue":                    {"claim"},
+	"acquireIssueLease":             {"claim"},
+	"renewIssueLease":               {"claim"},
+	"releaseIssueLease":             {"claim"},
+	"getIssueLeaseStatus":           {"claim"},
 }
 
 type signingRoute struct {
-	projectID  int64
-	method     string
-	operation  string
-	capability string
+	projectID    int64
+	method       string
+	operation    string
+	capabilities []string
 }
 type signingRouteKey struct{}
 
 func (s *Server) withFederationSigning(next http.Handler, ingress bool) http.Handler {
 	matcher := http.NewServeMux()
 	for id, route := range registeredOperations(s.api.OpenAPI()) {
-		capability, ok := signingCapabilities[id]
+		capabilities, ok := signingCapabilities[id]
 		if !ok {
 			continue
 		}
@@ -52,7 +53,7 @@ func (s *Server) withFederationSigning(next http.Handler, ingress bool) http.Han
 			if err == nil && idValue > 0 {
 				// ServeMux also dispatches HEAD through GET patterns. Preserve the
 				// route so required signing applies to that request as well.
-				*result = signingRoute{projectID: idValue, method: route.Method, operation: id, capability: capability}
+				*result = signingRoute{projectID: idValue, method: route.Method, operation: id, capabilities: capabilities}
 			}
 		})
 	}
@@ -79,7 +80,7 @@ func (s *Server) withFederationSigning(next http.Handler, ingress bool) http.Han
 			}
 			// Owner/identity lease operations remain ordinary daemon operations.
 			// Ingress never takes this local-authority path.
-			if route.capability == "claim" {
+			if slices.Contains(route.capabilities, "claim") {
 				if _, ok := PrincipalFromContext(r.Context()); ok || validLocalBearer(s.cfg.Auth.Token, r.Header.Get("Authorization")) || !hasBearerHeader(r.Header.Get("Authorization")) {
 					next.ServeHTTP(w, r)
 					return
@@ -130,7 +131,7 @@ func (s *Server) withFederationSigning(next http.Handler, ingress bool) http.Han
 		if relayCleanup {
 			authorization, err = evaluateRelaySelfRevocation(ctx, s.cfg, auth, route.projectID)
 		} else {
-			authorization, err = evaluateFederationRequest(ctx, s.cfg, auth, route.projectID, route.capability, operation)
+			authorization, err = evaluateFederationRequestForCapabilities(ctx, s.cfg, auth, route.projectID, route.capabilities, operation)
 		}
 		if err != nil {
 			writeFederationPreauthorizationError(w, err)
@@ -166,7 +167,7 @@ func (s *Server) withFederationSigning(next http.Handler, ingress bool) http.Han
 			// Revocation during body upload must also stop reads. Mutations retain
 			// their native transaction fence through the cached authorization.
 			if !relayCleanup {
-				if _, err := s.cfg.DB.AuthorizeFederationToken(ctx, auth[len(authBearerPrefix):], route.projectID, route.capability); err != nil {
+				if _, err := s.cfg.DB.AuthorizeFederationToken(ctx, auth[len(authBearerPrefix):], route.projectID, authorization.capability); err != nil {
 					api.WriteEnvelope(w, http.StatusForbidden, "auth_invalid", "federation enrollment revoked")
 					return
 				}
@@ -176,7 +177,7 @@ func (s *Server) withFederationSigning(next http.Handler, ingress bool) http.Han
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
-		ctx = withFederationAuthorization(ctx, auth, route.projectID, route.capability, operation, authorization)
+		ctx = withFederationAuthorization(ctx, auth, route.projectID, strings.Join(route.capabilities, ","), operation, authorization)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

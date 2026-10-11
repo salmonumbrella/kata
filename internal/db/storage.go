@@ -48,6 +48,20 @@ type Storage interface {
 	ProjectAccessRevision(ctx context.Context) (int64, error)
 	ProjectAccessTransactionFence(actor string, projectUIDs []string) TransactionFence
 	ExportProjectAccess(ctx context.Context) iter.Seq2[ImportRecord, error]
+	// Dormant shared definitions and independently attributed execution evidence.
+	ObserveCronRun(context.Context, ObserveCronRun) (CronRunObservationResult, error)
+	CronRun(context.Context, int64, string) (CronRun, error)
+	ListCronRuns(context.Context, CronRunList) ([]CronRun, error)
+	PutCronJob(context.Context, PutCronJob) (CronJob, []Event, error)
+	PutCronWorkflow(context.Context, PutCronWorkflow) (CronWorkflow, Event, error)
+	CronJob(context.Context, int64, string) (CronJob, error)
+	CronWorkflow(context.Context, int64, string) (CronWorkflow, error)
+	ListCronJobs(context.Context, CronList) ([]CronJob, error)
+	ListCronWorkflows(context.Context, CronList) ([]CronWorkflow, error)
+	ExportCronJobs(context.Context, ExportFilter) iter.Seq2[CronJobExport, error]
+	ExportCronWorkflows(context.Context, ExportFilter) iter.Seq2[CronWorkflowExport, error]
+	ExportCronRuns(context.Context, ExportFilter) iter.Seq2[CronRunExport, error]
+
 	// identity / lifecycle
 	// ClaimScreenView records one installation/screen/UTC-day visit; Release clears a rejected enqueue.
 	ClaimScreenView(ctx context.Context, screen, day string) (bool, error)
@@ -99,6 +113,7 @@ type Storage interface {
 	LatestAliasForProject(ctx context.Context, projectID int64) (AliasRow, bool, error)
 
 	// issues
+	IssuePlanningDates(context.Context, IssuePlanningDatesIn) (IssuePlanningDates, error)
 	CreateIssue(ctx context.Context, p CreateIssueParams) (Issue, Event, error)
 	IssueByID(ctx context.Context, id int64) (Issue, error)
 	IssueByShortID(ctx context.Context, projectID int64, shortID string, include IncludeDeleted) (Issue, error)
@@ -322,6 +337,8 @@ type Storage interface {
 	AdvanceFederationPullCursor(ctx context.Context, projectID, nextCursor int64) error
 	ReconcileLocalFederationEcho(ctx context.Context, projectID int64, ev RemoteEvent) (bool, error)
 	InsertRemoteEvent(ctx context.Context, projectID int64, ev RemoteEvent) (bool, error)
+	InsertRemoteEvents(ctx context.Context, projectID int64, events []RemoteEvent) ([]bool, error)
+	ReadFederation(ctx context.Context, params FederationReadParams) (FederationReadResult, error)
 	EnableProjectFederation(ctx context.Context, projectID int64, actor string) (FederationBinding, error)
 	RefreshProjectFederationBaseline(ctx context.Context, projectID int64, actor string) (FederationBinding, bool, error)
 	MaterializeFederatedProject(ctx context.Context, projectID int64) error

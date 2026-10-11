@@ -1,7 +1,7 @@
 ---
 title: HTTP API schema
 description: Generate clients and inspect Kata's versioned OpenAPI schema, compatibility rules, and authentication.
-last_edited: 2026-10-09
+last_edited: 2026-10-10
 ---
 
 # HTTP API schema
@@ -13,7 +13,7 @@ generate typed clients instead of hand-copying wire structs.
 Use [`kata daemon locate`](daemon-discovery.md) to discover the endpoint and
 transport for those requests with the same selection rules as the CLI. Go
 programs can use the generated [Go client](go-client.md), which includes
-discovery.
+discovery. [Native cron](cron.md) documents job and workflow resources.
 
 ## Getting the schema
 
@@ -28,6 +28,22 @@ kata openapi > openapi.yaml
 definitions, so it needs neither a running daemon nor a database. The runtime
 `/openapi.json` route stays disabled; the committed artifact and this command
 are the supported way to obtain the schema.
+
+## Errors
+
+Daemon API errors use an `error` object with a stable `code` and a readable
+`message`. Optional `hint` text suggests a next step; optional `data` contains
+structured details. When a `kata` command can produce the error, its hint names
+CLI commands and flags, such as `--force`, rather than request fields. Hints for
+errors that only direct API calls can produce may name request fields. Use the
+code to branch in scripts, rather than matching the message or hint.
+
+```json
+{"error":{"code":"project_not_initialized","message":"no .kata.toml ancestor and no git ancestor","hint":"run \"kata init --project <name>\" in the workspace root, or pass --project <name>"}}
+```
+
+The CLI preserves the hint in human, agent, and JSON errors. See
+[agent output](agent-output.md#errors) for its stderr format.
 
 ## What the schema is
 
@@ -823,3 +839,12 @@ and workspace IDs are rejected as request config. Status classification is
 validated against live metadata before a guarded upsert. Empty or
 whitespace-only `closed_status` and `open_status` values are rejected; omit a
 key to preserve its saved value. See [Twenty sync](../operations/twenty-sync.md).
+
+Todoist uses the issue-sync routes with provider `todoist`. Initial enable config
+requires opaque string `project_id`. Optional string `history_since` selects a
+UTC date or whole-second RFC3339 completion floor; omission initially chooses
+thirty days ago. Boolean `title_prefix`, top-level `status_sync`, and interval
+preserve omission on re-enable. The daemon resolves `account_id`. Account,
+origin, project and history floor are immutable. Requests cannot supply tokens
+or origins. Two-way delivery uses completion/reopen endpoints after fresh
+safety checks. See [Todoist sync](../operations/todoist-sync.md).
