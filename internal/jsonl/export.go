@@ -177,8 +177,8 @@ func exportSnapshot(ctx context.Context, d exportQuerier, w io.Writer, opts Expo
 	if err := exportSQLiteSequence(ctx, d, enc); err != nil {
 		return err
 	}
-	if sourceSchemaVersion >= 31 && opts.ProjectID == 0 {
-		// Schema31 introduced hub-local policy. Cutover opens a native SQLite
+	if sourceSchemaVersion >= 32 && opts.ProjectID == 0 {
+		// Schema32 introduced hub-local policy. Cutover opens a native SQLite
 		// store even for older sources, so use its existing owner-backup exporter.
 		// Older versions have no policy tables and never enter this branch.
 		exporter, ok := d.(interface {
@@ -196,7 +196,7 @@ func exportSnapshot(ctx context.Context, d exportQuerier, w io.Writer, opts Expo
 			}
 		}
 	}
-	if sourceSchemaVersion >= 32 {
+	if sourceSchemaVersion >= 33 {
 		exporter, ok := d.(interface {
 			ExportAttribution(context.Context, db.ExportFilter) iter.Seq2[db.ImportRecord, error]
 		})
@@ -211,7 +211,7 @@ func exportSnapshot(ctx context.Context, d exportQuerier, w io.Writer, opts Expo
 			return err
 		}
 	}
-	if sourceSchemaVersion >= 33 && opts.ProjectID == 0 {
+	if sourceSchemaVersion >= 34 && opts.ProjectID == 0 {
 		exporter, ok := d.(interface {
 			ExportRelayState(context.Context) iter.Seq2[db.ImportRecord, error]
 		})
@@ -223,7 +223,7 @@ func exportSnapshot(ctx context.Context, d exportQuerier, w io.Writer, opts Expo
 		}
 	}
 
-	if sourceSchemaVersion >= 34 {
+	if sourceSchemaVersion >= 35 {
 		filter := db.ExportFilter{IncludeDeleted: opts.IncludeDeleted}
 		if opts.ProjectID > 0 {
 			filter.ProjectID = &opts.ProjectID
@@ -1015,19 +1015,26 @@ func exportComments(ctx context.Context, d exportQuerier, enc *Encoder, opts Exp
 		return exportCommentsV10(ctx, d, enc, opts)
 	}
 	type record struct {
-		ID        int64   `json:"id"`
-		UID       string  `json:"uid"`
-		IssueID   int64   `json:"issue_id"`
-		Author    string  `json:"author"`
-		Body      string  `json:"body"`
-		CreatedAt string  `json:"created_at"`
-		Teammate  *string `json:"teammate,omitempty"`
+		ID         int64   `json:"id"`
+		UID        string  `json:"uid"`
+		IssueID    int64   `json:"issue_id"`
+		Author     string  `json:"author"`
+		Body       string  `json:"body"`
+		CreatedAt  string  `json:"created_at"`
+		Teammate   *string `json:"teammate,omitempty"`
+		ReplyToUID *string `json:"reply_to_uid,omitempty"`
+		ReplyKind  *string `json:"reply_kind,omitempty"`
+		EditedAt   *string `json:"edited_at,omitempty"`
 	}
 	teammateColumn := "NULL"
 	if sourceSchemaVersion >= 27 {
 		teammateColumn = "comments.teammate"
 	}
-	query := `SELECT comments.id, comments.uid, comments.issue_id, comments.author, comments.body, CAST(comments.created_at AS TEXT), ` + teammateColumn + `
+	replyColumns := "NULL, NULL, NULL"
+	if sourceSchemaVersion >= 36 {
+		replyColumns = "comments.reply_to_uid, comments.reply_kind, CAST(comments.edited_at AS TEXT)"
+	}
+	query := `SELECT comments.id, comments.uid, comments.issue_id, comments.author, comments.body, CAST(comments.created_at AS TEXT), ` + teammateColumn + ", " + replyColumns + `
 	          FROM comments
 	          JOIN issues ON issues.id = comments.issue_id`
 	where, args := issueExportWhere("issues", opts)
@@ -1038,7 +1045,7 @@ func exportComments(ctx context.Context, d exportQuerier, enc *Encoder, opts Exp
 	}
 	return scanRecords(rows, KindComment, enc, func(rows *sql.Rows) (record, error) {
 		var rec record
-		err := rows.Scan(&rec.ID, &rec.UID, &rec.IssueID, &rec.Author, &rec.Body, &rec.CreatedAt, &rec.Teammate)
+		err := rows.Scan(&rec.ID, &rec.UID, &rec.IssueID, &rec.Author, &rec.Body, &rec.CreatedAt, &rec.Teammate, &rec.ReplyToUID, &rec.ReplyKind, &rec.EditedAt)
 		return rec, err
 	})
 }
@@ -1381,7 +1388,7 @@ func exportFederationBindings(
 		allowInsecureSelect = `allow_insecure`
 	}
 	relayConfigSelect := `NULL`
-	if sourceSchemaVersion >= 33 && opts.ProjectID <= 0 {
+	if sourceSchemaVersion >= 34 && opts.ProjectID <= 0 {
 		relayConfigSelect = `relay_config`
 	}
 	query := `SELECT project_id, role, hub_url, hub_project_id, hub_project_uid,
@@ -1544,7 +1551,7 @@ func exportFederationEnrollments(
 		adoptionBaselineEndSourceEventIDSelect = `adoption_baseline_end_source_event_id`
 	}
 	relaySelect := `NULL,0,NULL,1,0`
-	if sourceSchemaVersion >= 33 {
+	if sourceSchemaVersion >= 34 {
 		relaySelect = `relay_binding_uid,relay_protocol_version,parent_token_id,relay_reset_epoch,relay_serve_downstream`
 	}
 	query := `SELECT id, token_hash, spoke_instance_uid, project_id, capabilities,
@@ -1556,7 +1563,7 @@ func exportFederationEnrollments(
 	args := []any{}
 	if opts.ProjectID > 0 {
 		query += ` WHERE project_id = ?`
-		if sourceSchemaVersion >= 33 {
+		if sourceSchemaVersion >= 34 {
 			query += ` AND relay_protocol_version = 0 AND parent_token_id IS NULL AND relay_binding_uid IS NULL`
 		}
 		args = append(args, opts.ProjectID)
@@ -1716,7 +1723,8 @@ func exportEvents(ctx context.Context, d exportQuerier, enc *Encoder, opts Expor
 	}
 	policy := newEventOrphanPolicy(opts)
 	issueIDExpr := `events.issue_id`
-	scrubCondition := policy.scrubCondition(true)
+	relatedIDScrub := policy.relatedIDScrubCondition(true)
+	relatedUIDScrub := policy.relatedUIDScrubCondition(true)
 	var selectArgs []any
 	if opts.ProjectID > 0 {
 		// A scoped export omits moved subjects in other projects. Keep
@@ -1724,11 +1732,12 @@ func exportEvents(ctx context.Context, d exportQuerier, enc *Encoder, opts Expor
 		issueIDExpr = `CASE WHEN subject_issue.id IS NOT NULL AND subject_issue.project_id <> ? THEN NULL ELSE events.issue_id END`
 		// Related references to omitted peers follow the storage exporter:
 		// scrub both fields while retaining the payload's historical UIDs.
-		scrubCondition += ` OR (peer.id IS NOT NULL AND peer.project_id <> ?)`
+		relatedIDScrub += ` OR (peer.id IS NOT NULL AND peer.project_id <> ?)`
+		relatedUIDScrub += ` OR (peer.id IS NOT NULL AND peer.project_id <> ?)`
 		selectArgs = append(selectArgs, opts.ProjectID, opts.ProjectID, opts.ProjectID)
 	}
-	relatedUIDScrub := `(` + scrubCondition + `)`
-	if sourceSchemaVersion >= 32 {
+	relatedUIDScrub = `(` + relatedUIDScrub + `)`
+	if sourceSchemaVersion >= 33 {
 		// Root receipts sign related_issue_uid. Preserve it when the omitted
 		// peer belongs to an event whose exact content hash is still attested.
 		relatedUIDScrub += ` AND NOT EXISTS (
@@ -1740,7 +1749,7 @@ func exportEvents(ctx context.Context, d exportQuerier, enc *Encoder, opts Expor
 	// Moving an issue changes its project, but its earlier events retain
 	// their original project. Resolve the subject by identity alone.
 	query := fmt.Sprintf(`SELECT events.id, events.uid, events.origin_instance_uid, events.project_id, export_project.uid, %s, %s, events.issue_uid,
-	                 CASE WHEN `+scrubCondition+` THEN NULL ELSE events.related_issue_id END,
+	                 CASE WHEN `+relatedIDScrub+` THEN NULL ELSE events.related_issue_id END,
 	                 CASE WHEN `+relatedUIDScrub+` THEN NULL ELSE events.related_issue_uid END,
 	                 events.type, events.actor, events.payload, events.hlc_physical_ms, events.hlc_counter, events.content_hash,
 	                 CAST(events.created_at AS TEXT)
@@ -1753,7 +1762,7 @@ func exportEvents(ctx context.Context, d exportQuerier, enc *Encoder, opts Expor
 	clauses, args := policy.whereClauses(opts)
 	if !opts.IncludeDeleted {
 		// The UID-aware join also resolves soft-deleted federation peers.
-		clauses = append(clauses, `(events.type = 'issue.links_changed' OR peer.deleted_at IS NULL)`)
+		clauses = append(clauses, `(events.type IN ('issue.links_changed', 'issue.commented') OR peer.deleted_at IS NULL)`)
 	}
 	args = append(selectArgs, args...)
 	clauses = append([]string{policy.subjectLiveClause(true)}, clauses...)
@@ -2342,15 +2351,25 @@ func newEventOrphanPolicy(opts ExportOptions) eventOrphanPolicy {
 	return eventOrphanPolicy{includeDeleted: opts.IncludeDeleted}
 }
 
-// scrubCondition is true for a peer reference that must not reach the wire:
-// a peer missing entirely (any event type) OR, on live-only export, an
-// issue.links_changed peer that is soft-deleted. Peer-missing is checked
-// first so `peer.deleted_at` never dereferences a NULL row. uidAware is used
-// by the current projection, whose peer join also resolves UID-only references.
-func (p eventOrphanPolicy) scrubCondition(uidAware bool) string {
+// relatedIDScrubCondition removes missing peer FKs and soft-deleted comment
+// peers from live-only exports while keeping their source comment events.
+func (p eventOrphanPolicy) relatedIDScrubCondition(uidAware bool) string {
 	condition := `(peer.id IS NULL AND events.related_issue_id IS NOT NULL)`
 	if uidAware {
 		condition = `(peer.id IS NULL AND (events.related_issue_id IS NOT NULL OR events.related_issue_uid IS NOT NULL))`
+	}
+	if !p.includeDeleted {
+		condition += ` OR (events.type IN ('issue.links_changed', 'issue.commented') AND peer.deleted_at IS NOT NULL)`
+	}
+	return condition
+}
+
+// relatedUIDScrubCondition keeps comment target identity when the target has
+// been purged. A project-filtered export still removes peers in omitted projects.
+func (p eventOrphanPolicy) relatedUIDScrubCondition(uidAware bool) string {
+	condition := `(peer.id IS NULL AND events.related_issue_id IS NOT NULL AND events.type <> 'issue.commented')`
+	if uidAware {
+		condition = `(peer.id IS NULL AND (events.related_issue_id IS NOT NULL OR events.related_issue_uid IS NOT NULL) AND events.type <> 'issue.commented')`
 	}
 	if !p.includeDeleted {
 		condition += ` OR (events.type = 'issue.links_changed' AND peer.deleted_at IS NOT NULL)`
@@ -2359,13 +2378,13 @@ func (p eventOrphanPolicy) scrubCondition(uidAware bool) string {
 }
 
 func (p eventOrphanPolicy) relatedIDExpr() string {
-	return `CASE WHEN ` + p.scrubCondition(false) + ` THEN NULL ELSE events.related_issue_id END`
+	return `CASE WHEN ` + p.relatedIDScrubCondition(false) + ` THEN NULL ELSE events.related_issue_id END`
 }
 
 // relatedUIDExpr is not called by the v1 projection: that schema has no
 // related_issue_uid column.
 func (p eventOrphanPolicy) relatedUIDExpr() string {
-	return `CASE WHEN ` + p.scrubCondition(false) + ` THEN NULL ELSE events.related_issue_uid END`
+	return `CASE WHEN ` + p.relatedUIDScrubCondition(false) + ` THEN NULL ELSE events.related_issue_uid END`
 }
 
 // subjectLiveClause drops ID-keyed orphans but retains UID-only history whose
@@ -2399,7 +2418,7 @@ func (p eventOrphanPolicy) whereClauses(opts ExportOptions) ([]string, []any) {
 		// fields, matching the issue_id-orphan behavior.
 		clauses = append(clauses,
 			`(events.issue_id IS NULL OR EXISTS (SELECT 1 FROM issues WHERE issues.id = events.issue_id AND issues.deleted_at IS NULL))`,
-			`(events.related_issue_id IS NULL OR events.type = 'issue.links_changed' OR NOT EXISTS (SELECT 1 FROM issues WHERE issues.id = events.related_issue_id AND issues.deleted_at IS NOT NULL))`,
+			`(events.related_issue_id IS NULL OR events.type IN ('issue.links_changed', 'issue.commented') OR NOT EXISTS (SELECT 1 FROM issues WHERE issues.id = events.related_issue_id AND issues.deleted_at IS NOT NULL))`,
 		)
 	}
 	return clauses, args

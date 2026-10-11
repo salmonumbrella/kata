@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	canonicalColumnFingerprint     = "433ed648f06749daf193dde66dd2cac59434b7c315843f7e530708d8ec664002"
+	canonicalColumnFingerprint     = "e39313e493aca5629098c150076ee7e1aa04a8d747d8704001e741401fe3df50"
 	canonicalConstraintFingerprint = "3d24c94a0242090c2a1ce423a1399d3f3d6d9d67bbb9063f08bc1112fb7c86ef"
 	canonicalIndexFingerprint      = "573f8ac2285e68c9eb61430b425f9f851811194be6b88e53567b54dbfefdb496"
 	vectorColumnFingerprint        = "b8c7cb5e43f3c17502fc3e1deba77a772c3e9a486be623a96729de8866381c31"
@@ -36,7 +36,7 @@ var canonicalTableColumns = map[string]string{
 	"project_access_policies":        "project_uid,visibility,revision",
 	"project_access_teams":           "project_uid,team_uid", //nolint:gosec // Catalog column names, not credential values.
 	"api_tokens":                     "id,token_hash,actor,name,scope_kind,scope_project_uid,scope_root_issue_uid,expires_at,created_at,last_used_at,revoked_at",
-	"comments":                       "id,uid,issue_id,author,body,created_at,teammate",
+	"comments":                       "id,uid,issue_id,author,body,created_at,teammate,reply_to_uid,reply_kind,edited_at",
 	"events":                         "id,uid,origin_instance_uid,project_id,project_name,issue_id,issue_uid,related_issue_id,related_issue_uid,type,actor,payload,hlc_physical_ms,hlc_counter,content_hash,created_at",
 	"external_field_mappings":        "id,connector_instance,kata_field,external_field_id,external_field_name,accepted_kinds_json,nullable,writable,schema_revision,active,created_at,updated_at",
 	"external_field_states":          "binding_id,mapping_id,baseline_json,conflicted,conflict_kata,conflict_external,conflict_at,updated_at",

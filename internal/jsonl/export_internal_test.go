@@ -216,7 +216,7 @@ func TestExportSnapshotProjectIncludesActiveMappingBeforeStateExists(t *testing.
 	assert.Equal(t, "field-one", mappings[0].ExternalFieldID)
 }
 
-// Schema31 cutover exports must retain hub-local restrictions in owner backups
+// Schema32 cutover exports must retain hub-local restrictions in owner backups
 // and exclude those local objects and their epoch from project transfers.
 func TestProjectAccessLegacyCutoverPreservesPolicy(t *testing.T) {
 	ctx := t.Context()
@@ -273,4 +273,50 @@ func TestProjectAccessLegacyScopedExportHidesPolicyEpoch(t *testing.T) {
 	var scoped bytes.Buffer
 	require.NoError(t, exportForCutover(t.Context(), source, &scoped, ExportOptions{ProjectID: project.ID}))
 	assert.NotContains(t, scoped.String(), `"project_access_revision"`)
+}
+
+// Released31 owns cron, while pending dependencies introduce their own owners
+// at32–36. Cutover must not query an owner before that schema introduced it.
+func TestCutoverExportDependencyVersionBoundaries(t *testing.T) {
+	for _, version := range []int{31, 32, 33, 34, 35} {
+		t.Run(fmt.Sprintf("schema_%d", version), func(t *testing.T) {
+			ctx := t.Context()
+			source, err := sqlitestore.Open(ctx, filepath.Join(t.TempDir(), "source.db"))
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = source.Close() })
+			project, err := source.CreateProject(ctx, "example-project")
+			require.NoError(t, err)
+			issue, _, err := source.CreateIssue(ctx, db.CreateIssueParams{ProjectID: project.ID, Title: "Retained task", Author: "tester"})
+			require.NoError(t, err)
+			_, err = source.ExecContext(ctx, `ALTER TABLE comments DROP COLUMN reply_to_uid; ALTER TABLE comments DROP COLUMN reply_kind; ALTER TABLE comments DROP COLUMN edited_at`)
+			require.NoError(t, err)
+			if version < 35 {
+				_, err = source.ExecContext(ctx, `DROP TABLE federation_embedding_artifacts`)
+				require.NoError(t, err)
+			}
+			if version < 34 {
+				_, err = source.ExecContext(ctx, `DROP TABLE federation_relay_outbox; DROP TABLE federation_relay_inbox; DROP TABLE federation_relay_cursors; ALTER TABLE federation_bindings DROP COLUMN relay_config`)
+				require.NoError(t, err)
+			}
+			if version < 33 {
+				_, err = source.ExecContext(ctx, `DROP TABLE federation_entity_provenance; DROP TABLE federation_event_provenance; DROP TABLE federation_root_keys`)
+				require.NoError(t, err)
+			}
+			if version < 32 {
+				_, err = source.ExecContext(ctx, `DROP TABLE project_access_teams; DROP TABLE project_access_policies; DROP TABLE team_memberships; DROP TABLE teams`)
+				require.NoError(t, err)
+			}
+			_, err = source.ExecContext(ctx, `UPDATE meta SET value=? WHERE key='schema_version'`, fmt.Sprint(version))
+			require.NoError(t, err)
+			var backup bytes.Buffer
+			require.NoError(t, exportForCutover(ctx, source, &backup, ExportOptions{IncludeDeleted: true}))
+			target, err := sqlitestore.Open(ctx, filepath.Join(t.TempDir(), "destination.db"))
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = target.Close() })
+			require.NoError(t, Import(ctx, &backup, target))
+			retained, err := target.IssueByUID(ctx, issue.UID, db.IncludeDeletedNo)
+			require.NoError(t, err)
+			assert.Equal(t, "Retained task", retained.Title)
+		})
+	}
 }

@@ -9,8 +9,11 @@ export interface Comment {
   authority_uid?: string
   body: string
   created_at: string
+  edited_at?: string
   id: number
   issue_id: number
+  reply_kind?: string
+  reply_to_uid?: string
   source_actor?: string
   teammate?: string
   uid: string

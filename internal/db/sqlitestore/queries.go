@@ -788,6 +788,9 @@ type createdLinkOut struct {
 }
 
 type issueSnapshotComment struct {
+	ReplyToUID string `json:"reply_to_uid,omitempty"`
+	ReplyKind  string `json:"reply_kind,omitempty"`
+	EditedAt   string `json:"edited_at,omitempty"`
 	CommentUID string `json:"comment_uid"`
 	Author     string `json:"author"`
 	Teammate   string `json:"teammate,omitempty"`
@@ -1241,6 +1244,9 @@ func (d *Store) CreateComment(ctx context.Context, p db.CreateCommentParams) (db
 	if err := teammate.Validate(p.Teammate); err != nil {
 		return db.Comment{}, db.Event{}, err
 	}
+	if err := db.ValidateCommentReply("", p.ReplyToUID, p.ReplyKind); err != nil {
+		return db.Comment{}, db.Event{}, err
+	}
 	commentID, evt, err := retryWrite2(ctx, d, func() (int64, db.Event, error) {
 		return d.createComment(ctx, p)
 	})
@@ -1294,8 +1300,8 @@ func (d *Store) createComment(ctx context.Context, p db.CreateCommentParams) (in
 	createdAt := commentAt.Format(sqliteCommentTimeFormat)
 	mutationAt := commentAt.Format(sqliteTimeFormat)
 	res, err := tx.ExecContext(ctx,
-		`INSERT INTO comments(uid, issue_id, author, body, created_at, teammate) VALUES(?, ?, ?, ?, ?, NULLIF(?, ''))`,
-		commentUID, p.IssueID, p.Author, p.Body, createdAt, p.Teammate)
+		`INSERT INTO comments(uid, issue_id, author, body, created_at, teammate, reply_to_uid, reply_kind) VALUES(?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''))`,
+		commentUID, p.IssueID, p.Author, p.Body, createdAt, p.Teammate, p.ReplyToUID, p.ReplyKind)
 	if err != nil {
 		return 0, db.Event{}, fmt.Errorf("insert comment: %w", err)
 	}
@@ -1311,6 +1317,8 @@ func (d *Store) createComment(ctx context.Context, p db.CreateCommentParams) (in
 	}
 
 	payloadBytes, err := json.Marshal(struct {
+		ReplyToUID             string `json:"reply_to_uid,omitempty"`
+		ReplyKind              string `json:"reply_kind,omitempty"`
 		CommentUID             string `json:"comment_uid"`
 		Author                 string `json:"author"`
 		Teammate               string `json:"teammate,omitempty"`
@@ -1319,6 +1327,7 @@ func (d *Store) createComment(ctx context.Context, p db.CreateCommentParams) (in
 		IdempotencyKey         string `json:"idempotency_key,omitempty"`
 		IdempotencyFingerprint string `json:"idempotency_fingerprint,omitempty"`
 	}{
+		ReplyToUID: p.ReplyToUID, ReplyKind: p.ReplyKind,
 		CommentUID:             commentUID,
 		Author:                 p.Author,
 		Teammate:               p.Teammate,
@@ -1330,13 +1339,25 @@ func (d *Store) createComment(ctx context.Context, p db.CreateCommentParams) (in
 	if err != nil {
 		return 0, db.Event{}, fmt.Errorf("marshal comment payload: %w", err)
 	}
+	var relatedID *int64
+	if p.ReplyToUID != "" {
+		var targetIssueID int64
+		err := tx.QueryRowContext(ctx, `SELECT i.id FROM comments c JOIN issues i ON i.id=c.issue_id WHERE c.uid=? AND i.project_id=?`, p.ReplyToUID, issue.ProjectID).Scan(&targetIssueID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return 0, db.Event{}, fmt.Errorf("lookup reply target issue: %w", err)
+		}
+		if err == nil && targetIssueID != issue.ID {
+			relatedID = &targetIssueID
+		}
+	}
 	evt, err := d.insertEventTx(ctx, tx, eventInsert{
-		ProjectID:   issue.ProjectID,
-		ProjectName: projectName,
-		IssueID:     &issue.ID,
-		Type:        "issue.commented",
-		Actor:       p.Author,
-		Payload:     string(payloadBytes),
+		ProjectID:      issue.ProjectID,
+		ProjectName:    projectName,
+		IssueID:        &issue.ID,
+		RelatedIssueID: relatedID,
+		Type:           "issue.commented",
+		Actor:          p.Author,
+		Payload:        string(payloadBytes),
 	})
 	if err != nil {
 		return 0, db.Event{}, err
@@ -1408,7 +1429,7 @@ func (d *Store) editComment(ctx context.Context, p db.EditCommentParams) (db.Com
 
 	editedAt := nowTimestamp()
 	if _, err := tx.ExecContext(ctx,
-		`UPDATE comments SET body = ? WHERE id = ?`, p.Body, comment.ID); err != nil {
+		`UPDATE comments SET body = ?, edited_at = ? WHERE id = ?`, p.Body, editedAt, comment.ID); err != nil {
 		return db.Comment{}, nil, false, fmt.Errorf("update comment: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx,
@@ -1480,14 +1501,19 @@ func (d *Store) CommentsByIssue(ctx context.Context, issueID int64) ([]db.Commen
 
 func scanComment(row rowScanner) (db.Comment, error) {
 	var comment db.Comment
-	var teammate sql.NullString
+	var teammate, replyTo, replyKind sql.NullString
+	var editedAt sql.NullTime
 	if err := row.Scan(
 		&comment.ID, &comment.UID, &comment.IssueID, &comment.Author, &comment.Body,
-		&comment.CreatedAt, &teammate, &comment.AttributionView,
+		&comment.CreatedAt, &teammate, &replyTo, &replyKind, &editedAt, &comment.AttributionView,
 	); err != nil {
 		return db.Comment{}, err
 	}
 	comment.Teammate = teammate.String
+	comment.ReplyToUID, comment.ReplyKind = replyTo.String, replyKind.String
+	if editedAt.Valid {
+		comment.EditedAt = &editedAt.Time
+	}
 	comment.SourceFallback(comment.Author, comment.Teammate)
 	return comment, nil
 }

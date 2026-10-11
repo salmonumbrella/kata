@@ -61,10 +61,10 @@ var (
 )
 
 var kindOrder = map[Kind]int{
-	KindEmbeddingArtifact: 34,
-	KindRelayOutbox:       31, KindRelayInbox: 32, KindRelayCursors: 33,
-	KindTeam: 25, KindTeamMembership: 26, KindProjectAccessPolicy: 27,
-	KindRootKey: 28, KindEventProvenance: 29, KindEntityProvenance: 30,
+	KindEmbeddingArtifact: 37,
+	KindRelayOutbox:       34, KindRelayInbox: 35, KindRelayCursors: 36,
+	KindTeam: 28, KindTeamMembership: 29, KindProjectAccessPolicy: 30,
+	KindRootKey: 31, KindEventProvenance: 32, KindEntityProvenance: 33,
 	KindMeta:                 0,
 	KindProject:              1,
 	KindProjectAlias:         2,

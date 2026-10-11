@@ -124,7 +124,7 @@ The migration locks the schema and stamps version 32 in the same transaction.
 Refresh runtime grants for the four new tables using the grants procedure in
 [PostgreSQL operations](../operations/postgres.md), then start the matching
 binary. Validation-only runtime credentials cannot perform this upgrade. Schema
-30 binaries cannot reopen schema 31; rollback requires a pre-upgrade backup and
+31 binaries cannot reopen schema 32; rollback requires a pre-upgrade backup and
 the matching older binary. Whole-database backups retain policies and team
 memberships; project exports exclude these hub-local administrative objects.
 
@@ -157,8 +157,8 @@ Stop the daemon and run `kata storage postgres migrate` as the schema owner.
 Refresh runtime grants for the three new tables using the procedure in
 [PostgreSQL operations](../operations/postgres.md), then start the matching
 binary. The migration and version stamp commit under the existing schema
-advisory lock. Validation-only credentials cannot migrate. Schema 32 binaries
-cannot reopen schema 33; rollback requires a pre-upgrade backup and the matching
+advisory lock. Validation-only credentials cannot migrate. Schema 33 binaries
+cannot reopen schema 34; rollback requires a pre-upgrade backup and the matching
 older binary.
 
 ## Schema 35: portable embedding artifacts
@@ -176,3 +176,24 @@ Refresh runtime grants for the new table, then start the matching binary. The
 migration and version stamp commit under the existing schema advisory lock.
 Validation-only credentials cannot migrate. Schema 34 binaries cannot reopen
 schema 35; rollback requires a pre-upgrade backup and the matching older binary.
+## Schema 36: comment replies and edit times
+
+The 35→36 migration adds nullable `reply_to_uid`, `reply_kind`, and `edited_at`
+columns to `comments`. Existing comments keep their identities and receive
+NULL in all three columns. The migration adds no constraints or indexes. Kata
+validates reply fields before it writes them: the fields are paired, the target
+is a 26-character comment UID, and the kind is `reply`, `confirm`, `refute`, or
+`supersede`. `reply` is a general response; `confirm` asserts verification or
+reproduction. There is no target foreign key, so a reply can arrive before its
+target and survive target purge.
+
+Upgrade federated hubs before spokes. A schema-35 hub refuses a push that
+contains a reply as schema skew; the spoke keeps it pending, without
+quarantine, and pushes it again after the hub upgrades.
+A spoke that still runs a schema-35 binary stores pulled replies but shows
+them as plain comments. Stop the daemon and run `kata storage postgres migrate`
+with schema-owner credentials before starting the matching binary. Adding the
+columns takes a brief exclusive lock on `comments`. Existing table grants cover
+the new columns. Validation-only runtime credentials cannot migrate. Schema-31
+binaries cannot reopen schema 36; rollback requires the pre-upgrade backup and
+its matching older binary.

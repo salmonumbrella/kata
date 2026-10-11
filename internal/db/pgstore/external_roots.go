@@ -1045,8 +1045,8 @@ func (d *Store) UpsertExternalCommentProjection(
 				return comment, nil, false, nil
 			}
 			mutationAt := nowStoredTimestamp()
-			comment, err = scanComment(tx.QueryRowContext(ctx, `UPDATE comments SET body=$1 WHERE id=$2
- RETURNING `+commentColumns, desiredBody, comment.ID))
+			comment, err = scanComment(tx.QueryRowContext(ctx, `UPDATE comments SET body=$1, edited_at=$2 WHERE id=$3
+ RETURNING `+commentColumns, desiredBody, mutationAt, comment.ID))
 			if err != nil {
 				return db.Comment{}, nil, false, err
 			}

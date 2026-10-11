@@ -673,8 +673,11 @@ type Comment struct {
 	AuthorityUID     *string              `json:"authority_uid,omitempty"`
 	Body             string               `json:"body" validate:"required"`
 	CreatedAt        time.Time            `json:"created_at" validate:"required"`
+	EditedAt         *time.Time           `json:"edited_at,omitempty"`
 	ID               int64                `json:"id"`
 	IssueID          int64                `json:"issue_id"`
+	ReplyKind        *string              `json:"reply_kind,omitempty"`
+	ReplyToUID       *string              `json:"reply_to_uid,omitempty"`
 	SourceActor      *string              `json:"source_actor,omitempty"`
 	Teammate         *string              `json:"teammate,omitempty"`
 	UID              string               `json:"uid" validate:"required"`
