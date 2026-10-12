@@ -126,6 +126,8 @@ type CreateLinkBody = CreateLinkRequestBody
 
 type PatchIssueMetadataBody = PatchIssueMetadataRequestBody
 
+type NotifyIssueBody = NotifyIssueRequestBody
+
 type MergeProjectBody = MergeProjectRequestBody
 
 type PatchProjectMetadataBody = PatchProjectMetadataRequestBody

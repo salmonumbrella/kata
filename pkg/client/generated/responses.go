@@ -447,6 +447,10 @@ type PatchIssueMetadataResponse = PatchIssueMetadataResponseBody
 
 type PatchIssueMetadataErrorResponse = ErrorEnvelope
 
+type NotifyIssueResponse = NotifyIssueResponseBody
+
+type NotifyIssueErrorResponse = ErrorEnvelope
+
 type IssuePlanningDatesResponse = IssuePlanningDates
 
 type IssuePlanningDatesErrorResponse = ErrorEnvelope
@@ -1461,6 +1465,18 @@ type PatchIssueMetadataResp struct {
 	StatusCode   int
 	JSON200      *PatchIssueMetadataResponse
 	Headers200   *PatchIssueMetadataResp200Headers
+}
+
+type NotifyIssueResp200Headers struct {
+	XKataProjectName string `header:"X-Kata-Project-Name"`
+}
+
+type NotifyIssueResp struct {
+	HTTPResponse *http.Response
+	Body         []byte
+	StatusCode   int
+	JSON200      *NotifyIssueResponse
+	Headers200   *NotifyIssueResp200Headers
 }
 
 type IssuePlanningDatesResp struct {

@@ -13,11 +13,10 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	kataclient "go.kenn.io/kata/pkg/client"
-	"go.kenn.io/kata/pkg/client/generated"
-
 	"go.kenn.io/kata/internal/config"
 	"go.kenn.io/kata/internal/textsafe"
+	kataclient "go.kenn.io/kata/pkg/client"
+	"go.kenn.io/kata/pkg/client/generated"
 	"go.kenn.io/kit/atomicfile"
 	"go.kenn.io/kit/fslink"
 )

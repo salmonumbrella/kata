@@ -85,6 +85,7 @@ var storageScenarios = []scenario{
 		RunParentReplacementMissingExpectedLink(t, store)
 		return nil
 	}},
+	{name: "comment notifications", methods: []string{"CreateComment", "PatchIssueMetadata"}, run: checkCommentNotifications},
 	{name: "comment graph deleted source", methods: []string{"CreateComment", "CreateIssue", "CreateProject", "IssueByID", "MoveIssueProject", "ReadCommentGraph", "SoftDeleteIssue"}, run: checkCommentGraphDeletedSource},
 	{name: "comment graph purge evidence order", methods: []string{"CreateComment", "CreateIssue", "CreateProject", "ImportReplay", "IssueByID", "IssueByUID", "MoveIssueProject", "ProjectByUID", "PurgeIssue", "ReadCommentGraph"}, run: checkCommentGraphPurgeEvidenceOrder},
 	{name: "comment graph purge evidence from hidden source", methods: []string{"CreateComment", "ImportReplay", "IssueByUID", "PurgeIssue", "ReadCommentGraph", "SoftDeleteIssue"}, run: checkCommentGraphPurgeEvidenceFromHiddenSource},
