@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"go.kenn.io/kata/internal/db"
+	"go.kenn.io/kata/internal/db/sqlitelock"
 	"go.kenn.io/kata/internal/db/sqlitestore"
 	"go.kenn.io/kata/internal/jsonl"
 )
@@ -26,6 +27,11 @@ func installPreparedSQLiteImport(ctx context.Context, preparedPath, target strin
 	} else if err != nil {
 		return fmt.Errorf("stat replacement target: %w", err)
 	}
+	lock, err := sqlitelock.Acquire(target)
+	if err != nil {
+		return err
+	}
+	defer lock.Release()
 	version, err := sqlitestore.PeekSchemaVersion(ctx, target)
 	if err != nil {
 		return fmt.Errorf("inspect replacement target: %w", err)

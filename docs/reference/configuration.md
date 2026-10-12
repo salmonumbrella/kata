@@ -104,6 +104,7 @@ string; on a keyed retry use `original_event.payload`. Both contain the same
 | `KATA_HOME` | Data directory. Defaults to `~/.kata`. |
 | `KATA_DSN` | Explicit database DSN. Accepts a bare SQLite path, `sqlite://...`, `postgres://...`, or `postgresql://...`. |
 | `KATA_DB` | Legacy explicit SQLite database path. Used when `KATA_DSN` is unset. |
+| `KATA_ALLOW_DEV_MIGRATION` | Set to `1` to consent to a development CLI daemon upgrading existing SQLite state. Library callers do not read this setting. See [daemon commands](cli.md#daemon-and-diagnostics). |
 | `KATA_POSTGRES_SCHEMA` | Dedicated Postgres schema. Defaults to `kata`. |
 | `KATA_POSTGRES_SCHEMA_MODE` | Postgres startup policy: `bootstrap` or `validate`. Defaults to `bootstrap`. |
 | `KATA_POSTGRES_SCHEMA_OWNER` | Trusted owner role for the selected schema. Required in `validate` mode. |

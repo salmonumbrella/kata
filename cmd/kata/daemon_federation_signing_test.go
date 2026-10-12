@@ -54,7 +54,7 @@ enabled = true
 			defer cancel()
 			done := make(chan error, 1)
 			exited := make(chan struct{})
-			go func() { defer close(exited); done <- runDaemonWithListen(ctx, "", false, false) }()
+			go func() { defer close(exited); done <- runDaemonWithListen(ctx, "", false, false, false) }()
 			t.Cleanup(func() {
 				cancel()
 				select {
