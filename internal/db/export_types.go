@@ -23,28 +23,36 @@ func (*MetaKV) ImportKind() string { return ImportKindMeta }
 
 // IssueExport is one issue row in export shape (recurrence_uid resolved via join).
 type IssueExport struct {
-	ID                  int64          `json:"id"`
-	UID                 string         `json:"uid"`
-	ProjectID           int64          `json:"project_id"`
-	ShortID             string         `json:"short_id"`
-	Title               string         `json:"title"`
-	Body                string         `json:"body"`
-	Status              string         `json:"status"`
-	ClosedReason        *string        `json:"closed_reason"`
-	Owner               *string        `json:"owner"`
-	AssignmentExpiresOn *string        `json:"assignment_expires_on,omitempty"`
-	Priority            *int64         `json:"priority,omitzero"`
-	Author              string         `json:"author"`
-	CreatedAt           string         `json:"created_at"`
-	UpdatedAt           string         `json:"updated_at"`
-	ClosedAt            *string        `json:"closed_at"`
-	DeletedAt           *string        `json:"deleted_at"`
-	Metadata            jsontext.Value `json:"metadata"`
-	Revision            int64          `json:"revision"`
-	ContentRevision     int64          `json:"content_revision"`
-	RecurrenceID        *int64         `json:"recurrence_id,omitzero"`
-	RecurrenceUID       *string        `json:"recurrence_uid,omitempty"`
-	OccurrenceKey       *string        `json:"occurrence_key,omitempty"`
+	RecurrenceAuthorityUID *string        `json:"recurrence_authority_uid,omitempty"`
+	RecurrenceProjectUID   *string        `json:"recurrence_project_uid,omitempty"`
+	OwnerAuthorityUID      *string        `json:"owner_authority_uid,omitempty"`
+	LocationGeneration     int64          `json:"location_generation,omitzero"`
+	MovedToAuthorityUID    *string        `json:"moved_to_authority_uid,omitempty"`
+	MovedToProjectUID      *string        `json:"moved_to_project_uid,omitempty"`
+	MovedToShortID         *string        `json:"moved_to_short_id,omitempty"`
+	MovedEventUID          *string        `json:"moved_event_uid,omitempty"`
+	ID                     int64          `json:"id"`
+	UID                    string         `json:"uid"`
+	ProjectID              int64          `json:"project_id"`
+	ShortID                string         `json:"short_id"`
+	Title                  string         `json:"title"`
+	Body                   string         `json:"body"`
+	Status                 string         `json:"status"`
+	ClosedReason           *string        `json:"closed_reason"`
+	Owner                  *string        `json:"owner"`
+	AssignmentExpiresOn    *string        `json:"assignment_expires_on,omitempty"`
+	Priority               *int64         `json:"priority,omitzero"`
+	Author                 string         `json:"author"`
+	CreatedAt              string         `json:"created_at"`
+	UpdatedAt              string         `json:"updated_at"`
+	ClosedAt               *string        `json:"closed_at"`
+	DeletedAt              *string        `json:"deleted_at"`
+	Metadata               jsontext.Value `json:"metadata"`
+	Revision               int64          `json:"revision"`
+	ContentRevision        int64          `json:"content_revision"`
+	RecurrenceID           *int64         `json:"recurrence_id,omitzero"`
+	RecurrenceUID          *string        `json:"recurrence_uid,omitempty"`
+	OccurrenceKey          *string        `json:"occurrence_key,omitempty"`
 }
 
 // ImportKind reports the NDJSON kind this payload replays as.
@@ -68,6 +76,10 @@ func (*IssueEmbeddingExport) ImportKind() string { return ImportKindIssueEmbeddi
 
 // RecurrenceExport is one recurrence row in export shape.
 type RecurrenceExport struct {
+	LocationGeneration  int64          `json:"location_generation,omitzero"`
+	MovedToAuthorityUID *string        `json:"moved_to_authority_uid,omitempty"`
+	MovedToProjectUID   *string        `json:"moved_to_project_uid,omitempty"`
+	MovedEventUID       *string        `json:"moved_event_uid,omitempty"`
 	ID                  int64          `json:"id"`
 	UID                 string         `json:"uid"`
 	ProjectID           int64          `json:"project_id"`
@@ -96,14 +108,21 @@ func (*RecurrenceExport) ImportKind() string { return ImportKindRecurrence }
 // via the standard FROM links JOIN issues AS from_issues JOIN issues AS
 // to_issues query.
 type LinkExport struct {
-	ID           int64  `json:"id"`
-	FromIssueID  int64  `json:"from_issue_id"`
-	FromIssueUID string `json:"from_issue_uid"`
-	ToIssueID    int64  `json:"to_issue_id"`
-	ToIssueUID   string `json:"to_issue_uid"`
-	Type         string `json:"type"`
-	Author       string `json:"author"`
-	CreatedAt    string `json:"created_at"`
+	FromAuthorityUID *string `json:"from_authority_uid,omitempty"`
+	FromProjectUID   *string `json:"from_project_uid,omitempty"`
+	ToAuthorityUID   *string `json:"to_authority_uid,omitempty"`
+	ToProjectUID     *string `json:"to_project_uid,omitempty"`
+	FromCommentUID   *string `json:"from_comment_uid,omitempty"`
+	ToCommentUID     *string `json:"to_comment_uid,omitempty"`
+	ReplyKind        *string `json:"reply_kind,omitempty"`
+	ID               int64   `json:"id"`
+	FromIssueID      int64   `json:"from_issue_id"`
+	FromIssueUID     string  `json:"from_issue_uid"`
+	ToIssueID        int64   `json:"to_issue_id"`
+	ToIssueUID       string  `json:"to_issue_uid"`
+	Type             string  `json:"type"`
+	Author           string  `json:"author"`
+	CreatedAt        string  `json:"created_at"`
 }
 
 // ImportKind reports the NDJSON kind this payload replays as.
@@ -111,11 +130,13 @@ func (*LinkExport) ImportKind() string { return ImportKindLink }
 
 // AliasExport is one project_aliases row in export shape.
 type AliasExport struct {
-	ID            int64  `json:"id"`
-	ProjectID     int64  `json:"project_id"`
-	AliasIdentity string `json:"alias_identity"`
-	AliasKind     string `json:"alias_kind"`
-	CreatedAt     string `json:"created_at"`
+	AuthorityUID  *string `json:"authority_uid,omitempty"`
+	ProjectUID    *string `json:"project_uid,omitempty"`
+	ID            int64   `json:"id"`
+	ProjectID     int64   `json:"project_id"`
+	AliasIdentity string  `json:"alias_identity"`
+	AliasKind     string  `json:"alias_kind"`
+	CreatedAt     string  `json:"created_at"`
 }
 
 // ImportKind reports the NDJSON kind this payload replays as.
@@ -188,21 +209,24 @@ func (*IssueLabelExport) ImportKind() string { return ImportKindIssueLabel }
 
 // ImportMappingExport is one import_mappings row in export shape.
 type ImportMappingExport struct {
-	ID               int64   `json:"id"`
-	Source           string  `json:"source"`
-	ExternalID       string  `json:"external_id"`
-	ObjectType       string  `json:"object_type"`
-	ProjectID        int64   `json:"project_id"`
-	IssueID          *int64  `json:"issue_id,omitempty"`
-	CommentID        *int64  `json:"comment_id,omitempty"`
-	LinkID           *int64  `json:"link_id,omitempty"`
-	Label            *string `json:"label,omitempty"`
-	SourceUpdatedAt  *string `json:"source_updated_at,omitempty"`
-	ImportedAt       string  `json:"imported_at"`
-	ObservedStatus   *string `json:"observed_status,omitempty"`
-	ObservedStatusAt *string `json:"observed_status_at,omitempty"`
-	PendingEventUID  *string `json:"pending_event_uid,omitempty"`
-	RemoteLocator    *string `json:"remote_locator,omitempty"`
+	MovedIssueUID       *string `json:"moved_issue_uid,omitempty"`
+	MovedToAuthorityUID *string `json:"moved_to_authority_uid,omitempty"`
+	MovedToProjectUID   *string `json:"moved_to_project_uid,omitempty"`
+	ID                  int64   `json:"id"`
+	Source              string  `json:"source"`
+	ExternalID          string  `json:"external_id"`
+	ObjectType          string  `json:"object_type"`
+	ProjectID           int64   `json:"project_id"`
+	IssueID             *int64  `json:"issue_id,omitempty"`
+	CommentID           *int64  `json:"comment_id,omitempty"`
+	LinkID              *int64  `json:"link_id,omitempty"`
+	Label               *string `json:"label,omitempty"`
+	SourceUpdatedAt     *string `json:"source_updated_at,omitempty"`
+	ImportedAt          string  `json:"imported_at"`
+	ObservedStatus      *string `json:"observed_status,omitempty"`
+	ObservedStatusAt    *string `json:"observed_status_at,omitempty"`
+	PendingEventUID     *string `json:"pending_event_uid,omitempty"`
+	RemoteLocator       *string `json:"remote_locator,omitempty"`
 }
 
 // ImportKind reports the NDJSON kind this payload replays as.
@@ -427,6 +451,8 @@ func (*SequenceExport) ImportKind() string { return ImportKindSQLiteSequence }
 // PurgeLogExport is one purge_log row in export shape. project_name is the
 // denormalized purge_log.project_name column at v10+ (no join).
 type PurgeLogExport struct {
+	RecurrenceUID          *string `json:"recurrence_uid,omitempty"`
+	OccurrenceKey          *string `json:"occurrence_key,omitempty"`
 	ID                     int64   `json:"id"`
 	UID                    string  `json:"uid"`
 	OriginInstanceUID      string  `json:"origin_instance_uid"`
@@ -487,6 +513,8 @@ func (*ProjectPurgeLogExport) ImportKind() string { return ImportKindProjectPurg
 // peer issue lives in an omitted project, or on live-only export when an
 // issue.links_changed peer is soft-deleted.
 type EventExport struct {
+	SourceProjectUID  *string        `json:"source_project_uid,omitempty"`
+	SourceEventBytes  []byte         `json:"source_event_bytes,omitempty"`
 	ID                int64          `json:"id"`
 	UID               string         `json:"uid"`
 	OriginInstanceUID string         `json:"origin_instance_uid"`

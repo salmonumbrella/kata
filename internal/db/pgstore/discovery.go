@@ -30,7 +30,7 @@ func (s *Store) ReadyIssues(
 	query.WriteString(scheduledIssueSelect + `
  WHERE i.project_id = $1
    AND i.status = 'open'
-   AND i.deleted_at IS NULL
+   AND i.moved_to_authority_uid IS NULL AND i.deleted_at IS NULL
    AND NOT EXISTS (
      SELECT 1
        FROM links l
@@ -39,7 +39,7 @@ func (s *Store) ReadyIssues(
       WHERE l.type = 'blocks'
         AND l.to_issue_id = i.id
         AND blocker.status = 'open'
-        AND blocker.deleted_at IS NULL
+        AND blocker.moved_to_authority_uid IS NULL AND blocker.deleted_at IS NULL
         AND blocker_project.deleted_at IS NULL
    )`)
 	args := []any{projectID}
@@ -117,7 +117,7 @@ func (s *Store) ReadyIssuesGlobal(ctx context.Context, limit int, filter db.Read
   JOIN projects p ON p.id = i.project_id
 	LEFT JOIN recurrences schedule_recurrence ON schedule_recurrence.id = i.recurrence_id
  WHERE i.status = 'open'
-   AND i.deleted_at IS NULL
+   AND i.moved_to_authority_uid IS NULL AND i.deleted_at IS NULL
    AND p.deleted_at IS NULL
    AND NOT EXISTS (
      SELECT 1
@@ -127,7 +127,7 @@ func (s *Store) ReadyIssuesGlobal(ctx context.Context, limit int, filter db.Read
       WHERE l.type = 'blocks'
         AND l.to_issue_id = i.id
         AND blocker.status = 'open'
-        AND blocker.deleted_at IS NULL
+        AND blocker.moved_to_authority_uid IS NULL AND blocker.deleted_at IS NULL
         AND blocker_project.deleted_at IS NULL
    )`)
 	args := []any{}
@@ -249,7 +249,7 @@ func (s *Store) ListIssueContent(ctx context.Context, afterID int64, limit int) 
 	rows, err := s.QueryContext(ctx, `SELECT i.id, i.uid, p.uid, i.title, i.body, i.content_revision
   FROM issues i
   JOIN projects p ON p.id = i.project_id
- WHERE i.deleted_at IS NULL
+ WHERE i.moved_to_authority_uid IS NULL AND i.deleted_at IS NULL
    AND p.deleted_at IS NULL
    AND i.id > $1
  ORDER BY i.id ASC

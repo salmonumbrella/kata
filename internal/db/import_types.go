@@ -228,6 +228,10 @@ type ImportMapping struct {
 	Label           *string    `json:"label,omitempty"`
 	SourceUpdatedAt *time.Time `json:"source_updated_at,omitempty"`
 	ImportedAt      time.Time  `json:"imported_at"`
+	// Moved coordinates retain source suppression independently of body lifetime.
+	MovedIssueUID       *string `json:"moved_issue_uid,omitempty"`
+	MovedToAuthorityUID *string `json:"moved_to_authority_uid,omitempty"`
+	MovedToProjectUID   *string `json:"moved_to_project_uid,omitempty"`
 }
 
 // ImportMappingParams carries values for inserting or updating a source

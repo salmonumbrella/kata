@@ -172,6 +172,108 @@ components:
       required:
         - owner
       type: object
+    AttributionReceipt:
+      additionalProperties: false
+      properties:
+        accepted_at:
+          format: date-time
+          type: string
+        accountable_actor:
+          type: string
+        authority_uid:
+          type: string
+        content_hash:
+          type: string
+        event_uid:
+          type: string
+        ingress_instance_uid:
+          type: string
+        key_id:
+          type: string
+        project_uid:
+          type: string
+        reset_epoch:
+          format: int64
+          type: integer
+        sequence:
+          format: int64
+          type: integer
+        signature:
+          contentEncoding: base64
+          type: string
+        source_actor:
+          type: string
+        teammate:
+          type: string
+        version:
+          format: int64
+          type: integer
+      required:
+        - version
+        - project_uid
+        - event_uid
+        - content_hash
+        - authority_uid
+        - accountable_actor
+        - source_actor
+        - teammate
+        - ingress_instance_uid
+        - accepted_at
+        - reset_epoch
+        - sequence
+        - key_id
+      type: object
+    AttributionReceiptResponse:
+      additionalProperties: true
+      properties:
+        accepted_at:
+          format: date-time
+          type: string
+        accountable_actor:
+          type: string
+        authority_uid:
+          type: string
+        content_hash:
+          type: string
+        event_uid:
+          type: string
+        ingress_instance_uid:
+          type: string
+        key_id:
+          type: string
+        project_uid:
+          type: string
+        reset_epoch:
+          format: int64
+          type: integer
+        sequence:
+          format: int64
+          type: integer
+        signature:
+          contentEncoding: base64
+          type: string
+        source_actor:
+          type: string
+        teammate:
+          type: string
+        version:
+          format: int64
+          type: integer
+      required:
+        - version
+        - project_uid
+        - event_uid
+        - content_hash
+        - authority_uid
+        - accountable_actor
+        - source_actor
+        - teammate
+        - ingress_instance_uid
+        - accepted_at
+        - reset_epoch
+        - sequence
+        - key_id
+      type: object
     AuditCloseRow:
       additionalProperties: true
       properties:
@@ -545,6 +647,72 @@ components:
             - verified
             - pending
             - legacy
+          type: string
+      required:
+        - id
+        - uid
+        - issue_id
+        - author
+        - body
+        - created_at
+      type: object
+    CommentExport:
+      additionalProperties: false
+      properties:
+        author:
+          type: string
+        body:
+          type: string
+        created_at:
+          type: string
+        edited_at:
+          type: string
+        id:
+          format: int64
+          type: integer
+        issue_id:
+          format: int64
+          type: integer
+        reply_kind:
+          type: string
+        reply_to_uid:
+          type: string
+        teammate:
+          type: string
+        uid:
+          type: string
+      required:
+        - id
+        - uid
+        - issue_id
+        - author
+        - body
+        - created_at
+      type: object
+    CommentExportResponse:
+      additionalProperties: true
+      properties:
+        author:
+          type: string
+        body:
+          type: string
+        created_at:
+          type: string
+        edited_at:
+          type: string
+        id:
+          format: int64
+          type: integer
+        issue_id:
+          format: int64
+          type: integer
+        reply_kind:
+          type: string
+        reply_to_uid:
+          type: string
+        teammate:
+          type: string
+        uid:
           type: string
       required:
         - id
@@ -1910,6 +2078,40 @@ components:
         actor:
           type: string
       type: object
+    EntityProvenance:
+      additionalProperties: false
+      properties:
+        entity_uid:
+          type: string
+        event_uid:
+          type: string
+        kind:
+          type: string
+        project_uid:
+          type: string
+      required:
+        - project_uid
+        - kind
+        - entity_uid
+        - event_uid
+      type: object
+    EntityProvenanceResponse:
+      additionalProperties: true
+      properties:
+        entity_uid:
+          type: string
+        event_uid:
+          type: string
+        kind:
+          type: string
+        project_uid:
+          type: string
+      required:
+        - project_uid
+        - kind
+        - entity_uid
+        - event_uid
+      type: object
     ErrorBody:
       additionalProperties: true
       properties:
@@ -2062,6 +2264,148 @@ components:
         - content_hash
         - created_at
       type: object
+    EventExport:
+      additionalProperties: false
+      properties:
+        actor:
+          type: string
+        content_hash:
+          type: string
+        created_at:
+          type: string
+        hlc_counter:
+          format: int64
+          type: integer
+        hlc_physical_ms:
+          format: int64
+          type: integer
+        id:
+          format: int64
+          type: integer
+        issue_id:
+          format: int64
+          type:
+            - integer
+            - "null"
+        issue_uid:
+          type:
+            - string
+            - "null"
+        origin_instance_uid:
+          type: string
+        payload: {}
+        project_id:
+          format: int64
+          type: integer
+        project_name:
+          type: string
+        related_issue_id:
+          format: int64
+          type:
+            - integer
+            - "null"
+        related_issue_uid:
+          type:
+            - string
+            - "null"
+        source_event_bytes:
+          contentEncoding: base64
+          type: string
+        source_project_uid:
+          type: string
+        type:
+          type: string
+        uid:
+          type: string
+      required:
+        - id
+        - uid
+        - origin_instance_uid
+        - project_id
+        - project_name
+        - issue_id
+        - issue_uid
+        - related_issue_id
+        - related_issue_uid
+        - type
+        - actor
+        - payload
+        - hlc_physical_ms
+        - hlc_counter
+        - content_hash
+        - created_at
+      type: object
+    EventExportResponse:
+      additionalProperties: true
+      properties:
+        actor:
+          type: string
+        content_hash:
+          type: string
+        created_at:
+          type: string
+        hlc_counter:
+          format: int64
+          type: integer
+        hlc_physical_ms:
+          format: int64
+          type: integer
+        id:
+          format: int64
+          type: integer
+        issue_id:
+          format: int64
+          type:
+            - integer
+            - "null"
+        issue_uid:
+          type:
+            - string
+            - "null"
+        origin_instance_uid:
+          type: string
+        payload: {}
+        project_id:
+          format: int64
+          type: integer
+        project_name:
+          type: string
+        related_issue_id:
+          format: int64
+          type:
+            - integer
+            - "null"
+        related_issue_uid:
+          type:
+            - string
+            - "null"
+        source_event_bytes:
+          contentEncoding: base64
+          type: string
+        source_project_uid:
+          type: string
+        type:
+          type: string
+        uid:
+          type: string
+      required:
+        - id
+        - uid
+        - origin_instance_uid
+        - project_id
+        - project_name
+        - issue_id
+        - issue_uid
+        - related_issue_id
+        - related_issue_uid
+        - type
+        - actor
+        - payload
+        - hlc_physical_ms
+        - hlc_counter
+        - content_hash
+        - created_at
+      type: object
     Evidence:
       additionalProperties: false
       properties:
@@ -2113,6 +2457,90 @@ components:
       required:
         - kata_field
       type: object
+    ExternalFieldMappingExport:
+      additionalProperties: false
+      properties:
+        accepted_kinds:
+          items:
+            type: string
+          type: array
+        active:
+          type: boolean
+        connector_instance:
+          type: string
+        created_at:
+          format: date-time
+          type: string
+        external_field_id:
+          type: string
+        external_field_name:
+          type: string
+        kata_field:
+          type: string
+        nullable:
+          type: boolean
+        schema_revision:
+          type: string
+        updated_at:
+          format: date-time
+          type: string
+        writable:
+          type: boolean
+      required:
+        - connector_instance
+        - kata_field
+        - external_field_id
+        - external_field_name
+        - accepted_kinds
+        - nullable
+        - writable
+        - schema_revision
+        - active
+        - created_at
+        - updated_at
+      type: object
+    ExternalFieldMappingExportResponse:
+      additionalProperties: true
+      properties:
+        accepted_kinds:
+          items:
+            type: string
+          type: array
+        active:
+          type: boolean
+        connector_instance:
+          type: string
+        created_at:
+          format: date-time
+          type: string
+        external_field_id:
+          type: string
+        external_field_name:
+          type: string
+        kata_field:
+          type: string
+        nullable:
+          type: boolean
+        schema_revision:
+          type: string
+        updated_at:
+          format: date-time
+          type: string
+        writable:
+          type: boolean
+      required:
+        - connector_instance
+        - kata_field
+        - external_field_id
+        - external_field_name
+        - accepted_kinds
+        - nullable
+        - writable
+        - schema_revision
+        - active
+        - created_at
+        - updated_at
+      type: object
     ExternalFieldMappingOut:
       additionalProperties: true
       properties:
@@ -2144,6 +2572,80 @@ components:
         - schema_revision
         - active
       type: object
+    ExternalFieldStateExport:
+      additionalProperties: false
+      properties:
+        baseline: {}
+        binding_uid:
+          type: string
+        conflict_at:
+          format: date-time
+          type: string
+        conflict_external: {}
+        conflict_kata: {}
+        conflicted:
+          type: boolean
+        mapping_connector_instance:
+          type: string
+        mapping_created_at:
+          format: date-time
+          type: string
+        mapping_external_field_id:
+          type: string
+        mapping_kata_field:
+          type: string
+        mapping_schema_revision:
+          type: string
+        updated_at:
+          format: date-time
+          type: string
+      required:
+        - binding_uid
+        - mapping_connector_instance
+        - mapping_kata_field
+        - mapping_external_field_id
+        - mapping_schema_revision
+        - mapping_created_at
+        - conflicted
+        - updated_at
+      type: object
+    ExternalFieldStateExportResponse:
+      additionalProperties: true
+      properties:
+        baseline: {}
+        binding_uid:
+          type: string
+        conflict_at:
+          format: date-time
+          type: string
+        conflict_external: {}
+        conflict_kata: {}
+        conflicted:
+          type: boolean
+        mapping_connector_instance:
+          type: string
+        mapping_created_at:
+          format: date-time
+          type: string
+        mapping_external_field_id:
+          type: string
+        mapping_kata_field:
+          type: string
+        mapping_schema_revision:
+          type: string
+        updated_at:
+          format: date-time
+          type: string
+      required:
+        - binding_uid
+        - mapping_connector_instance
+        - mapping_kata_field
+        - mapping_external_field_id
+        - mapping_schema_revision
+        - mapping_created_at
+        - conflicted
+        - updated_at
+      type: object
     ExternalRootActionRequestBody:
       additionalProperties: false
       properties:
@@ -2151,6 +2653,196 @@ components:
           type: string
         reason:
           type: string
+      type: object
+    ExternalRootBindingExport:
+      additionalProperties: false
+      properties:
+        active:
+          type: boolean
+        complete_external:
+          type: boolean
+        connector_instance:
+          type: string
+        consecutive_failures:
+          format: int64
+          type: integer
+        created_at:
+          format: date-time
+          type: string
+        enabled:
+          type: boolean
+        external_account_key:
+          type: string
+        external_root_key:
+          type: string
+        issue_uid:
+          type: string
+        last_attempt_at:
+          format: date-time
+          type: string
+        last_error:
+          type: string
+        last_error_at:
+          format: date-time
+          type: string
+        last_external_revision:
+          type: string
+        last_external_state:
+          type: string
+        last_success_at:
+          format: date-time
+          type: string
+        next_attempt_at:
+          format: date-time
+          type: string
+        paused_reason:
+          type: string
+        pending_comment_started_at:
+          format: date-time
+          type: string
+        pending_comment_uid:
+          type: string
+        project_uid:
+          type: string
+        publish_comments:
+          type: boolean
+        publish_comments_after:
+          format: date-time
+          type: string
+        receive_comments:
+          type: boolean
+        receive_comments_after:
+          format: date-time
+          type: string
+        root_mapping_external_id:
+          type: string
+        root_mapping_source:
+          type: string
+        uid:
+          type: string
+        unbound_at:
+          format: date-time
+          type: string
+        updated_at:
+          format: date-time
+          type: string
+      required:
+        - uid
+        - project_uid
+        - issue_uid
+        - root_mapping_source
+        - root_mapping_external_id
+        - connector_instance
+        - external_root_key
+        - external_account_key
+        - active
+        - enabled
+        - receive_comments
+        - publish_comments
+        - complete_external
+        - paused_reason
+        - last_external_state
+        - last_external_revision
+        - pending_comment_uid
+        - last_error
+        - consecutive_failures
+        - created_at
+        - updated_at
+      type: object
+    ExternalRootBindingExportResponse:
+      additionalProperties: true
+      properties:
+        active:
+          type: boolean
+        complete_external:
+          type: boolean
+        connector_instance:
+          type: string
+        consecutive_failures:
+          format: int64
+          type: integer
+        created_at:
+          format: date-time
+          type: string
+        enabled:
+          type: boolean
+        external_account_key:
+          type: string
+        external_root_key:
+          type: string
+        issue_uid:
+          type: string
+        last_attempt_at:
+          format: date-time
+          type: string
+        last_error:
+          type: string
+        last_error_at:
+          format: date-time
+          type: string
+        last_external_revision:
+          type: string
+        last_external_state:
+          type: string
+        last_success_at:
+          format: date-time
+          type: string
+        next_attempt_at:
+          format: date-time
+          type: string
+        paused_reason:
+          type: string
+        pending_comment_started_at:
+          format: date-time
+          type: string
+        pending_comment_uid:
+          type: string
+        project_uid:
+          type: string
+        publish_comments:
+          type: boolean
+        publish_comments_after:
+          format: date-time
+          type: string
+        receive_comments:
+          type: boolean
+        receive_comments_after:
+          format: date-time
+          type: string
+        root_mapping_external_id:
+          type: string
+        root_mapping_source:
+          type: string
+        uid:
+          type: string
+        unbound_at:
+          format: date-time
+          type: string
+        updated_at:
+          format: date-time
+          type: string
+      required:
+        - uid
+        - project_uid
+        - issue_uid
+        - root_mapping_source
+        - root_mapping_external_id
+        - connector_instance
+        - external_root_key
+        - external_account_key
+        - active
+        - enabled
+        - receive_comments
+        - publish_comments
+        - complete_external
+        - paused_reason
+        - last_external_state
+        - last_external_revision
+        - pending_comment_uid
+        - last_error
+        - consecutive_failures
+        - created_at
+        - updated_at
       type: object
     ExternalRootBridgeOut:
       additionalProperties: true
@@ -3263,6 +3955,110 @@ components:
         - type
         - target_external_id
       type: object
+    ImportMappingExport:
+      additionalProperties: false
+      properties:
+        comment_id:
+          format: int64
+          type: integer
+        external_id:
+          type: string
+        id:
+          format: int64
+          type: integer
+        imported_at:
+          type: string
+        issue_id:
+          format: int64
+          type: integer
+        label:
+          type: string
+        link_id:
+          format: int64
+          type: integer
+        moved_issue_uid:
+          type: string
+        moved_to_authority_uid:
+          type: string
+        moved_to_project_uid:
+          type: string
+        object_type:
+          type: string
+        observed_status:
+          type: string
+        observed_status_at:
+          type: string
+        pending_event_uid:
+          type: string
+        project_id:
+          format: int64
+          type: integer
+        remote_locator:
+          type: string
+        source:
+          type: string
+        source_updated_at:
+          type: string
+      required:
+        - id
+        - source
+        - external_id
+        - object_type
+        - project_id
+        - imported_at
+      type: object
+    ImportMappingExportResponse:
+      additionalProperties: true
+      properties:
+        comment_id:
+          format: int64
+          type: integer
+        external_id:
+          type: string
+        id:
+          format: int64
+          type: integer
+        imported_at:
+          type: string
+        issue_id:
+          format: int64
+          type: integer
+        label:
+          type: string
+        link_id:
+          format: int64
+          type: integer
+        moved_issue_uid:
+          type: string
+        moved_to_authority_uid:
+          type: string
+        moved_to_project_uid:
+          type: string
+        object_type:
+          type: string
+        observed_status:
+          type: string
+        observed_status_at:
+          type: string
+        pending_event_uid:
+          type: string
+        project_id:
+          format: int64
+          type: integer
+        remote_locator:
+          type: string
+        source:
+          type: string
+        source_updated_at:
+          type: string
+      required:
+        - id
+        - source
+        - external_id
+        - object_type
+        - project_id
+        - imported_at
+      type: object
     ImportRequestBody:
       additionalProperties: false
       properties:
@@ -3287,8 +4083,14 @@ components:
         alias:
           $ref: "#/components/schemas/AliasInput"
           description: client-derived alias metadata; only honored when start_path is empty
+        authority_uid:
+          description: expected daemon instance UID for atomic setup; requires project_uid
+          type: string
         name:
           description: project name; required when start_path is empty
+          type: string
+        project_uid:
+          description: stable project UID for atomic setup; requires authority_uid
           type: string
         reassign:
           type: boolean
@@ -3436,6 +4238,114 @@ components:
         - created_at
         - updated_at
       type: object
+    IssueClaimExport:
+      additionalProperties: false
+      properties:
+        acquired_at:
+          type: string
+        claim_kind:
+          type: string
+        claim_uid:
+          type: string
+        client_kind:
+          type: string
+        expires_at:
+          type: string
+        holder:
+          type: string
+        holder_instance_uid:
+          type: string
+        id:
+          format: int64
+          type: integer
+        issue_id:
+          format: int64
+          type: integer
+        issue_uid:
+          type: string
+        project_id:
+          format: int64
+          type: integer
+        purpose:
+          type: string
+        release_reason:
+          type: string
+        released_at:
+          type: string
+        revision:
+          format: int64
+          type: integer
+        updated_at:
+          type: string
+      required:
+        - id
+        - claim_uid
+        - project_id
+        - issue_id
+        - issue_uid
+        - holder
+        - holder_instance_uid
+        - client_kind
+        - purpose
+        - claim_kind
+        - acquired_at
+        - revision
+        - updated_at
+      type: object
+    IssueClaimExportResponse:
+      additionalProperties: true
+      properties:
+        acquired_at:
+          type: string
+        claim_kind:
+          type: string
+        claim_uid:
+          type: string
+        client_kind:
+          type: string
+        expires_at:
+          type: string
+        holder:
+          type: string
+        holder_instance_uid:
+          type: string
+        id:
+          format: int64
+          type: integer
+        issue_id:
+          format: int64
+          type: integer
+        issue_uid:
+          type: string
+        project_id:
+          format: int64
+          type: integer
+        purpose:
+          type: string
+        release_reason:
+          type: string
+        released_at:
+          type: string
+        revision:
+          format: int64
+          type: integer
+        updated_at:
+          type: string
+      required:
+        - id
+        - claim_uid
+        - project_id
+        - issue_id
+        - issue_uid
+        - holder
+        - holder_instance_uid
+        - client_kind
+        - purpose
+        - claim_kind
+        - acquired_at
+        - revision
+        - updated_at
+      type: object
     IssueClaimOut:
       additionalProperties: true
       properties:
@@ -3486,6 +4396,206 @@ components:
         - revision
         - updated_at
       type: object
+    IssueExport:
+      additionalProperties: false
+      properties:
+        assignment_expires_on:
+          type: string
+        author:
+          type: string
+        body:
+          type: string
+        closed_at:
+          type:
+            - string
+            - "null"
+        closed_reason:
+          type:
+            - string
+            - "null"
+        content_revision:
+          format: int64
+          type: integer
+        created_at:
+          type: string
+        deleted_at:
+          type:
+            - string
+            - "null"
+        id:
+          format: int64
+          type: integer
+        location_generation:
+          format: int64
+          type: integer
+        metadata: {}
+        moved_event_uid:
+          type: string
+        moved_to_authority_uid:
+          type: string
+        moved_to_project_uid:
+          type: string
+        moved_to_short_id:
+          type: string
+        occurrence_key:
+          type: string
+        owner:
+          type:
+            - string
+            - "null"
+        owner_authority_uid:
+          type: string
+        priority:
+          format: int64
+          type:
+            - integer
+            - "null"
+        project_id:
+          format: int64
+          type: integer
+        recurrence_authority_uid:
+          type: string
+        recurrence_id:
+          format: int64
+          type:
+            - integer
+            - "null"
+        recurrence_project_uid:
+          type: string
+        recurrence_uid:
+          type: string
+        revision:
+          format: int64
+          type: integer
+        short_id:
+          type: string
+        status:
+          type: string
+        title:
+          type: string
+        uid:
+          type: string
+        updated_at:
+          type: string
+      required:
+        - id
+        - uid
+        - project_id
+        - short_id
+        - title
+        - body
+        - status
+        - closed_reason
+        - owner
+        - author
+        - created_at
+        - updated_at
+        - closed_at
+        - deleted_at
+        - metadata
+        - revision
+        - content_revision
+      type: object
+    IssueExportResponse:
+      additionalProperties: true
+      properties:
+        assignment_expires_on:
+          type: string
+        author:
+          type: string
+        body:
+          type: string
+        closed_at:
+          type:
+            - string
+            - "null"
+        closed_reason:
+          type:
+            - string
+            - "null"
+        content_revision:
+          format: int64
+          type: integer
+        created_at:
+          type: string
+        deleted_at:
+          type:
+            - string
+            - "null"
+        id:
+          format: int64
+          type: integer
+        location_generation:
+          format: int64
+          type: integer
+        metadata: {}
+        moved_event_uid:
+          type: string
+        moved_to_authority_uid:
+          type: string
+        moved_to_project_uid:
+          type: string
+        moved_to_short_id:
+          type: string
+        occurrence_key:
+          type: string
+        owner:
+          type:
+            - string
+            - "null"
+        owner_authority_uid:
+          type: string
+        priority:
+          format: int64
+          type:
+            - integer
+            - "null"
+        project_id:
+          format: int64
+          type: integer
+        recurrence_authority_uid:
+          type: string
+        recurrence_id:
+          format: int64
+          type:
+            - integer
+            - "null"
+        recurrence_project_uid:
+          type: string
+        recurrence_uid:
+          type: string
+        revision:
+          format: int64
+          type: integer
+        short_id:
+          type: string
+        status:
+          type: string
+        title:
+          type: string
+        uid:
+          type: string
+        updated_at:
+          type: string
+      required:
+        - id
+        - uid
+        - project_id
+        - short_id
+        - title
+        - body
+        - status
+        - closed_reason
+        - owner
+        - author
+        - created_at
+        - updated_at
+        - closed_at
+        - deleted_at
+        - metadata
+        - revision
+        - content_revision
+      type: object
     IssueLabel:
       additionalProperties: true
       properties:
@@ -3493,6 +4603,42 @@ components:
           type: string
         created_at:
           format: date-time
+          type: string
+        issue_id:
+          format: int64
+          type: integer
+        label:
+          type: string
+      required:
+        - issue_id
+        - label
+        - author
+        - created_at
+      type: object
+    IssueLabelExport:
+      additionalProperties: false
+      properties:
+        author:
+          type: string
+        created_at:
+          type: string
+        issue_id:
+          format: int64
+          type: integer
+        label:
+          type: string
+      required:
+        - issue_id
+        - label
+        - author
+        - created_at
+      type: object
+    IssueLabelExportResponse:
+      additionalProperties: true
+      properties:
+        author:
+          type: string
+        created_at:
           type: string
         issue_id:
           format: int64
@@ -3923,6 +5069,322 @@ components:
         - last_unchanged
         - last_comments
       type: object
+    IssueTreeMoveRequestBody:
+      additionalProperties: false
+      properties:
+        dry_run:
+          type: boolean
+        request:
+          $ref: "#/components/schemas/MoveTreeRequest"
+      required:
+        - request
+      type: object
+    IssueTreeMoveResponseBody:
+      additionalProperties: true
+      properties:
+        preview:
+          $ref: "#/components/schemas/MoveTreePreviewResponse"
+        result:
+          $ref: "#/components/schemas/MoveTreeResultResponse"
+      type: object
+    IssueTreePortion:
+      additionalProperties: false
+      properties:
+        artifacts:
+          items:
+            $ref: "#/components/schemas/EmbeddingArtifact"
+          type: array
+        authority_uid:
+          type: string
+        claims:
+          items:
+            $ref: "#/components/schemas/IssueClaimExport"
+          type: array
+        comments:
+          items:
+            $ref: "#/components/schemas/CommentExport"
+          type: array
+        creation_proofs:
+          items:
+            $ref: "#/components/schemas/EntityProvenance"
+          type: array
+        events:
+          items:
+            $ref: "#/components/schemas/EventExport"
+          type: array
+        external_bindings:
+          items:
+            $ref: "#/components/schemas/ExternalRootBindingExport"
+          type: array
+        external_mappings:
+          items:
+            $ref: "#/components/schemas/ExternalFieldMappingExport"
+          type: array
+        external_states:
+          items:
+            $ref: "#/components/schemas/ExternalFieldStateExport"
+          type: array
+        issues:
+          items:
+            $ref: "#/components/schemas/IssueExport"
+          type: array
+        labels:
+          items:
+            $ref: "#/components/schemas/IssueLabelExport"
+          type: array
+        links:
+          items:
+            $ref: "#/components/schemas/LinkExport"
+          type: array
+        mappings:
+          items:
+            $ref: "#/components/schemas/ImportMappingExport"
+          type: array
+        members:
+          items:
+            $ref: "#/components/schemas/MoveTreeMember"
+          type: array
+        pending_claims:
+          items:
+            $ref: "#/components/schemas/PendingClaimRequestExport"
+          type: array
+        projects:
+          items:
+            $ref: "#/components/schemas/MoveTreeProject"
+          type: array
+        public_keys:
+          items:
+            $ref: "#/components/schemas/RootKeyPin"
+          type: array
+        receipts:
+          items:
+            $ref: "#/components/schemas/AttributionReceipt"
+          type: array
+        recurrences:
+          items:
+            $ref: "#/components/schemas/RecurrenceExport"
+          type: array
+        source_snapshot_digest:
+          type: string
+        tombstones:
+          items:
+            $ref: "#/components/schemas/PurgeLogExport"
+          type: array
+      required:
+        - authority_uid
+        - projects
+        - members
+        - issues
+        - comments
+        - labels
+        - links
+        - events
+        - recurrences
+        - tombstones
+        - mappings
+        - external_bindings
+        - external_mappings
+        - external_states
+        - claims
+        - pending_claims
+        - creation_proofs
+        - receipts
+        - public_keys
+        - artifacts
+      type: object
+    IssueTreePortionResponse:
+      additionalProperties: true
+      properties:
+        artifacts:
+          items:
+            $ref: "#/components/schemas/EmbeddingArtifactResponse"
+          type: array
+        authority_uid:
+          type: string
+        claims:
+          items:
+            $ref: "#/components/schemas/IssueClaimExportResponse"
+          type: array
+        comments:
+          items:
+            $ref: "#/components/schemas/CommentExportResponse"
+          type: array
+        creation_proofs:
+          items:
+            $ref: "#/components/schemas/EntityProvenanceResponse"
+          type: array
+        events:
+          items:
+            $ref: "#/components/schemas/EventExportResponse"
+          type: array
+        external_bindings:
+          items:
+            $ref: "#/components/schemas/ExternalRootBindingExportResponse"
+          type: array
+        external_mappings:
+          items:
+            $ref: "#/components/schemas/ExternalFieldMappingExportResponse"
+          type: array
+        external_states:
+          items:
+            $ref: "#/components/schemas/ExternalFieldStateExportResponse"
+          type: array
+        issues:
+          items:
+            $ref: "#/components/schemas/IssueExportResponse"
+          type: array
+        labels:
+          items:
+            $ref: "#/components/schemas/IssueLabelExportResponse"
+          type: array
+        links:
+          items:
+            $ref: "#/components/schemas/LinkExportResponse"
+          type: array
+        mappings:
+          items:
+            $ref: "#/components/schemas/ImportMappingExportResponse"
+          type: array
+        members:
+          items:
+            $ref: "#/components/schemas/MoveTreeMemberResponse"
+          type: array
+        pending_claims:
+          items:
+            $ref: "#/components/schemas/PendingClaimRequestExportResponse"
+          type: array
+        projects:
+          items:
+            $ref: "#/components/schemas/MoveTreeProjectResponse"
+          type: array
+        public_keys:
+          items:
+            $ref: "#/components/schemas/RootKeyPinResponse"
+          type: array
+        receipts:
+          items:
+            $ref: "#/components/schemas/AttributionReceiptResponse"
+          type: array
+        recurrences:
+          items:
+            $ref: "#/components/schemas/RecurrenceExportResponse"
+          type: array
+        source_snapshot_digest:
+          type: string
+        tombstones:
+          items:
+            $ref: "#/components/schemas/PurgeLogExportResponse"
+          type: array
+      required:
+        - authority_uid
+        - projects
+        - members
+        - issues
+        - comments
+        - labels
+        - links
+        - events
+        - recurrences
+        - tombstones
+        - mappings
+        - external_bindings
+        - external_mappings
+        - external_states
+        - claims
+        - pending_claims
+        - creation_proofs
+        - receipts
+        - public_keys
+        - artifacts
+      type: object
+    IssueTreeSnapshot:
+      additionalProperties: false
+      properties:
+        digest:
+          type: string
+        portions:
+          items:
+            $ref: "#/components/schemas/IssueTreePortion"
+          type: array
+        request_uid:
+          type: string
+        required:
+          items:
+            $ref: "#/components/schemas/MoveTreeMember"
+          type: array
+        required_series:
+          items:
+            $ref: "#/components/schemas/MoveTreeSeriesRoot"
+          type: array
+        version:
+          format: int64
+          type: integer
+      required:
+        - version
+        - request_uid
+        - digest
+        - portions
+        - required
+      type: object
+    IssueTreeSnapshotResponse:
+      additionalProperties: true
+      properties:
+        digest:
+          type: string
+        portions:
+          items:
+            $ref: "#/components/schemas/IssueTreePortionResponse"
+          type: array
+        request_uid:
+          type: string
+        required:
+          items:
+            $ref: "#/components/schemas/MoveTreeMemberResponse"
+          type: array
+        required_series:
+          items:
+            $ref: "#/components/schemas/MoveTreeSeriesRootResponse"
+          type: array
+        version:
+          format: int64
+          type: integer
+      required:
+        - version
+        - request_uid
+        - digest
+        - portions
+        - required
+      type: object
+    IssueTreeTransferRequestBody:
+      additionalProperties: false
+      properties:
+        accepted:
+          $ref: "#/components/schemas/MoveTreeResult"
+        preview:
+          $ref: "#/components/schemas/MoveTreePreview"
+        request:
+          $ref: "#/components/schemas/MoveTreeRequest"
+        snapshot:
+          $ref: "#/components/schemas/IssueTreeSnapshot"
+        source_roots:
+          items:
+            $ref: "#/components/schemas/MoveTreeMember"
+          type: array
+        source_series:
+          items:
+            $ref: "#/components/schemas/MoveTreeSeriesRoot"
+          type: array
+      required:
+        - request
+      type: object
+    IssueTreeTransferResponseBody:
+      additionalProperties: true
+      properties:
+        result:
+          $ref: "#/components/schemas/MoveTreeResultResponse"
+        snapshot:
+          $ref: "#/components/schemas/IssueTreeSnapshotResponse"
+      type: object
     LabelCount:
       additionalProperties: true
       properties:
@@ -4008,6 +5470,98 @@ components:
           items:
             $ref: "#/components/schemas/LinkPeer"
           type: array
+      type: object
+    LinkExport:
+      additionalProperties: false
+      properties:
+        author:
+          type: string
+        created_at:
+          type: string
+        from_authority_uid:
+          type: string
+        from_comment_uid:
+          type: string
+        from_issue_id:
+          format: int64
+          type: integer
+        from_issue_uid:
+          type: string
+        from_project_uid:
+          type: string
+        id:
+          format: int64
+          type: integer
+        reply_kind:
+          type: string
+        to_authority_uid:
+          type: string
+        to_comment_uid:
+          type: string
+        to_issue_id:
+          format: int64
+          type: integer
+        to_issue_uid:
+          type: string
+        to_project_uid:
+          type: string
+        type:
+          type: string
+      required:
+        - id
+        - from_issue_id
+        - from_issue_uid
+        - to_issue_id
+        - to_issue_uid
+        - type
+        - author
+        - created_at
+      type: object
+    LinkExportResponse:
+      additionalProperties: true
+      properties:
+        author:
+          type: string
+        created_at:
+          type: string
+        from_authority_uid:
+          type: string
+        from_comment_uid:
+          type: string
+        from_issue_id:
+          format: int64
+          type: integer
+        from_issue_uid:
+          type: string
+        from_project_uid:
+          type: string
+        id:
+          format: int64
+          type: integer
+        reply_kind:
+          type: string
+        to_authority_uid:
+          type: string
+        to_comment_uid:
+          type: string
+        to_issue_id:
+          format: int64
+          type: integer
+        to_issue_uid:
+          type: string
+        to_project_uid:
+          type: string
+        type:
+          type: string
+      required:
+        - id
+        - from_issue_id
+        - from_issue_uid
+        - to_issue_id
+        - to_issue_uid
+        - type
+        - author
+        - created_at
       type: object
     LinkOut:
       additionalProperties: true
@@ -4442,6 +5996,437 @@ components:
         - event_id
         - changed
       type: object
+    MoveTreeAction:
+      additionalProperties: false
+      properties:
+        authority_uid:
+          type: string
+        issue_uid:
+          type: string
+        kind:
+          type: string
+        message:
+          type: string
+      required:
+        - kind
+        - message
+      type: object
+    MoveTreeActionResponse:
+      additionalProperties: true
+      properties:
+        authority_uid:
+          type: string
+        issue_uid:
+          type: string
+        kind:
+          type: string
+        message:
+          type: string
+      required:
+        - kind
+        - message
+      type: object
+    MoveTreeApplied:
+      additionalProperties: false
+      properties:
+        authority_uid:
+          type: string
+        committed_event_hash:
+          type: string
+        committed_event_uid:
+          type: string
+        from_authority_uid:
+          type: string
+        from_project_uid:
+          type: string
+        from_short_id:
+          type: string
+        issue_uid:
+          type: string
+        location_generation:
+          format: int64
+          type: integer
+        project_uid:
+          type: string
+        revision:
+          format: int64
+          type: integer
+        short_id:
+          type: string
+        source_series_authority_uid:
+          type: string
+        source_series_project_uid:
+          type: string
+        source_series_snapshot_digest:
+          type: string
+        source_series_uid:
+          type: string
+        source_snapshot_digest:
+          type: string
+      required:
+        - issue_uid
+        - from_authority_uid
+        - from_project_uid
+        - from_short_id
+        - authority_uid
+        - project_uid
+        - short_id
+        - revision
+        - location_generation
+      type: object
+    MoveTreeAppliedResponse:
+      additionalProperties: true
+      properties:
+        authority_uid:
+          type: string
+        committed_event_hash:
+          type: string
+        committed_event_uid:
+          type: string
+        from_authority_uid:
+          type: string
+        from_project_uid:
+          type: string
+        from_short_id:
+          type: string
+        issue_uid:
+          type: string
+        location_generation:
+          format: int64
+          type: integer
+        project_uid:
+          type: string
+        revision:
+          format: int64
+          type: integer
+        short_id:
+          type: string
+        source_series_authority_uid:
+          type: string
+        source_series_project_uid:
+          type: string
+        source_series_snapshot_digest:
+          type: string
+        source_series_uid:
+          type: string
+        source_snapshot_digest:
+          type: string
+      required:
+        - issue_uid
+        - from_authority_uid
+        - from_project_uid
+        - from_short_id
+        - authority_uid
+        - project_uid
+        - short_id
+        - revision
+        - location_generation
+      type: object
+    MoveTreeMember:
+      additionalProperties: false
+      properties:
+        authority_uid:
+          type: string
+        issue_uid:
+          type: string
+        location_generation:
+          format: int64
+          type: integer
+        project_uid:
+          type: string
+        revision:
+          format: int64
+          type: integer
+        short_id:
+          type: string
+      required:
+        - issue_uid
+        - authority_uid
+        - project_uid
+        - short_id
+        - revision
+        - location_generation
+      type: object
+    MoveTreeMemberResponse:
+      additionalProperties: true
+      properties:
+        authority_uid:
+          type: string
+        issue_uid:
+          type: string
+        location_generation:
+          format: int64
+          type: integer
+        project_uid:
+          type: string
+        revision:
+          format: int64
+          type: integer
+        short_id:
+          type: string
+      required:
+        - issue_uid
+        - authority_uid
+        - project_uid
+        - short_id
+        - revision
+        - location_generation
+      type: object
+    MoveTreePreview:
+      additionalProperties: false
+      properties:
+        blockers:
+          items:
+            $ref: "#/components/schemas/MoveTreeAction"
+          type: array
+        digest:
+          type: string
+        members:
+          items:
+            $ref: "#/components/schemas/MoveTreeMember"
+          type: array
+        provider_actions:
+          items:
+            $ref: "#/components/schemas/MoveTreeAction"
+          type: array
+        recurrence_actions:
+          items:
+            $ref: "#/components/schemas/MoveTreeAction"
+          type: array
+        relations:
+          items:
+            $ref: "#/components/schemas/LinkExport"
+          type: array
+        snapshot_digest:
+          type: string
+        source_revisions:
+          additionalProperties:
+            format: int64
+            type: integer
+          type: object
+      required:
+        - digest
+        - snapshot_digest
+        - source_revisions
+        - members
+        - relations
+        - provider_actions
+        - recurrence_actions
+        - blockers
+      type: object
+    MoveTreePreviewResponse:
+      additionalProperties: true
+      properties:
+        blockers:
+          items:
+            $ref: "#/components/schemas/MoveTreeActionResponse"
+          type: array
+        digest:
+          type: string
+        members:
+          items:
+            $ref: "#/components/schemas/MoveTreeMemberResponse"
+          type: array
+        provider_actions:
+          items:
+            $ref: "#/components/schemas/MoveTreeActionResponse"
+          type: array
+        recurrence_actions:
+          items:
+            $ref: "#/components/schemas/MoveTreeActionResponse"
+          type: array
+        relations:
+          items:
+            $ref: "#/components/schemas/LinkExportResponse"
+          type: array
+        snapshot_digest:
+          type: string
+        source_revisions:
+          additionalProperties:
+            format: int64
+            type: integer
+          type: object
+      required:
+        - digest
+        - snapshot_digest
+        - source_revisions
+        - members
+        - relations
+        - provider_actions
+        - recurrence_actions
+        - blockers
+      type: object
+    MoveTreeProject:
+      additionalProperties: false
+      properties:
+        authority_uid:
+          type: string
+        id:
+          format: int64
+          type: integer
+        name:
+          type: string
+        uid:
+          type: string
+      required:
+        - id
+        - uid
+        - authority_uid
+        - name
+      type: object
+    MoveTreeProjectResponse:
+      additionalProperties: true
+      properties:
+        authority_uid:
+          type: string
+        id:
+          format: int64
+          type: integer
+        name:
+          type: string
+        uid:
+          type: string
+      required:
+        - id
+        - uid
+        - authority_uid
+        - name
+      type: object
+    MoveTreeRequest:
+      additionalProperties: false
+      properties:
+        actor:
+          type: string
+        actor_authority_uid:
+          type: string
+        destination_authority_uid:
+          type: string
+        destination_project_uid:
+          type: string
+        issue_uid:
+          type: string
+        move_series:
+          type: boolean
+        preview_digest:
+          type: string
+        provider_disposition:
+          type: string
+        request_uid:
+          type: string
+        selection:
+          type: string
+        source_authority_uid:
+          type: string
+        source_project_uid:
+          type: string
+      required:
+        - source_authority_uid
+        - source_project_uid
+        - issue_uid
+        - destination_authority_uid
+        - destination_project_uid
+        - request_uid
+        - actor_authority_uid
+        - actor
+      type: object
+    MoveTreeResult:
+      additionalProperties: false
+      properties:
+        applied:
+          items:
+            $ref: "#/components/schemas/MoveTreeApplied"
+          type: array
+        conflicts:
+          items:
+            $ref: "#/components/schemas/MoveTreeAction"
+          type: array
+        finalized:
+          items:
+            type: string
+          type: array
+        request_uid:
+          type: string
+        retry_action:
+          type: string
+        snapshot_digest:
+          type: string
+        state:
+          type: string
+        unknown_roots:
+          items:
+            type: string
+          type: array
+      required:
+        - state
+        - request_uid
+        - applied
+        - finalized
+        - conflicts
+        - unknown_roots
+      type: object
+    MoveTreeResultResponse:
+      additionalProperties: true
+      properties:
+        applied:
+          items:
+            $ref: "#/components/schemas/MoveTreeAppliedResponse"
+          type: array
+        conflicts:
+          items:
+            $ref: "#/components/schemas/MoveTreeActionResponse"
+          type: array
+        finalized:
+          items:
+            type: string
+          type: array
+        request_uid:
+          type: string
+        retry_action:
+          type: string
+        snapshot_digest:
+          type: string
+        state:
+          type: string
+        unknown_roots:
+          items:
+            type: string
+          type: array
+      required:
+        - state
+        - request_uid
+        - applied
+        - finalized
+        - conflicts
+        - unknown_roots
+      type: object
+    MoveTreeSeriesRoot:
+      additionalProperties: false
+      properties:
+        authority_uid:
+          type: string
+        project_uid:
+          type: string
+        recurrence_uid:
+          type: string
+      required:
+        - recurrence_uid
+        - authority_uid
+        - project_uid
+      type: object
+    MoveTreeSeriesRootResponse:
+      additionalProperties: true
+      properties:
+        authority_uid:
+          type: string
+        project_uid:
+          type: string
+        recurrence_uid:
+          type: string
+      required:
+        - recurrence_uid
+        - authority_uid
+        - project_uid
+      type: object
     MutationResponseBody:
       additionalProperties: true
       properties:
@@ -4670,6 +6655,110 @@ components:
         - holder_instance_uid
         - client_kind
         - claim_kind
+        - requested_at
+      type: object
+    PendingClaimRequestExport:
+      additionalProperties: false
+      properties:
+        claim_kind:
+          type: string
+        client_kind:
+          type: string
+        holder:
+          type: string
+        holder_instance_uid:
+          type: string
+        id:
+          format: int64
+          type: integer
+        issue_id:
+          format: int64
+          type: integer
+        issue_uid:
+          type: string
+        last_attempt_at:
+          type: string
+        last_error:
+          type: string
+        project_id:
+          format: int64
+          type: integer
+        purpose:
+          type: string
+        rejected_at:
+          type: string
+        request_uid:
+          type: string
+        requested_at:
+          type: string
+        resolved_at:
+          type: string
+        ttl_seconds:
+          format: int64
+          type: integer
+      required:
+        - id
+        - request_uid
+        - project_id
+        - issue_id
+        - issue_uid
+        - holder
+        - holder_instance_uid
+        - client_kind
+        - claim_kind
+        - purpose
+        - requested_at
+      type: object
+    PendingClaimRequestExportResponse:
+      additionalProperties: true
+      properties:
+        claim_kind:
+          type: string
+        client_kind:
+          type: string
+        holder:
+          type: string
+        holder_instance_uid:
+          type: string
+        id:
+          format: int64
+          type: integer
+        issue_id:
+          format: int64
+          type: integer
+        issue_uid:
+          type: string
+        last_attempt_at:
+          type: string
+        last_error:
+          type: string
+        project_id:
+          format: int64
+          type: integer
+        purpose:
+          type: string
+        rejected_at:
+          type: string
+        request_uid:
+          type: string
+        requested_at:
+          type: string
+        resolved_at:
+          type: string
+        ttl_seconds:
+          format: int64
+          type: integer
+      required:
+        - id
+        - request_uid
+        - project_id
+        - issue_id
+        - issue_uid
+        - holder
+        - holder_instance_uid
+        - client_kind
+        - claim_kind
+        - purpose
         - requested_at
       type: object
     PendingFederationEnrollmentCleanup:
@@ -5108,6 +7197,192 @@ components:
         - actor
         - purged_at
       type: object
+    PurgeLogExport:
+      additionalProperties: false
+      properties:
+        actor:
+          type: string
+        comment_count:
+          format: int64
+          type: integer
+        event_count:
+          format: int64
+          type: integer
+        events_deleted_max_id:
+          format: int64
+          type:
+            - integer
+            - "null"
+        events_deleted_min_id:
+          format: int64
+          type:
+            - integer
+            - "null"
+        id:
+          format: int64
+          type: integer
+        issue_author:
+          type: string
+        issue_title:
+          type: string
+        issue_uid:
+          type:
+            - string
+            - "null"
+        label_count:
+          format: int64
+          type: integer
+        link_count:
+          format: int64
+          type: integer
+        occurrence_key:
+          type: string
+        origin_instance_uid:
+          type: string
+        project_id:
+          format: int64
+          type: integer
+        project_name:
+          type: string
+        project_uid:
+          type:
+            - string
+            - "null"
+        purge_reset_after_event_id:
+          format: int64
+          type:
+            - integer
+            - "null"
+        purged_at:
+          type: string
+        purged_issue_id:
+          format: int64
+          type: integer
+        reason:
+          type:
+            - string
+            - "null"
+        recurrence_uid:
+          type: string
+        short_id:
+          type: string
+        uid:
+          type: string
+      required:
+        - id
+        - uid
+        - origin_instance_uid
+        - project_id
+        - purged_issue_id
+        - issue_uid
+        - project_uid
+        - project_name
+        - issue_title
+        - issue_author
+        - comment_count
+        - link_count
+        - label_count
+        - event_count
+        - events_deleted_min_id
+        - events_deleted_max_id
+        - purge_reset_after_event_id
+        - actor
+        - reason
+        - purged_at
+      type: object
+    PurgeLogExportResponse:
+      additionalProperties: true
+      properties:
+        actor:
+          type: string
+        comment_count:
+          format: int64
+          type: integer
+        event_count:
+          format: int64
+          type: integer
+        events_deleted_max_id:
+          format: int64
+          type:
+            - integer
+            - "null"
+        events_deleted_min_id:
+          format: int64
+          type:
+            - integer
+            - "null"
+        id:
+          format: int64
+          type: integer
+        issue_author:
+          type: string
+        issue_title:
+          type: string
+        issue_uid:
+          type:
+            - string
+            - "null"
+        label_count:
+          format: int64
+          type: integer
+        link_count:
+          format: int64
+          type: integer
+        occurrence_key:
+          type: string
+        origin_instance_uid:
+          type: string
+        project_id:
+          format: int64
+          type: integer
+        project_name:
+          type: string
+        project_uid:
+          type:
+            - string
+            - "null"
+        purge_reset_after_event_id:
+          format: int64
+          type:
+            - integer
+            - "null"
+        purged_at:
+          type: string
+        purged_issue_id:
+          format: int64
+          type: integer
+        reason:
+          type:
+            - string
+            - "null"
+        recurrence_uid:
+          type: string
+        short_id:
+          type: string
+        uid:
+          type: string
+      required:
+        - id
+        - uid
+        - origin_instance_uid
+        - project_id
+        - purged_issue_id
+        - issue_uid
+        - project_uid
+        - project_name
+        - issue_title
+        - issue_author
+        - comment_count
+        - link_count
+        - label_count
+        - event_count
+        - events_deleted_min_id
+        - events_deleted_max_id
+        - purge_reset_after_event_id
+        - actor
+        - reason
+        - purged_at
+      type: object
     PurgeResponseBody:
       additionalProperties: true
       properties:
@@ -5542,6 +7817,146 @@ components:
         - created_at
         - updated_at
       type: object
+    RecurrenceExport:
+      additionalProperties: false
+      properties:
+        author:
+          type: string
+        created_at:
+          type: string
+        deleted_at:
+          type: string
+        dtstart:
+          type: string
+        id:
+          format: int64
+          type: integer
+        last_materialized_uid:
+          type: string
+        location_generation:
+          format: int64
+          type: integer
+        moved_event_uid:
+          type: string
+        moved_to_authority_uid:
+          type: string
+        moved_to_project_uid:
+          type: string
+        next_occurrence_key:
+          type: string
+        project_id:
+          format: int64
+          type: integer
+        revision:
+          format: int64
+          type: integer
+        rrule:
+          type: string
+        template_body:
+          type: string
+        template_labels: {}
+        template_metadata: {}
+        template_owner:
+          type: string
+        template_priority:
+          format: int64
+          type:
+            - integer
+            - "null"
+        template_title:
+          type: string
+        timezone:
+          type: string
+        uid:
+          type: string
+        updated_at:
+          type: string
+      required:
+        - id
+        - uid
+        - project_id
+        - rrule
+        - dtstart
+        - timezone
+        - template_title
+        - template_body
+        - template_labels
+        - template_metadata
+        - author
+        - revision
+        - created_at
+        - updated_at
+      type: object
+    RecurrenceExportResponse:
+      additionalProperties: true
+      properties:
+        author:
+          type: string
+        created_at:
+          type: string
+        deleted_at:
+          type: string
+        dtstart:
+          type: string
+        id:
+          format: int64
+          type: integer
+        last_materialized_uid:
+          type: string
+        location_generation:
+          format: int64
+          type: integer
+        moved_event_uid:
+          type: string
+        moved_to_authority_uid:
+          type: string
+        moved_to_project_uid:
+          type: string
+        next_occurrence_key:
+          type: string
+        project_id:
+          format: int64
+          type: integer
+        revision:
+          format: int64
+          type: integer
+        rrule:
+          type: string
+        template_body:
+          type: string
+        template_labels: {}
+        template_metadata: {}
+        template_owner:
+          type: string
+        template_priority:
+          format: int64
+          type:
+            - integer
+            - "null"
+        template_title:
+          type: string
+        timezone:
+          type: string
+        uid:
+          type: string
+        updated_at:
+          type: string
+      required:
+        - id
+        - uid
+        - project_id
+        - rrule
+        - dtstart
+        - timezone
+        - template_title
+        - template_body
+        - template_labels
+        - template_metadata
+        - author
+        - revision
+        - created_at
+        - updated_at
+      type: object
     RecurrenceTemplateInput:
       additionalProperties: false
       properties:
@@ -5846,7 +8261,7 @@ components:
         embedding_producer:
           $ref: "#/components/schemas/ProjectEmbeddingProducer"
         enrollment_root:
-          $ref: "#/components/schemas/RootKeyPin"
+          $ref: "#/components/schemas/RootKeyPinResponse"
         hub_path:
           items:
             type: string
@@ -5860,7 +8275,7 @@ components:
         reset_required:
           type: boolean
         root:
-          $ref: "#/components/schemas/RootKeyPin"
+          $ref: "#/components/schemas/RootKeyPinResponse"
         root_key_transitions:
           items:
             $ref: "#/components/schemas/RootKeyTransition"
@@ -6106,6 +8521,26 @@ components:
         - total
       type: object
     RootKeyPin:
+      additionalProperties: false
+      properties:
+        authority_uid:
+          type: string
+        key_id:
+          type: string
+        project_uid:
+          type: string
+        public_key:
+          contentEncoding: base64
+          type: string
+        retired:
+          type: boolean
+      required:
+        - project_uid
+        - authority_uid
+        - key_id
+        - public_key
+      type: object
+    RootKeyPinResponse:
       additionalProperties: true
       properties:
         authority_uid:
@@ -6129,7 +8564,7 @@ components:
       additionalProperties: true
       properties:
         next:
-          $ref: "#/components/schemas/RootKeyPin"
+          $ref: "#/components/schemas/RootKeyPinResponse"
         previous_key_id:
           type: string
         signature:
@@ -7785,6 +10220,116 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/InstanceResponseBody"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+          description: Error
+  /api/v1/issue-moves:
+    post:
+      operationId: moveIssueTree
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IssueTreeMoveRequestBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueTreeMoveResponseBody"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+          description: Error
+  /api/v1/issue-moves/accept:
+    post:
+      operationId: acceptIssueTree
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IssueTreeTransferRequestBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueTreeTransferResponseBody"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+          description: Error
+  /api/v1/issue-moves/export:
+    post:
+      operationId: exportIssueTree
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IssueTreeTransferRequestBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueTreeTransferResponseBody"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+          description: Error
+  /api/v1/issue-moves/finalize:
+    post:
+      operationId: finalizeIssueTree
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IssueTreeTransferRequestBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueTreeTransferResponseBody"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+          description: Error
+  /api/v1/issue-moves/lookup:
+    post:
+      operationId: lookupIssueTreeAcceptance
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IssueTreeTransferRequestBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueTreeTransferResponseBody"
           description: OK
         default:
           content:

@@ -87,10 +87,17 @@ func pgReplayUniqueProjectName(
 
 func pgReplayAlias(ctx context.Context, tx *sql.Tx, alias *db.AliasExport) error {
 	_, err := tx.ExecContext(ctx, `INSERT INTO project_aliases(
-id,project_id,alias_identity,alias_kind,created_at
-) OVERRIDING SYSTEM VALUE VALUES($1,$2,$3,$4,$5)`, alias.ID, alias.ProjectID,
-		alias.AliasIdentity, alias.AliasKind, alias.CreatedAt)
+id,project_id,alias_identity,alias_kind,created_at,authority_uid,project_uid
+) OVERRIDING SYSTEM VALUE VALUES($1,$2,$3,$4,$5,$6,$7)`, alias.ID, pgNullableAliasProjectID(alias),
+		alias.AliasIdentity, alias.AliasKind, alias.CreatedAt, alias.AuthorityUID, alias.ProjectUID)
 	return pgReplayError(db.ImportKindProjectAlias, err)
+}
+
+func pgNullableAliasProjectID(alias *db.AliasExport) any {
+	if alias.AliasKind == "name" && alias.ProjectID == 0 {
+		return nil
+	}
+	return alias.ProjectID
 }
 
 func pgReplayIssueSyncBinding(
@@ -144,16 +151,20 @@ func pgReplayRecurrence(ctx context.Context, tx *sql.Tx, recurrence *db.Recurren
 	if len(metadata) == 0 {
 		metadata = jsontext.Value(`{}`)
 	}
+	generation := recurrence.LocationGeneration
+	if generation == 0 {
+		generation = 1
+	}
 	_, err := tx.ExecContext(ctx, `INSERT INTO recurrences(
 id,uid,project_id,rrule,dtstart,timezone,template_title,template_body,template_owner,
 template_priority,template_labels,template_metadata,next_occurrence_key,last_materialized_uid,
-author,revision,created_at,updated_at,deleted_at
-) OVERRIDING SYSTEM VALUE VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+author,revision,created_at,updated_at,deleted_at,location_generation
+) OVERRIDING SYSTEM VALUE VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
 		recurrence.ID, recurrence.UID, recurrence.ProjectID, recurrence.RRule, recurrence.DTStart,
 		recurrence.Timezone, recurrence.TemplateTitle, recurrence.TemplateBody, recurrence.TemplateOwner,
 		recurrence.TemplatePriority, string(labels), string(metadata), recurrence.NextOccurrenceKey,
 		recurrence.LastMaterializedUID, recurrence.Author, recurrence.Revision, recurrence.CreatedAt,
-		recurrence.UpdatedAt, recurrence.DeletedAt)
+		recurrence.UpdatedAt, recurrence.DeletedAt, generation)
 	return pgReplayError(db.ImportKindRecurrence, err)
 }
 
@@ -173,7 +184,7 @@ func pgReplayIssue(ctx context.Context, tx *sql.Tx, issue *db.IssueExport) error
 		return fmt.Errorf("import issue %d (uid=%s): occurrence_key set without recurrence_uid", issue.ID, issue.UID)
 	}
 	recurrenceID := issue.RecurrenceID
-	if issue.RecurrenceUID != nil {
+	if issue.RecurrenceUID != nil && (issue.RecurrenceAuthorityUID == nil || issue.RecurrenceID != nil) {
 		var resolved int64
 		err := tx.QueryRowContext(ctx, `SELECT id FROM recurrences WHERE uid=$1`, *issue.RecurrenceUID).Scan(&resolved)
 		if err != nil {
@@ -188,15 +199,19 @@ func pgReplayIssue(ctx context.Context, tx *sql.Tx, issue *db.IssueExport) error
 		}
 		recurrenceID = &resolved
 	}
+	generation := issue.LocationGeneration
+	if generation == 0 {
+		generation = 1
+	}
 	_, err := tx.ExecContext(ctx, `INSERT INTO issues(
 id,uid,project_id,short_id,title,body,status,closed_reason,owner,assignment_expires_on,priority,author,created_at,
-updated_at,closed_at,deleted_at,metadata,revision,content_revision,recurrence_id,occurrence_key
+updated_at,closed_at,deleted_at,metadata,revision,content_revision,recurrence_id,occurrence_key,location_generation
 ) OVERRIDING SYSTEM VALUE VALUES(
-$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21
+$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22
 )`, issue.ID, issue.UID, issue.ProjectID, issue.ShortID, issue.Title, issue.Body, issue.Status,
 		issue.ClosedReason, issue.Owner, issue.AssignmentExpiresOn, issue.Priority, issue.Author, issue.CreatedAt, issue.UpdatedAt,
 		issue.ClosedAt, issue.DeletedAt, string(metadata), revision, issue.ContentRevision,
-		recurrenceID, issue.OccurrenceKey)
+		recurrenceID, issue.OccurrenceKey, generation)
 	return pgReplayError(db.ImportKindIssue, err)
 }
 
@@ -215,6 +230,18 @@ func pgReplayLabel(ctx context.Context, tx *sql.Tx, label *db.IssueLabelExport) 
 }
 
 func pgReplayLink(ctx context.Context, tx *sql.Tx, link *db.LinkExport) (replayLinkSkip, error) {
+	if link.FromIssueID == 0 || link.ToIssueID == 0 || link.Type == "reply" {
+		var fromID, toID any
+		if link.FromIssueID != 0 {
+			fromID = link.FromIssueID
+		}
+		if link.ToIssueID != 0 {
+			toID = link.ToIssueID
+		}
+		_, err := tx.ExecContext(ctx, `INSERT INTO links(id,from_issue_id,to_issue_id,from_issue_uid,to_issue_uid,type,author,created_at,from_authority_uid,from_project_uid,to_authority_uid,to_project_uid,from_comment_uid,to_comment_uid,reply_kind) OVERRIDING SYSTEM VALUE VALUES($1,$2,$3,NULLIF($4,''),NULLIF($5,''),$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+			link.ID, fromID, toID, link.FromIssueUID, link.ToIssueUID, link.Type, link.Author, link.CreatedAt, link.FromAuthorityUID, link.FromProjectUID, link.ToAuthorityUID, link.ToProjectUID, link.FromCommentUID, link.ToCommentUID, link.ReplyKind)
+		return replayLinkInserted, pgReplayError(db.ImportKindLink, err)
+	}
 	var present int
 	if err := tx.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM issues WHERE id=ANY($1::bigint[])`,
@@ -237,12 +264,12 @@ SELECT 1 FROM links WHERE type=$1 AND (
 		return replayLinkDuplicate, nil
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO links(
-id,from_issue_id,from_issue_uid,to_issue_id,to_issue_uid,type,author,created_at
+id,from_issue_id,from_issue_uid,to_issue_id,to_issue_uid,type,author,created_at,from_authority_uid,from_project_uid,to_authority_uid,to_project_uid
 ) OVERRIDING SYSTEM VALUE VALUES(
 $1,$2,COALESCE(NULLIF($3,''),(SELECT uid FROM issues WHERE id=$2)),
-$4,COALESCE(NULLIF($5,''),(SELECT uid FROM issues WHERE id=$4)),$6,$7,$8
+$4,COALESCE(NULLIF($5,''),(SELECT uid FROM issues WHERE id=$4)),$6,$7,$8,$9,$10,$11,$12
 )`, link.ID, link.FromIssueID, link.FromIssueUID, link.ToIssueID, link.ToIssueUID,
-		link.Type, link.Author, link.CreatedAt)
+		link.Type, link.Author, link.CreatedAt, link.FromAuthorityUID, link.FromProjectUID, link.ToAuthorityUID, link.ToProjectUID)
 	return replayLinkInserted, pgReplayError(db.ImportKindLink, err)
 }
 
@@ -279,11 +306,11 @@ func pgReplayImportMapping(
 		raw, at, pending, locator = normalized.ObservedStatus, normalized.ObservedStatusAt, normalized.PendingEventUID, normalized.RemoteLocator
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO import_mappings(
-id,source,external_id,object_type,project_id,issue_id,comment_id,link_id,label,source_updated_at,imported_at,observed_status,observed_status_at,pending_event_uid,remote_locator
-) OVERRIDING SYSTEM VALUE VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+id,source,external_id,object_type,project_id,issue_id,comment_id,link_id,label,source_updated_at,imported_at,observed_status,observed_status_at,pending_event_uid,remote_locator,moved_issue_uid,moved_to_authority_uid,moved_to_project_uid
+) OVERRIDING SYSTEM VALUE VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
 		mapping.ID, mapping.Source, mapping.ExternalID, mapping.ObjectType, mapping.ProjectID,
 		mapping.IssueID, mapping.CommentID, mapping.LinkID, mapping.Label, mapping.SourceUpdatedAt,
-		mapping.ImportedAt, raw, at, pending, locator)
+		mapping.ImportedAt, raw, at, pending, locator, mapping.MovedIssueUID, mapping.MovedToAuthorityUID, mapping.MovedToProjectUID)
 	return replayLinkInserted, pgReplayError(db.ImportKindImportMapping, err)
 }
 

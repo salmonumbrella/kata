@@ -171,7 +171,7 @@ func readUIGraphIssues(
 ) ([]db.UIIssue, error) {
 	args := []any{db.SystemProjectName}
 	statement := issueSelect + `
-		WHERE i.deleted_at IS NULL AND p.deleted_at IS NULL AND p.name <> $1`
+		WHERE i.moved_to_authority_uid IS NULL AND i.deleted_at IS NULL AND p.deleted_at IS NULL AND p.name <> $1`
 	statement += " AND " + authorizedProjectPredicate(ctx, "p.uid", &args)
 	if allow := uiPostgresIssueAllowlist(&args, `i.id`, query.AllowedIssueIDs); allow != "" {
 		statement += ` AND ` + allow // #nosec G202 -- the predicate contains only a fixed column name and a generated $N placeholder; values stay bound.
@@ -294,7 +294,7 @@ func (s *Store) ReadUIReferences(ctx context.Context, query db.UIReferencesQuery
 	ownerStatement := `
 		SELECT DISTINCT i.owner
 		FROM issues i JOIN projects p ON p.id = i.project_id
-		WHERE i.deleted_at IS NULL AND p.deleted_at IS NULL AND p.name <> $1
+		WHERE i.moved_to_authority_uid IS NULL AND i.deleted_at IS NULL AND p.deleted_at IS NULL AND p.name <> $1
 		  AND i.owner IS NOT NULL AND i.owner <> ''
 	`
 	ownerArgs := []any{db.SystemProjectName}
@@ -311,7 +311,7 @@ func (s *Store) ReadUIReferences(ctx context.Context, query db.UIReferencesQuery
 		FROM issue_labels il
 		JOIN issues i ON i.id = il.issue_id
 		JOIN projects p ON p.id = i.project_id
-		WHERE i.deleted_at IS NULL AND p.deleted_at IS NULL AND p.name <> $1
+		WHERE i.moved_to_authority_uid IS NULL AND i.deleted_at IS NULL AND p.deleted_at IS NULL AND p.name <> $1
 	`
 	labelArgs := []any{db.SystemProjectName}
 	labelStatement, labelArgs = appendUIReferenceIssueScopePostgres(labelStatement, labelArgs, query.AllowedIssueIDs)
@@ -439,7 +439,7 @@ func readUIProjectStats(ctx context.Context, tx *sql.Tx) (map[int64]db.ProjectSt
 			COUNT(i.id) FILTER (WHERE i.status = 'closed'),
 			(SELECT e.created_at FROM events e WHERE e.project_id = p.id ORDER BY e.id DESC LIMIT 1)
 		FROM projects p
-		LEFT JOIN issues i ON i.project_id = p.id AND i.deleted_at IS NULL
+		LEFT JOIN issues i ON i.project_id = p.id AND i.moved_to_authority_uid IS NULL AND i.deleted_at IS NULL
 		WHERE p.deleted_at IS NULL AND p.name <> $1 AND `+predicate+`
 		GROUP BY p.id`, args...)
 	if err != nil {
@@ -477,7 +477,7 @@ func readUIProjectStats(ctx context.Context, tx *sql.Tx) (map[int64]db.ProjectSt
 func readUIIssues(ctx context.Context, tx *sql.Tx, query db.UISnapshotQuery,
 	projectNames map[int64]string,
 ) ([]db.UIIssue, error) {
-	statement := scheduledIssueSelect + ` WHERE i.deleted_at IS NULL AND p.deleted_at IS NULL AND p.name <> $1`
+	statement := scheduledIssueSelect + ` WHERE i.moved_to_authority_uid IS NULL AND i.deleted_at IS NULL AND p.deleted_at IS NULL AND p.name <> $1`
 	args := []any{db.SystemProjectName}
 	statement += " AND " + authorizedProjectPredicate(ctx, "p.uid", &args)
 	if query.ProjectUID != "" {
@@ -519,7 +519,7 @@ func readUIIssues(ctx context.Context, tx *sql.Tx, query db.UISnapshotQuery,
 						JOIN issues blocker ON blocker.id = ready_link.from_issue_id
 						JOIN projects blocker_project ON blocker_project.id = blocker.project_id
 						WHERE ready_link.type = 'blocks' AND ready_link.to_issue_id = i.id
-						AND blocker.status = 'open' AND blocker.deleted_at IS NULL
+						AND blocker.status = 'open' AND blocker.moved_to_authority_uid IS NULL AND blocker.deleted_at IS NULL
 						AND blocker_project.deleted_at IS NULL
 					)
 				)`)
@@ -721,7 +721,7 @@ func uiPostgresArgs(args *[]any, values []string) string {
 func readUIIssueByUID(ctx context.Context, tx *sql.Tx, issueUID string,
 	projectNames map[int64]string, allowedIssueIDs []int64,
 ) (db.UIIssue, error) {
-	statement := issueSelect + ` WHERE i.uid = $1 AND i.deleted_at IS NULL AND p.deleted_at IS NULL AND p.name <> $2`
+	statement := issueSelect + ` WHERE i.uid = $1 AND i.moved_to_authority_uid IS NULL AND i.deleted_at IS NULL AND p.deleted_at IS NULL AND p.name <> $2`
 	statement, args := appendUIReferenceIssueScopePostgres(statement, []any{issueUID, db.SystemProjectName}, allowedIssueIDs)
 	statement += " AND " + authorizedProjectPredicate(ctx, "p.uid", &args)
 	issue, err := scanIssue(tx.QueryRowContext(ctx, statement, args...))
@@ -873,7 +873,7 @@ func enrichUILinks(ctx context.Context, tx *sql.Tx, links []db.Link) ([]db.UILin
 
 func readUIRecurrences(ctx context.Context, tx *sql.Tx, projectUID string) ([]db.Recurrence, error) {
 	statement := recurrenceSelect + ` JOIN projects p ON p.id = r.project_id
-		WHERE r.deleted_at IS NULL AND p.deleted_at IS NULL AND p.name <> $1`
+		WHERE r.moved_event_uid IS NULL AND r.deleted_at IS NULL AND p.deleted_at IS NULL AND p.name <> $1`
 	args := []any{db.SystemProjectName}
 	statement += " AND " + authorizedProjectPredicate(ctx, "p.uid", &args)
 	if projectUID != "" {
@@ -1054,8 +1054,8 @@ func readUICollectionLinks(
 	statement := uiLinkSelect + ` WHERE (l.from_issue_id IN (` +
 		strings.Join(fromPlaceholders, ",") + `) OR l.to_issue_id IN (` +
 		strings.Join(toPlaceholders, ",") + `))
-		AND fi.deleted_at IS NULL AND fp.deleted_at IS NULL
-		AND ti.deleted_at IS NULL AND tp.deleted_at IS NULL` // #nosec G202 -- the dynamic fragments contain only generated $N placeholders; issue IDs stay bound.
+		AND fi.moved_to_authority_uid IS NULL AND fi.deleted_at IS NULL AND fp.deleted_at IS NULL
+		AND ti.moved_to_authority_uid IS NULL AND ti.deleted_at IS NULL AND tp.deleted_at IS NULL` // #nosec G202 -- the dynamic fragments contain only generated $N placeholders; issue IDs stay bound.
 	if allow := uiPostgresIssueAllowlist(&args, `l.from_issue_id`, allowedIssueIDs); allow != "" {
 		statement += ` AND ` + allow
 	}
@@ -1143,7 +1143,7 @@ func readUIReferenceScope(
 	}
 	statement := `SELECT i.uid, i.project_id
 		FROM issues i JOIN projects p ON p.id = i.project_id
-		WHERE i.deleted_at IS NULL AND p.deleted_at IS NULL AND p.name <> $1
+		WHERE i.moved_to_authority_uid IS NULL AND i.deleted_at IS NULL AND p.deleted_at IS NULL AND p.name <> $1
 		AND i.uid IN (` + strings.Join(placeholders, ",") + `) AND ` + predicate + `
 		ORDER BY i.uid` // #nosec G202 -- only SQL placeholders are constructed.
 	rows, err := tx.QueryContext(ctx, statement, args...)
@@ -1176,7 +1176,7 @@ func readUIReferenceIssues(ctx context.Context, tx *sql.Tx, query db.UIReference
 ) ([]db.UIIssueReference, error) {
 	statement := `SELECT i.project_id, i.uid, p.uid, p.name, i.short_id, i.title, i.status
 		FROM issues i JOIN projects p ON p.id = i.project_id
-		WHERE i.deleted_at IS NULL AND p.deleted_at IS NULL AND p.name <> $1`
+		WHERE i.moved_to_authority_uid IS NULL AND i.deleted_at IS NULL AND p.deleted_at IS NULL AND p.name <> $1`
 	args := []any{db.SystemProjectName}
 	statement += " AND " + authorizedProjectPredicate(ctx, "p.uid", &args)
 	if query.ProjectUID != "" {

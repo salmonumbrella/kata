@@ -119,7 +119,7 @@ func (s *Store) ExportPurgeLog(
 	query, args := pgProjectFilter(`SELECT id,uid,origin_instance_uid,project_id,purged_issue_id,
 issue_uid,project_uid,project_name,short_id,issue_title,issue_author,comment_count,link_count,
 label_count,event_count,events_deleted_min_id,events_deleted_max_id,purge_reset_after_event_id,
-actor,reason,purged_at FROM purge_log`, "project_id", filter)
+actor,reason,purged_at,recurrence_uid,occurrence_key FROM purge_log`, "project_id", filter)
 	query += ` ORDER BY id ASC`
 	return streamExportRows(ctx, s, "purge_log", query, args,
 		func(rows *sql.Rows) (db.PurgeLogExport, error) {
@@ -130,7 +130,7 @@ actor,reason,purged_at FROM purge_log`, "project_id", filter)
 				&record.CommentCount, &record.LinkCount, &record.LabelCount, &record.EventCount,
 				&record.EventsDeletedMinID, &record.EventsDeletedMaxID,
 				&record.PurgeResetAfterEventID, &record.Actor, &record.Reason,
-				&record.PurgedAt); err != nil {
+				&record.PurgedAt, &record.RecurrenceUID, &record.OccurrenceKey); err != nil {
 				return db.PurgeLogExport{}, pgExportScanError("purge_log", err)
 			}
 			return record, nil
@@ -206,7 +206,7 @@ func (s *Store) ExportIssues(ctx context.Context, filter db.ExportFilter) iter.S
 	query := `SELECT i.id, i.uid, i.project_id, i.short_id, i.title, i.body,
        i.status, i.closed_reason, i.owner, i.assignment_expires_on, i.priority, i.author,
        i.created_at, i.updated_at, i.closed_at, i.deleted_at,
-       i.metadata, i.revision, i.content_revision, i.recurrence_id, r.uid, i.occurrence_key
+       i.metadata, i.revision, i.content_revision, i.recurrence_id, COALESCE(i.recurrence_uid,r.uid), i.occurrence_key, i.location_generation, i.moved_to_authority_uid, i.moved_to_project_uid, i.moved_to_short_id, i.moved_event_uid, i.recurrence_authority_uid, i.recurrence_project_uid, i.owner_authority_uid
   FROM issues i LEFT JOIN recurrences r ON r.id = i.recurrence_id` + where + ` ORDER BY i.id ASC`
 	return streamExportRows(ctx, s, "issues", query, args,
 		func(rows *sql.Rows) (db.IssueExport, error) {
@@ -217,7 +217,7 @@ func (s *Store) ExportIssues(ctx context.Context, filter db.ExportFilter) iter.S
 				&record.Priority, &record.Author, &record.CreatedAt, &record.UpdatedAt,
 				&record.ClosedAt, &record.DeletedAt, &metadata, &record.Revision,
 				&record.ContentRevision, &record.RecurrenceID, &record.RecurrenceUID,
-				&record.OccurrenceKey); err != nil {
+				&record.OccurrenceKey, &record.LocationGeneration, &record.MovedToAuthorityUID, &record.MovedToProjectUID, &record.MovedToShortID, &record.MovedEventUID, &record.RecurrenceAuthorityUID, &record.RecurrenceProjectUID, &record.OwnerAuthorityUID); err != nil {
 				return db.IssueExport{}, pgExportScanError("issue", err)
 			}
 			if !jsontext.Value([]byte(metadata)).IsValid() {
@@ -233,7 +233,7 @@ func (s *Store) ExportRecurrences(ctx context.Context, filter db.ExportFilter) i
 	query := `SELECT id, uid, project_id, rrule, dtstart, timezone,
        template_title, template_body, template_owner, template_priority,
        template_labels, template_metadata, next_occurrence_key, last_materialized_uid,
-       author, revision, created_at, updated_at, deleted_at FROM recurrences`
+       author, revision, created_at, updated_at, deleted_at, location_generation, moved_to_authority_uid, moved_to_project_uid, moved_event_uid FROM recurrences`
 	var clauses []string
 	var args []any
 	if filter.ProjectID != nil {
@@ -253,7 +253,7 @@ SELECT DISTINCT recurrence_id FROM issues WHERE recurrence_id IS NOT NULL AND de
 				&record.DTStart, &record.Timezone, &record.TemplateTitle, &record.TemplateBody,
 				&record.TemplateOwner, &record.TemplatePriority, &labels, &metadata,
 				&record.NextOccurrenceKey, &record.LastMaterializedUID, &record.Author,
-				&record.Revision, &record.CreatedAt, &record.UpdatedAt, &record.DeletedAt); err != nil {
+				&record.Revision, &record.CreatedAt, &record.UpdatedAt, &record.DeletedAt, &record.LocationGeneration, &record.MovedToAuthorityUID, &record.MovedToProjectUID, &record.MovedEventUID); err != nil {
 				return db.RecurrenceExport{}, pgExportScanError("recurrence", err)
 			}
 			if !jsontext.Value([]byte(labels)).IsValid() {
@@ -307,11 +307,11 @@ func (s *Store) ExportIssueLabels(ctx context.Context, filter db.ExportFilter) i
 
 // ExportLinks streams relationships whose endpoints pass the export filter.
 func (s *Store) ExportLinks(ctx context.Context, filter db.ExportFilter) iter.Seq2[db.LinkExport, error] {
-	query := `SELECT links.id, links.from_issue_id, links.from_issue_uid,
-       links.to_issue_id, links.to_issue_uid, links.type, links.author, links.created_at
+	query := `SELECT links.id, COALESCE(links.from_issue_id,0), COALESCE(links.from_issue_uid,''),
+       COALESCE(links.to_issue_id,0), COALESCE(links.to_issue_uid,''), links.type, links.author, links.created_at, links.from_authority_uid, links.from_project_uid, links.to_authority_uid, links.to_project_uid, links.from_comment_uid, links.to_comment_uid, links.reply_kind
   FROM links
-  JOIN issues from_issues ON from_issues.id = links.from_issue_id
-  JOIN issues to_issues ON to_issues.id = links.to_issue_id`
+  LEFT JOIN issues from_issues ON from_issues.id = links.from_issue_id
+  LEFT JOIN issues to_issues ON to_issues.id = links.to_issue_id`
 	var clauses []string
 	var args []any
 	if filter.ProjectID != nil {
@@ -327,7 +327,7 @@ func (s *Store) ExportLinks(ctx context.Context, filter db.ExportFilter) iter.Se
 			var record db.LinkExport
 			if err := rows.Scan(&record.ID, &record.FromIssueID, &record.FromIssueUID,
 				&record.ToIssueID, &record.ToIssueUID, &record.Type, &record.Author,
-				&record.CreatedAt); err != nil {
+				&record.CreatedAt, &record.FromAuthorityUID, &record.FromProjectUID, &record.ToAuthorityUID, &record.ToProjectUID, &record.FromCommentUID, &record.ToCommentUID, &record.ReplyKind); err != nil {
 				return db.LinkExport{}, pgExportScanError("link", err)
 			}
 			return record, nil
@@ -337,7 +337,7 @@ func (s *Store) ExportLinks(ctx context.Context, filter db.ExportFilter) iter.Se
 // ExportProjectAliases streams project aliases in identity order.
 func (s *Store) ExportProjectAliases(ctx context.Context, filter db.ExportFilter) iter.Seq2[db.AliasExport, error] {
 	query, args := pgProjectFilter(
-		`SELECT id, project_id, alias_identity, alias_kind, created_at FROM project_aliases`,
+		`SELECT id, COALESCE(project_id,0), alias_identity, alias_kind, created_at, authority_uid, project_uid FROM project_aliases`,
 		"project_id", filter,
 	)
 	query += ` ORDER BY id ASC`
@@ -345,7 +345,7 @@ func (s *Store) ExportProjectAliases(ctx context.Context, filter db.ExportFilter
 		func(rows *sql.Rows) (db.AliasExport, error) {
 			var record db.AliasExport
 			if err := rows.Scan(&record.ID, &record.ProjectID, &record.AliasIdentity,
-				&record.AliasKind, &record.CreatedAt); err != nil {
+				&record.AliasKind, &record.CreatedAt, &record.AuthorityUID, &record.ProjectUID); err != nil {
 				return db.AliasExport{}, pgExportScanError("project_alias", err)
 			}
 			return record, nil
@@ -355,7 +355,7 @@ func (s *Store) ExportProjectAliases(ctx context.Context, filter db.ExportFilter
 // ExportImportMappings streams source identities retained by the selected project data.
 func (s *Store) ExportImportMappings(ctx context.Context, filter db.ExportFilter) iter.Seq2[db.ImportMappingExport, error] {
 	query := `SELECT id, source, external_id, object_type, project_id, issue_id,
-       comment_id, link_id, label, source_updated_at, imported_at, observed_status, CAST(observed_status_at AS TEXT), pending_event_uid, remote_locator FROM import_mappings`
+       comment_id, link_id, label, source_updated_at, imported_at, observed_status, CAST(observed_status_at AS TEXT), pending_event_uid, remote_locator, moved_issue_uid, moved_to_authority_uid, moved_to_project_uid FROM import_mappings`
 	var clauses []string
 	var args []any
 	if filter.ProjectID != nil {
@@ -380,7 +380,7 @@ WHERE links.id = import_mappings.link_id
 			var record db.ImportMappingExport
 			if err := rows.Scan(&record.ID, &record.Source, &record.ExternalID, &record.ObjectType,
 				&record.ProjectID, &record.IssueID, &record.CommentID, &record.LinkID, &record.Label,
-				&record.SourceUpdatedAt, &record.ImportedAt, &record.ObservedStatus, &record.ObservedStatusAt, &record.PendingEventUID, &record.RemoteLocator); err != nil {
+				&record.SourceUpdatedAt, &record.ImportedAt, &record.ObservedStatus, &record.ObservedStatusAt, &record.PendingEventUID, &record.RemoteLocator, &record.MovedIssueUID, &record.MovedToAuthorityUID, &record.MovedToProjectUID); err != nil {
 				return db.ImportMappingExport{}, pgExportScanError("import_mapping", err)
 			}
 			return db.NormalizeIssueStatusExport(record)
@@ -819,7 +819,7 @@ func (s *Store) ExportEvents(ctx context.Context, filter db.ExportFilter) iter.S
 	// value when a signed event's peer is omitted, while clearing its local FK.
 	relatedUIDScrub = `(` + relatedUIDScrub + `) AND NOT EXISTS (
 		SELECT 1 FROM federation_event_provenance signed_receipt
-		 WHERE signed_receipt.project_uid=export_project.uid
+		 WHERE signed_receipt.project_uid=COALESCE(events.source_project_uid,export_project.uid)
 		   AND signed_receipt.event_uid=events.uid
 		   AND signed_receipt.content_hash=events.content_hash)`
 	relatedUIDExpression := `CASE WHEN ` + relatedUIDScrub + ` THEN NULL ELSE events.related_issue_uid END`
@@ -828,21 +828,21 @@ func (s *Store) ExportEvents(ctx context.Context, filter db.ExportFilter) iter.S
 		subjectLive = `((events.issue_id IS NULL AND subject_issue.id IS NULL)
 OR (subject_issue.id IS NOT NULL AND subject_issue.deleted_at IS NULL))`
 	}
-	query := `SELECT events.id, events.uid, events.origin_instance_uid, events.project_id,
-       export_project.uid, events.project_name, ` + issueIDExpression + `, events.issue_uid,
+	query := `SELECT events.id, events.uid, events.origin_instance_uid, COALESCE(events.project_id,0),
+       COALESCE(events.source_project_uid,export_project.uid), events.project_name, ` + issueIDExpression + `, events.issue_uid,
        ` + relatedIDExpression + `, ` + relatedUIDExpression + `,
        events.type, events.actor, events.payload, events.hlc_physical_ms,
-       events.hlc_counter, events.content_hash, events.created_at
+       events.hlc_counter, events.content_hash, events.created_at, events.source_project_uid, events.source_event_bytes, (SELECT receipt.content_hash FROM federation_event_provenance receipt WHERE receipt.project_uid=COALESCE(events.source_project_uid,export_project.uid) AND receipt.event_uid=events.uid)
   FROM events
-  JOIN projects export_project ON export_project.id = events.project_id
+  LEFT JOIN projects export_project ON export_project.id = events.project_id
   LEFT JOIN issues subject_issue ON subject_issue.id = events.issue_id
     OR (events.issue_id IS NULL AND events.issue_uid IS NOT NULL AND subject_issue.uid = events.issue_uid)
   LEFT JOIN issues peer ON peer.id = events.related_issue_id
     OR (events.related_issue_id IS NULL AND events.related_issue_uid IS NOT NULL AND peer.uid = events.related_issue_uid)`
 	clauses := []string{subjectLive}
-	if filter.ProjectID != nil {
-		clauses = append(clauses, `events.project_id = $1`)
-	}
+	ownerClause, ownerArgs := db.EventExportOwnerClause(ctx, filter, args, true)
+	args = ownerArgs
+	clauses = append(clauses, ownerClause)
 	if !filter.IncludeDeleted {
 		clauses = append(clauses,
 			`(events.issue_id IS NULL OR EXISTS (
@@ -859,11 +859,12 @@ AND (events.related_issue_uid IS NULL OR NOT EXISTS (
 		func(rows *sql.Rows) (db.EventExport, error) {
 			var record db.EventExport
 			var payload string
+			var receiptHash *string
 			if err := rows.Scan(&record.ID, &record.UID, &record.OriginInstanceUID,
 				&record.ProjectID, &record.ProjectUID, &record.ProjectName, &record.IssueID,
 				&record.IssueUID, &record.RelatedIssueID, &record.RelatedIssueUID,
 				&record.Type, &record.Actor, &payload, &record.HLCPhysicalMS,
-				&record.HLCCounter, &record.ContentHash, &record.CreatedAt); err != nil {
+				&record.HLCCounter, &record.ContentHash, &record.CreatedAt, &record.SourceProjectUID, &record.SourceEventBytes, &receiptHash); err != nil {
 				return db.EventExport{}, pgExportScanError("event", err)
 			}
 			if !jsontext.Value([]byte(payload)).IsValid() {
@@ -880,7 +881,9 @@ AND (events.related_issue_uid IS NULL OR NOT EXISTS (
 			if err != nil {
 				return db.EventExport{}, fmt.Errorf("event %d content hash: %w", record.ID, err)
 			}
-			record.ContentHash = contentHash
+			if err := db.ValidateExportedEventHash(&record, contentHash, receiptHash); err != nil {
+				return db.EventExport{}, err
+			}
 			return record, nil
 		})
 }

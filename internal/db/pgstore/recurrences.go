@@ -105,7 +105,7 @@ func (s *Store) CreateRecurrence(ctx context.Context, input db.CreateRecurrenceI
 			return err
 		}
 		result, err = scanRecurrence(tx.QueryRowContext(ctx,
-			recurrenceSelect+` WHERE r.id = $1`, recurrenceID))
+			recurrenceSelect+` WHERE r.moved_event_uid IS NULL AND r.id = $1`, recurrenceID))
 		return err
 	})
 	return result, event, err
@@ -247,7 +247,7 @@ last_materialized_uid=$2, revision=revision+1, updated_at=$3 WHERE id=$4`,
 			return err
 		}
 		result, err := scanRecurrence(tx.QueryRowContext(ctx,
-			recurrenceSelect+` WHERE r.id = $1`, recurrenceID))
+			recurrenceSelect+` WHERE r.moved_event_uid IS NULL AND r.id = $1`, recurrenceID))
 		if err != nil {
 			return err
 		}
@@ -261,19 +261,19 @@ last_materialized_uid=$2, revision=revision+1, updated_at=$3 WHERE id=$4`,
 
 // GetRecurrenceByID returns a recurrence, including a soft-deleted row.
 func (s *Store) GetRecurrenceByID(ctx context.Context, id int64) (db.Recurrence, error) {
-	return scanRecurrence(s.QueryRowContext(ctx, recurrenceSelect+` WHERE r.id = $1`, id))
+	return scanRecurrence(s.QueryRowContext(ctx, recurrenceSelect+` WHERE r.moved_event_uid IS NULL AND r.id = $1`, id))
 }
 
 // GetRecurrenceByUID returns a recurrence by stable identity.
 func (s *Store) GetRecurrenceByUID(ctx context.Context, recurrenceUID string) (db.Recurrence, error) {
-	return scanRecurrence(s.QueryRowContext(ctx, recurrenceSelect+` WHERE r.uid = $1`, recurrenceUID))
+	return scanRecurrence(s.QueryRowContext(ctx, recurrenceSelect+` WHERE r.moved_event_uid IS NULL AND r.uid = $1`, recurrenceUID))
 }
 
 // ListRecurrencesByProject returns live recurrences whose project is active.
 func (s *Store) ListRecurrencesByProject(ctx context.Context, projectID int64) ([]db.Recurrence, error) {
 	rows, err := s.QueryContext(ctx, recurrenceSelect+`
   JOIN projects p ON p.id = r.project_id
- WHERE r.project_id = $1 AND r.deleted_at IS NULL AND p.deleted_at IS NULL
+ WHERE r.project_id = $1 AND r.moved_event_uid IS NULL AND r.deleted_at IS NULL AND p.deleted_at IS NULL
  ORDER BY r.created_at DESC, r.id DESC`, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("list recurrences: %w", mapSQLError(err, nil))
@@ -298,7 +298,7 @@ func (s *Store) PatchRecurrence(ctx context.Context, input db.PatchRecurrenceIn)
 	var output db.PatchRecurrenceOut
 	err := s.withSerializableTx(ctx, func(tx *sql.Tx) error {
 		current, err := scanRecurrence(tx.QueryRowContext(ctx,
-			recurrenceSelect+` WHERE r.id = $1 FOR UPDATE`, input.RecurrenceID))
+			recurrenceSelect+` WHERE r.moved_event_uid IS NULL AND r.id = $1 FOR UPDATE`, input.RecurrenceID))
 		if err != nil {
 			return err
 		}
@@ -451,7 +451,7 @@ func (s *Store) PatchRecurrence(ctx context.Context, input db.PatchRecurrenceIn)
 			return err
 		}
 		updated, err := scanRecurrence(tx.QueryRowContext(ctx,
-			recurrenceSelect+` WHERE r.id = $1`, current.ID))
+			recurrenceSelect+` WHERE r.moved_event_uid IS NULL AND r.id = $1`, current.ID))
 		if err != nil {
 			return err
 		}
@@ -468,7 +468,7 @@ func (s *Store) SoftDeleteRecurrence(ctx context.Context, input db.SoftDeleteRec
 	var event db.Event
 	err := s.withSerializableTx(ctx, func(tx *sql.Tx) error {
 		recurrence, err := scanRecurrence(tx.QueryRowContext(ctx,
-			recurrenceSelect+` WHERE r.id = $1 FOR UPDATE`, input.RecurrenceID))
+			recurrenceSelect+` WHERE r.moved_event_uid IS NULL AND r.id = $1 FOR UPDATE`, input.RecurrenceID))
 		if err != nil {
 			return err
 		}
@@ -537,7 +537,7 @@ func (s *Store) materializeNextTx(
   r.last_materialized_uid, r.author, r.revision, r.created_at, r.updated_at, r.deleted_at,
   p.uid, p.name
 FROM recurrences r JOIN projects p ON p.id = r.project_id
-WHERE r.id = $1 FOR UPDATE OF r`, recurrenceID).Scan(destinations...)
+WHERE r.moved_event_uid IS NULL AND r.id = $1 FOR UPDATE OF r`, recurrenceID).Scan(destinations...)
 	if errors.Is(err, sql.ErrNoRows) {
 		return db.MaterializeNextOut{}, db.ErrNotFound
 	}

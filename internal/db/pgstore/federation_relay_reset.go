@@ -60,6 +60,9 @@ func (d *Store) InstallRelayReset(ctx context.Context, bindingUID string, manife
 		if err != nil {
 			return err
 		}
+		if err := db.RetainRelocatedProjectHistory(ctx, tx, projectID, true); err != nil {
+			return err
+		}
 		events, err = d.retainPostCheckpointRelayEventsTx(ctx, tx, projectID, projectUID, historical, events, &provenance)
 		if err != nil {
 			return err
@@ -153,7 +156,9 @@ func (d *Store) InstallRelayReset(ctx context.Context, bindingUID string, manife
 		}
 		for _, table := range []string{"federation_entity_provenance", "federation_event_provenance"} {
 			// #nosec G202 -- Table names come from the fixed local list; the project UID is a bound value.
-			if _, err := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE project_uid=$1`, projectUID); err != nil {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE project_uid=$1 AND NOT EXISTS(
+ SELECT 1 FROM events original WHERE original.uid=`+table+`.event_uid AND original.source_project_uid=`+table+`.project_uid AND original.source_event_bytes IS NOT NULL
+ AND (EXISTS(SELECT 1 FROM issues owner WHERE owner.uid=original.issue_uid AND (owner.project_id<>$2 OR owner.moved_to_authority_uid IS NOT NULL)) OR EXISTS(SELECT 1 FROM purge_log owner WHERE owner.issue_uid=original.issue_uid)))`, projectUID, projectID); err != nil {
 				return err
 			}
 		}
@@ -216,15 +221,22 @@ func (d *Store) InstallRelayReset(ctx context.Context, bindingUID string, manife
 			}
 		}
 		for _, receipt := range provenance.Receipts {
-			bytes, err := json.Marshal(receipt)
-			if err != nil {
-				return err
-			}
-			if _, err := tx.ExecContext(ctx, `INSERT INTO federation_event_provenance(project_uid,event_uid,content_hash,reset_epoch,sequence,key_id,receipt) VALUES($1,$2,$3,$4,$5,$6,$7)`, projectUID, receipt.EventUID, receipt.ContentHash, receipt.ResetEpoch, receipt.Sequence, receipt.KeyID, string(bytes)); err != nil {
+			if err := persistReceiptTx(db.WithRelayStateCapture(ctx), tx, receipt, nil, false); err != nil {
 				return err
 			}
 		}
 		for _, ref := range provenance.Entities {
+			var previous string
+			err := tx.QueryRowContext(ctx, `SELECT event_uid FROM federation_entity_provenance WHERE project_uid=$1 AND kind=$2 AND entity_uid=$3`, projectUID, ref.Kind, ref.EntityUID).Scan(&previous)
+			if err == nil {
+				if previous != ref.EventUID {
+					return db.ErrRemoteEventConflict
+				}
+				continue
+			}
+			if !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
 			if _, err := tx.ExecContext(ctx, `INSERT INTO federation_entity_provenance(project_uid,kind,entity_uid,event_uid) VALUES($1,$2,$3,$4)`, projectUID, ref.Kind, ref.EntityUID, ref.EventUID); err != nil {
 				return err
 			}

@@ -273,6 +273,9 @@ func (s *Store) PurgeProject(ctx context.Context, params db.PurgeProjectParams) 
 			return err
 		}
 
+		if err := db.RetainProjectMoveHistory(ctx, tx, project.ID, true); err != nil {
+			return err
+		}
 		counts, err := countProjectPurgeTx(ctx, tx, project.ID)
 		if err != nil {
 			return err
@@ -484,7 +487,11 @@ func deleteProjectScopedTx(ctx context.Context, tx *sql.Tx, project db.Project) 
 			return mapSQLError(err, nil)
 		}
 	}
+	if err := db.DeleteOrdinaryProjectOwnerMappings(ctx, tx, projectID); err != nil {
+		return err
+	}
 	statements := []string{
+
 		`DELETE FROM comments WHERE issue_id IN (SELECT id FROM issues WHERE project_id = $1)`,
 		`DELETE FROM links WHERE from_issue_id IN (SELECT id FROM issues WHERE project_id = $1) OR to_issue_id IN (SELECT id FROM issues WHERE project_id = $1)`,
 		`DELETE FROM issue_labels WHERE issue_id IN (SELECT id FROM issues WHERE project_id = $1)`,

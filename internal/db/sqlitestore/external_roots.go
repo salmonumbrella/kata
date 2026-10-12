@@ -1686,7 +1686,7 @@ func upsertPendingExternalCommentMapping(
 		imported_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
 	WHERE import_mappings.issue_id=excluded.issue_id
 	  AND import_mappings.comment_id=excluded.comment_id
-	RETURNING id, source, external_id, object_type, project_id, issue_id, comment_id, link_id, label, source_updated_at, imported_at`,
+	RETURNING id, source, external_id, object_type, project_id, issue_id, comment_id, link_id, label, source_updated_at, imported_at, moved_issue_uid, moved_to_authority_uid, moved_to_project_uid`,
 		mapping.Source, mapping.ExternalID, mapping.ObjectType, mapping.ProjectID,
 		mapping.IssueID, mapping.CommentID, mapping.LinkID, mapping.Label, mapping.SourceUpdatedAt))
 	if errors.Is(err, db.ErrNotFound) {

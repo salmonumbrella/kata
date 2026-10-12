@@ -27,8 +27,11 @@ func validateProvenanceReplay(records []ImportRecord) error {
 	receipts := make(map[eventIdentity]*AttributionReceipt)
 	sequences := make(map[sequenceIdentity]bool)
 	entities := make(map[entityIdentity]bool)
+	type ownedEntityIdentity struct{ kind, entity string }
+	ownedEntities := make(map[ownedEntityIdentity]bool)
 	issues := make(map[int64]*IssueExport)
 	events := make(map[string]*EventExport)
+
 	for _, record := range records {
 		switch rec := record.(type) {
 		case *ProjectExport:
@@ -37,6 +40,9 @@ func validateProvenanceReplay(records []ImportRecord) error {
 		case *IssueExport:
 			issues[rec.ID] = rec
 		case *EventExport:
+			if events[rec.UID] != nil {
+				return errors.New("duplicate event identity in backup")
+			}
 			events[rec.UID] = rec
 		case *RootKeyPin:
 			id := keyIdentity{rec.ProjectUID, rec.KeyID}
@@ -65,19 +71,72 @@ func validateProvenanceReplay(records []ImportRecord) error {
 		case *IssueExport:
 			if project := projectUIDByID[rec.ProjectID]; project != "" {
 				entities[entityIdentity{project, "issue", rec.UID}] = true
+				ownedEntities[ownedEntityIdentity{"issue", rec.UID}] = true
+			}
+		case *PurgeLogExport:
+			// A real purge identity is retained ownership evidence, not a live body.
+			if rec.IssueUID != nil && rec.ProjectUID != nil && *rec.IssueUID != "" && *rec.ProjectUID != "" {
+				entities[entityIdentity{*rec.ProjectUID, "issue", *rec.IssueUID}] = true
+				ownedEntities[ownedEntityIdentity{"issue", *rec.IssueUID}] = true
 			}
 		case *CommentExport:
 			issue := issues[rec.IssueID]
 			if issue != nil {
 				if project := projectUIDByID[issue.ProjectID]; project != "" {
 					entities[entityIdentity{project, "comment", rec.UID}] = true
+					ownedEntities[ownedEntityIdentity{"comment", rec.UID}] = true
 				}
 			}
 		}
 	}
+
+	// Retained source envelopes must remain exact hash-bearing history. Resolve a
+	// body-free comment only through its actual signed creation and issue owner.
+	for _, event := range events {
+		if len(event.SourceEventBytes) == 0 {
+			continue
+		}
+		original, err := DecodeRelaySourceEvent(event.SourceEventBytes)
+		if err != nil {
+			return fmt.Errorf("invalid retained creation source: %w", err)
+		}
+		if event.SourceProjectUID == nil || *event.SourceProjectUID != original.ProjectUID || event.UID != original.EventUID || event.ContentHash != original.ContentHash {
+			return ErrRemoteEventHashMismatch
+		}
+		if err := PrepareReplayEvent(event, original.ProjectUID, event.ProjectName, false); err != nil {
+			return err
+		}
+		if original.IssueUID == nil || !ownedEntities[ownedEntityIdentity{"issue", *original.IssueUID}] {
+			continue
+		}
+		_, refs, err := EventCreationProvenance(original)
+		if err != nil {
+			return err
+		}
+		for _, ref := range refs {
+			if ref.Kind == "comment" {
+				entities[entityIdentity{ref.ProjectUID, ref.Kind, ref.EntityUID}] = true
+				ownedEntities[ownedEntityIdentity{ref.Kind, ref.EntityUID}] = true
+			}
+		}
+	}
+	// A moved entity can retain original creation proof under a project that
+	// no longer has a local row. Require a real restored entity or purge identity and its exact
+	// receipt dependency, instead of inventing an empty source project.
+	foreignOwners := make(map[string]bool)
+	for _, record := range records {
+		ref, ok := record.(*EntityProvenance)
+		if !ok || !ownedEntities[ownedEntityIdentity{ref.Kind, ref.EntityUID}] {
+			continue
+		}
+		if receipts[eventIdentity{ref.ProjectUID, ref.EventUID}] != nil {
+			foreignOwners[ref.ProjectUID] = true
+		}
+	}
 	for id := range keys {
-		if _, ok := projects[id.project]; !ok || active[id.project] != 1 {
-			return errors.New("backup must contain the root key's project and one active pin")
+		_, local := projects[id.project]
+		if (local && active[id.project] != 1) || (!local && (!foreignOwners[id.project] || active[id.project] > 1)) {
+			return errors.New("backup must contain the root key's project and one active pin, or a retained foreign creation owner")
 		}
 	}
 	// A retained reset is authority-bearing recovery state, so validate its
@@ -139,7 +198,11 @@ func validateProvenanceReplay(records []ImportRecord) error {
 			return fmt.Errorf("invalid backup receipt: %w", err)
 		}
 		if event := events[id.event]; event != nil {
-			if event.ProjectID != projects[id.project] || event.ContentHash != receipt.ContentHash || event.Actor != receipt.SourceActor {
+			sourceProjectUID := projectUIDByID[event.ProjectID]
+			if event.SourceProjectUID != nil {
+				sourceProjectUID = *event.SourceProjectUID
+			}
+			if sourceProjectUID != id.project || event.ContentHash != receipt.ContentHash || event.Actor != receipt.SourceActor {
 				return ErrRemoteEventHashMismatch
 			}
 			handle, _, err := EventCreationProvenance(RemoteEvent{ProjectUID: id.project, EventUID: id.event, Type: event.Type, IssueUID: event.IssueUID, Payload: event.Payload})
@@ -158,7 +221,7 @@ func validateProvenanceReplay(records []ImportRecord) error {
 			continue
 		}
 		id := entityIdentity{ref.ProjectUID, ref.Kind, ref.EntityUID}
-		if seenRefs[id] || !entities[id] || receipts[eventIdentity{ref.ProjectUID, ref.EventUID}] == nil {
+		if seenRefs[id] || (!entities[id] && !ownedEntities[ownedEntityIdentity{ref.Kind, ref.EntityUID}]) || receipts[eventIdentity{ref.ProjectUID, ref.EventUID}] == nil {
 			return errors.New("duplicate or orphan creation provenance in backup")
 		}
 		seenRefs[id] = true

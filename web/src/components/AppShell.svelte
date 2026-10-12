@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { KataMoveOptions, KataMoveDaemon, KataMoveDestination } from '../lib/kata/types'
   import { onMount } from 'svelte'
   import { DetailDrawer, IconButton, TopBar, type TypeaheadOption } from '@kenn-io/kit-ui'
   import LayoutPanelLeftIcon from '@lucide/svelte/icons/layout-panel-left'
@@ -82,7 +83,9 @@
     onDesignateInbox: (projectUID: string) => Promise<void>
     onCreateIssue: (title: string, parent?: ChildParent) => void | Promise<void>
     searchReferences: (query: string) => Promise<UIIssueReference[]>
-    onMoveIssue: (toProjectUID: string) => boolean | Promise<boolean>
+    moveDaemons?: KataMoveDaemon[] | undefined
+    onLoadMoveProjects?: ((daemonID: string) => Promise<KataMoveDestination>) | undefined
+    onMoveIssue: (toProjectUID: string, options?: KataMoveOptions) => boolean | Promise<boolean>
     onPatchMetadata: (uid: string, patch: Record<string, unknown>) => boolean | Promise<boolean>
     onAddComment: (
       uid: string,
@@ -144,6 +147,8 @@
     onDesignateInbox,
     onCreateIssue,
     searchReferences,
+    moveDaemons = [],
+    onLoadMoveProjects,
     onMoveIssue,
     onPatchMetadata,
     onAddComment,
@@ -724,6 +729,8 @@
         {draftResetGeneration}
         {draftFenceGeneration}
         movePending={mutationPending}
+        {moveDaemons}
+        {onLoadMoveProjects}
         {onMoveIssue}
         {onPatchMetadata}
         {onAddComment}

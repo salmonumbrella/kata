@@ -481,3 +481,25 @@ a burst of 20, and at most eight concurrent daemon calls per server process.
 Host process control stays outside MCP: daemon lifecycle, the TUI and Web UI,
 install/update, database migrations and cutovers, and raw internal replication
 endpoints remain CLI or operator workflows.
+
+## Move issue trees
+
+`kata.move` accepts `ref` or `refs` plus `to_project`. It moves the complete
+descendant tree, including completed and deleted children. Overlapping selections
+are combined before any writes; disjoint roots have independent results.
+
+Use `dry_run` to inspect membership, `issue_only` to leave descendants in place,
+`move_series` to include recurrence families, and `provider_disposition: "detach"`
+to detach provider ownership. The startup project allowlist applies to every
+source and destination. `destination_authority_uid` selects an already configured
+remote destination; it does not grant additional project scope.
+
+The result retains native `state`, `request_uid`, `preview`, and `result` fields;
+bulk requests return each operation in `moves`. For `partial` or
+`outcome-unknown`, retry with the same `request_uid`, `preview_digest`, source,
+destination, and options. For scoped processes, a cold retry must re-establish the original authorized
+membership and digest. If that is unavailable or changed, the tool returns
+`outcome-unknown` with manual reconciliation guidance and makes no write.
+Use a qualified `project#FULL_UID` for a stable multi-project retry.
+Per-UID applied mappings include actual committed event evidence. A `conflict` requires reconciliation. See the
+[HTTP contract](http-api.md#issue-tree-moves) for recovery limits.

@@ -41,14 +41,14 @@ func (d *Store) EventsAfter(ctx context.Context, p db.EventsAfterParams) ([]db.E
 	)
 	conds = append(conds, "e.id > ?")
 	args = append(args, p.AfterID)
-	conds = append(conds, "p.name <> ?")
+	conds = append(conds, "COALESCE(p.name,e.project_name) <> ?")
 	args = append(args, db.SystemProjectName)
 	conds = append(conds, authorizedEventStreamPredicate(ctx, &args))
 	if p.ProjectID != 0 {
-		conds = append(conds, `(e.project_id = ? OR (e.type='issue.moved' AND
+		conds = append(conds, `(e.project_id = ? OR i.project_id = ? OR (e.type='issue.moved' AND
             json_extract(CASE WHEN e.type='issue.moved' THEN e.payload ELSE '{}' END,'$.from_project_uid') =
-            (SELECT uid FROM projects WHERE id = ?)))`)
-		args = append(args, p.ProjectID, p.ProjectID)
+            (SELECT uid FROM projects WHERE id = ?)) OR (e.type='recurrence.moved' AND json_extract(CASE WHEN e.type='recurrence.moved' THEN e.payload ELSE '{}' END,'$.to_project_uid') = (SELECT uid FROM projects WHERE id=?)) OR (e.type LIKE 'recurrence.%' AND EXISTS(SELECT 1 FROM recurrences owner_series WHERE owner_series.uid=json_extract(CASE WHEN e.type LIKE 'recurrence.%' THEN e.payload ELSE '{}' END,'$.recurrence_uid') AND owner_series.project_id=?)))`)
+		args = append(args, p.ProjectID, p.ProjectID, p.ProjectID, p.ProjectID, p.ProjectID)
 	}
 	if p.ThroughID != 0 {
 		conds = append(conds, "e.id <= ?")
@@ -66,11 +66,11 @@ func (d *Store) EventsAfter(ctx context.Context, p db.EventsAfterParams) ([]db.E
 		}
 		conds = append(conds, "e.type IN ("+strings.Join(placeholders, ",")+")")
 	}
-	q := `SELECT e.id, e.uid, e.origin_instance_uid, e.project_id, p.uid, e.project_name,
+	q := `SELECT e.id, e.uid, e.origin_instance_uid, COALESCE(e.project_id,0), COALESCE(e.source_project_uid,p.uid), e.project_name,
 	             e.issue_id, e.issue_uid, i.short_id, e.related_issue_id, e.related_issue_uid, ri.short_id,
 	             e.type, e.actor, e.payload, e.hlc_physical_ms, e.hlc_counter, e.content_hash, e.created_at
 	      FROM events e
-	      JOIN projects p ON p.id = e.project_id
+	      LEFT JOIN projects p ON p.id = e.project_id
 	      LEFT JOIN issues i ON i.id = e.issue_id OR (e.issue_id IS NULL AND e.issue_uid IS NOT NULL AND i.uid = e.issue_uid)
 	      LEFT JOIN issues ri ON ri.id = e.related_issue_id OR (e.related_issue_id IS NULL AND e.related_issue_uid IS NOT NULL AND ri.uid = e.related_issue_uid)
 	      WHERE ` + strings.Join(conds, " AND ") + ` ORDER BY e.id ASC LIMIT ?`
@@ -141,7 +141,7 @@ func (d *Store) EventsAfter(ctx context.Context, p db.EventsAfterParams) ([]db.E
 			return nil, fmt.Errorf("check event project scope: %w", err)
 		}
 		if reset {
-			if sourceUID := db.EventDepartureProjectUID(ctx, e); sourceUID != "" {
+			if sourceUID := db.EventVisibleMoveProjectUID(ctx, e); sourceUID != "" {
 				project, projectErr := d.ProjectByUID(ctx, sourceUID)
 				if errors.Is(projectErr, db.ErrNotFound) {
 					e = db.ProjectScopeResetCursor(e)
@@ -160,11 +160,11 @@ func (d *Store) EventsAfter(ctx context.Context, p db.EventsAfterParams) ([]db.E
 }
 
 func eventsAfterTx(ctx context.Context, tx *sql.Tx, afterID int64) ([]db.Event, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT e.id, e.uid, e.origin_instance_uid, e.project_id, p.uid, e.project_name,
+	rows, err := tx.QueryContext(ctx, `SELECT e.id, e.uid, e.origin_instance_uid, COALESCE(e.project_id,0), COALESCE(e.source_project_uid,p.uid), e.project_name,
              e.issue_id, e.issue_uid, i.short_id, e.related_issue_id, e.related_issue_uid, ri.short_id,
              e.type, e.actor, e.payload, e.hlc_physical_ms, e.hlc_counter, e.content_hash, e.created_at
         FROM events e
-        JOIN projects p ON p.id = e.project_id
+        LEFT JOIN projects p ON p.id = e.project_id
         LEFT JOIN issues i ON i.id = e.issue_id OR (e.issue_id IS NULL AND e.issue_uid IS NOT NULL AND i.uid = e.issue_uid)
         LEFT JOIN issues ri ON ri.id = e.related_issue_id OR (e.related_issue_id IS NULL AND e.related_issue_uid IS NOT NULL AND ri.uid = e.related_issue_uid)
        WHERE e.id > ? ORDER BY e.id ASC`, afterID)
@@ -252,12 +252,12 @@ func (d *Store) EventsInWindow(ctx context.Context, p db.EventsInWindowParams) (
 	args = append(args, p.Since)
 	conds = append(conds, "e.created_at <= ?")
 	args = append(args, p.Until)
-	conds = append(conds, "p.name <> ?")
+	conds = append(conds, "COALESCE(p.name,e.project_name) <> ?")
 	args = append(args, db.SystemProjectName)
 	conds = append(conds, authorizedEventPredicate(ctx, &args))
 	if p.ProjectID != 0 {
-		conds = append(conds, "e.project_id = ?")
-		args = append(args, p.ProjectID)
+		conds = append(conds, `(e.project_id = ? OR i.project_id = ? OR (e.type LIKE 'recurrence.%' AND EXISTS(SELECT 1 FROM recurrences owner_series WHERE owner_series.uid=json_extract(CASE WHEN e.type LIKE 'recurrence.%' THEN e.payload ELSE '{}' END,'$.recurrence_uid') AND owner_series.project_id=?)))`)
+		args = append(args, p.ProjectID, p.ProjectID, p.ProjectID)
 	}
 	if len(p.Actors) > 0 {
 		placeholders := make([]string, len(p.Actors))
@@ -267,11 +267,11 @@ func (d *Store) EventsInWindow(ctx context.Context, p db.EventsInWindowParams) (
 		}
 		conds = append(conds, "e.actor IN ("+strings.Join(placeholders, ",")+")")
 	}
-	q := `SELECT e.id, e.uid, e.origin_instance_uid, e.project_id, p.uid, e.project_name, e.issue_id, e.issue_uid, i.short_id,
+	q := `SELECT e.id, e.uid, e.origin_instance_uid, COALESCE(e.project_id,0), COALESCE(e.source_project_uid,p.uid), e.project_name, e.issue_id, e.issue_uid, i.short_id,
 	             e.related_issue_id, e.related_issue_uid, ri.short_id,
 	             e.type, e.actor, e.payload, e.hlc_physical_ms, e.hlc_counter, e.content_hash, e.created_at
 	      FROM events e
-	      JOIN projects p ON p.id = e.project_id
+	      LEFT JOIN projects p ON p.id = e.project_id
 	      LEFT JOIN issues i ON i.id = e.issue_id OR (e.issue_id IS NULL AND e.issue_uid IS NOT NULL AND i.uid = e.issue_uid)
 	      LEFT JOIN issues ri ON ri.id = e.related_issue_id OR (e.related_issue_id IS NULL AND e.related_issue_uid IS NOT NULL AND ri.uid = e.related_issue_uid)
 	      WHERE ` + strings.Join(conds, " AND ") + ` ORDER BY e.id ASC`

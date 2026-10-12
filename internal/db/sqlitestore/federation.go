@@ -1282,6 +1282,9 @@ func (d *Store) resetFederatedProject(ctx context.Context, projectID, replayHori
 	if err := rejectLegacyFederationResetTx(ctx, tx, projectID); err != nil {
 		return err
 	}
+	if err := db.RetainRelocatedProjectHistory(ctx, tx, projectID, false); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM events WHERE project_id = ?`, projectID); err != nil {
 		return fmt.Errorf("clear federated events: %w", err)
 	}
@@ -1797,6 +1800,9 @@ func clearFederatedProjection(ctx context.Context, tx *sql.Tx, projectID int64) 
 	// Links are project-independent edges (storage v16), so the project scope
 	// comes from the endpoints: drop every link touching one of this
 	// project's issues before the issues themselves go.
+	if err := db.DeleteOrdinaryProjectOwnerMappings(ctx, tx, projectID); err != nil {
+		return err
+	}
 	stmts := []struct {
 		sql  string
 		args []any
@@ -2040,6 +2046,9 @@ func reconcileFederatedCommentsFromRows(ctx context.Context, tx *sql.Tx, issueID
 		}
 		if owned {
 			return fmt.Errorf("%w: %w", db.ErrFederationIngestValidation, db.ErrExternalCommentContentOwned)
+		}
+		if err := db.DeleteOrdinaryCommentMappings(ctx, tx, row.id); err != nil {
+			return err
 		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM comments WHERE id = ?`, row.id); err != nil {
 			return fmt.Errorf("delete stale federated comment %s: %w", uid, err)
@@ -2301,7 +2310,7 @@ func reconcileFederatedLinkRows(ctx context.Context, tx *sql.Tx, projection db.F
 		if _, ok := desired[key]; ok {
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM links WHERE id = ?`, row.id); err != nil {
+		if _, err := db.DeleteLinkWithMappings(ctx, tx, row.id); err != nil {
 			return fmt.Errorf("delete stale federated link %s %s->%s: %w", key.Type, key.FromUID, key.ToUID, err)
 		}
 	}
@@ -2437,6 +2446,12 @@ func removeFederatedBoundaryLinksBetweenProjectAndGroup(
 	args = append(args, projectID)
 	args = append(args, groupArgs...)
 	//nolint:gosec // IN values use generated ? placeholders with separately bound integer IDs.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM import_mappings WHERE moved_issue_uid IS NULL AND link_id IN (
+SELECT l.id FROM links l JOIN issues f ON f.id=l.from_issue_id JOIN issues t ON t.id=l.to_issue_id
+WHERE (f.project_id=? AND t.project_id IN (`+placeholders+`)) OR (t.project_id=? AND f.project_id IN (`+placeholders+`)))`, args...); err != nil {
+		return fmt.Errorf("remove former group ordinary mappings: %w", err)
+	}
+	//nolint:gosec // IN values use generated ? placeholders with separately bound integer IDs.
 	if _, err := tx.ExecContext(ctx, `
 		DELETE FROM links
 		 WHERE id IN (
@@ -2497,7 +2512,7 @@ func removeIncompatibleFederatedBoundaryLinks(
 		return fmt.Errorf("iterate incompatible federation boundary links: %w", err)
 	}
 	for _, linkID := range stale {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM links WHERE id = ?`, linkID); err != nil {
+		if _, err := db.DeleteLinkWithMappings(ctx, tx, linkID); err != nil {
 			return fmt.Errorf("delete incompatible federation boundary link %d: %w", linkID, err)
 		}
 	}
@@ -2723,6 +2738,9 @@ func pruneFederatedIssues(ctx context.Context, tx *sql.Tx, projectID int64, issu
 		}
 		if refs > 0 {
 			continue
+		}
+		if err := db.DeleteOrdinaryIssueOwnerMappings(ctx, tx, c.id); err != nil {
+			return err
 		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM issues WHERE id = ?`, c.id); err != nil {
 			return fmt.Errorf("delete stale federated issue %s: %w", c.uid, err)
@@ -3090,6 +3108,9 @@ func restoreProjectAccessPolicyAfterUIDRewriteTx(
 }
 
 func replaceProjectUIDTx(ctx context.Context, tx *sql.Tx, projectID int64, uid string) error {
+	if err := db.RetainRelocatedProjectHistory(ctx, tx, projectID, false); err != nil {
+		return err
+	}
 	var oldUID string
 	if err := tx.QueryRowContext(ctx, `SELECT uid FROM projects WHERE id = ?`, projectID).Scan(&oldUID); err != nil {
 		return fmt.Errorf("read project uid before adoption: %w", err)

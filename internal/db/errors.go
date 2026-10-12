@@ -392,3 +392,20 @@ func (e *MetadataGuardConflictError) Error() string {
 
 // ErrIssueSyncBindingChanged means an enable snapshot is no longer current.
 var ErrIssueSyncBindingChanged = errors.New("issue sync binding changed during validation")
+
+// ErrProjectNameRetained prevents an old qualified reference from changing identity.
+var ErrProjectNameRetained = errors.New("project name is retained")
+
+// ProjectNameRetainedError identifies the existing reservation without silently
+// overwriting it. A conflicting legacy project must be renamed before purge.
+type ProjectNameRetainedError struct {
+	Name               string
+	AuthorityUID       string
+	ReservedProjectUID string
+}
+
+func (e *ProjectNameRetainedError) Error() string {
+	return fmt.Sprintf("%v: %q; rename the conflicting project before retrying", ErrProjectNameRetained, e.Name)
+}
+func (e *ProjectNameRetainedError) Unwrap() error        { return ErrProjectNameRetained }
+func (e *ProjectNameRetainedError) RetainedName() string { return e.Name }

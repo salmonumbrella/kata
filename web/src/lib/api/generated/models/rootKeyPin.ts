@@ -8,5 +8,4 @@ export interface RootKeyPin {
   project_uid: string
   public_key: string
   retired?: boolean
-  [key: string]: unknown
 }

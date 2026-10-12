@@ -551,7 +551,7 @@ func (d *Store) softDeleteRecurrence(ctx context.Context, in db.SoftDeleteRecurr
 	if err := tx.QueryRowContext(ctx, `
 		SELECT r.project_id, r.uid, p.name, r.revision
 		  FROM recurrences r JOIN projects p ON p.id = r.project_id
-		 WHERE r.id = ? AND r.deleted_at IS NULL AND p.deleted_at IS NULL`,
+		 WHERE r.moved_event_uid IS NULL AND r.id = ? AND r.deleted_at IS NULL AND p.deleted_at IS NULL`,
 		in.RecurrenceID,
 	).Scan(&pid, &recUID, &projectName, &revision); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -634,18 +634,18 @@ func scanRecurrence(row scanner) (db.Recurrence, error) {
 // GetRecurrenceByID returns the recurrence with the given row id.
 func (d *Store) GetRecurrenceByID(ctx context.Context, id int64) (db.Recurrence, error) {
 	return scanRecurrence(d.QueryRowContext(ctx,
-		"SELECT "+recurrenceSelectFields+" FROM recurrences WHERE id = ?", id))
+		"SELECT "+recurrenceSelectFields+" FROM recurrences WHERE moved_event_uid IS NULL AND id = ?", id))
 }
 
 func (d *Store) getRecurrenceTx(ctx context.Context, tx *sql.Tx, id int64) (db.Recurrence, error) {
 	return scanRecurrence(tx.QueryRowContext(ctx,
-		"SELECT "+recurrenceSelectFields+" FROM recurrences WHERE id = ?", id))
+		"SELECT "+recurrenceSelectFields+" FROM recurrences WHERE moved_event_uid IS NULL AND id = ?", id))
 }
 
 // GetRecurrenceByUID returns the recurrence with the given UID.
 func (d *Store) GetRecurrenceByUID(ctx context.Context, recUID string) (db.Recurrence, error) {
 	return scanRecurrence(d.QueryRowContext(ctx,
-		"SELECT "+recurrenceSelectFields+" FROM recurrences WHERE uid = ?", recUID))
+		"SELECT "+recurrenceSelectFields+" FROM recurrences WHERE moved_event_uid IS NULL AND uid = ?", recUID))
 }
 
 // ListRecurrencesByProject returns all non-deleted recurrences for projectID,
@@ -655,7 +655,7 @@ func (d *Store) ListRecurrencesByProject(ctx context.Context, projectID int64) (
 	rows, err := d.QueryContext(ctx,
 		"SELECT "+recurrenceSelectFieldsAliased+
 			" FROM recurrences r JOIN projects p ON p.id = r.project_id"+
-			" WHERE r.project_id = ? AND r.deleted_at IS NULL AND p.deleted_at IS NULL"+
+			" WHERE r.project_id = ? AND r.moved_event_uid IS NULL AND r.deleted_at IS NULL AND p.deleted_at IS NULL"+
 			" ORDER BY r.created_at DESC",
 		projectID)
 	if err != nil {
@@ -729,7 +729,7 @@ func (d *Store) materializeNextTx(
 		       r.last_materialized_uid, r.author, r.revision,
 		       r.created_at, r.updated_at, r.deleted_at
 		  FROM recurrences r JOIN projects p ON p.id = r.project_id
-		 WHERE r.id = ?`, recurrenceID,
+		 WHERE r.moved_event_uid IS NULL AND r.id = ?`, recurrenceID,
 	).Scan(&r.ID, &r.UID, &r.ProjectID, &projectName,
 		&r.RRule, &r.DTStart, &r.Timezone,
 		&r.TemplateTitle, &r.TemplateBody, &r.TemplateOwner, &r.TemplatePriority,

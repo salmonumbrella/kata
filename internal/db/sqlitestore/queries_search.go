@@ -82,6 +82,7 @@ func (d *Store) searchFTS(ctx context.Context, r searchFTSReq) ([]db.SearchCandi
 	if r.params.IncludeDeleted {
 		rowFilter = ""
 	}
+	rowFilter += " AND i.moved_to_authority_uid IS NULL"
 	// Label predicates mirror ListIssues (AND across Labels, exclusion for
 	// ExcludeLabels) and live in the candidate row selection, so they narrow
 	// the result set before LIMIT rather than after.

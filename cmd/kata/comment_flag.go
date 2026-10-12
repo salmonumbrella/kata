@@ -64,7 +64,9 @@ func postFollowupCommentWithKey(
 	}
 
 	retryInstruction := fmt.Sprintf("retry with: kata comment %s --body ...", issueRef)
-	if idempotencyKey != "" {
+	if strings.HasPrefix(idempotencyKey, "move-") {
+		retryInstruction = "rerun the original kata move command with the same --request-uid and --preview-digest"
+	} else if idempotencyKey != "" {
 		retryInstruction = "rerun the original kata close command with the same --idempotency-key"
 	}
 	apiClient, err := kataclient.NewWithHTTPClient(baseURL, client)

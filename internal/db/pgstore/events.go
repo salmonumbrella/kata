@@ -14,11 +14,11 @@ import (
 	katauid "go.kenn.io/kata/internal/uid"
 )
 
-const eventSelect = `SELECT e.id, e.uid, e.origin_instance_uid, e.project_id, p.uid, e.project_name,
+const eventSelect = `SELECT e.id, e.uid, e.origin_instance_uid, COALESCE(e.project_id,0), COALESCE(e.source_project_uid,p.uid), e.project_name,
        e.issue_id, e.issue_uid, i.short_id, e.related_issue_id, e.related_issue_uid, ri.short_id,
        e.type, e.actor, e.payload, e.hlc_physical_ms, e.hlc_counter, e.content_hash, e.created_at
   FROM events e
-  JOIN projects p ON p.id = e.project_id
+  LEFT JOIN projects p ON p.id = e.project_id
   LEFT JOIN issues i ON i.id = e.issue_id OR (e.issue_id IS NULL AND e.issue_uid IS NOT NULL AND i.uid = e.issue_uid)
   LEFT JOIN issues ri ON ri.id = e.related_issue_id OR (e.related_issue_id IS NULL AND e.related_issue_uid IS NOT NULL AND ri.uid = e.related_issue_uid)`
 
@@ -52,15 +52,16 @@ func (s *Store) MaxEventID(ctx context.Context) (int64, error) {
 
 // EventsAfter returns an ascending, bounded event page.
 func (s *Store) EventsAfter(ctx context.Context, params db.EventsAfterParams) ([]db.Event, error) {
-	conditions := []string{"e.id > $1", "p.name <> $2"}
+	conditions := []string{"e.id > $1", "COALESCE(p.name,e.project_name) <> $2"}
 	args := []any{params.AfterID, db.SystemProjectName}
 	conditions = append(conditions, authorizedEventStreamPredicate(ctx, &args))
 	if params.ProjectID != 0 {
 		args = append(args, params.ProjectID)
 		projectPosition := len(args)
 		args = append(args, params.ProjectID)
-		conditions = append(conditions, fmt.Sprintf(`(e.project_id = $%d OR (e.type='issue.moved' AND
-            e.payload::jsonb->>'from_project_uid' = (SELECT uid FROM projects WHERE id = $%d)))`, projectPosition, len(args)))
+		args = append(args, params.ProjectID)
+		conditions = append(conditions, fmt.Sprintf(`(e.project_id = $%d OR i.project_id = $%d OR (e.type='issue.moved' AND
+            e.payload::jsonb->>'from_project_uid' = (SELECT uid FROM projects WHERE id = $%d)) OR (e.type='recurrence.moved' AND e.payload::jsonb->>'to_project_uid' = (SELECT uid FROM projects WHERE id=$%d)) OR (e.type LIKE 'recurrence.%%' AND EXISTS(SELECT 1 FROM recurrences owner_series WHERE owner_series.uid=e.payload::jsonb->>'recurrence_uid' AND owner_series.project_id=$%d)))`, projectPosition, projectPosition+1, len(args), len(args), len(args)))
 	}
 	if params.ThroughID != 0 {
 		args = append(args, params.ThroughID)
@@ -145,7 +146,7 @@ func (s *Store) EventsAfter(ctx context.Context, params db.EventsAfterParams) ([
 			return nil, mapSQLError(err, nil)
 		}
 		if reset {
-			if sourceUID := db.EventDepartureProjectUID(ctx, event); sourceUID != "" {
+			if sourceUID := db.EventVisibleMoveProjectUID(ctx, event); sourceUID != "" {
 				project, projectErr := s.ProjectByUID(ctx, sourceUID)
 				if errors.Is(projectErr, db.ErrNotFound) {
 					event = db.ProjectScopeResetCursor(event)
@@ -220,12 +221,12 @@ func eventsByUIDs(ctx context.Context, q interface {
 
 // EventsInWindow returns events in the inclusive timestamp window.
 func (s *Store) EventsInWindow(ctx context.Context, params db.EventsInWindowParams) ([]db.Event, error) {
-	conditions := []string{"e.created_at >= $1", "e.created_at <= $2", "p.name <> $3"}
+	conditions := []string{"e.created_at >= $1", "e.created_at <= $2", "COALESCE(p.name,e.project_name) <> $3"}
 	args := []any{params.Since, params.Until, db.SystemProjectName}
 	conditions = append(conditions, authorizedEventPredicate(ctx, &args))
 	if params.ProjectID != 0 {
 		args = append(args, params.ProjectID)
-		conditions = append(conditions, fmt.Sprintf("e.project_id = $%d", len(args)))
+		conditions = append(conditions, fmt.Sprintf(`(e.project_id = $%d OR i.project_id = $%d OR (e.type LIKE 'recurrence.%%' AND EXISTS(SELECT 1 FROM recurrences owner_series WHERE owner_series.uid=e.payload::jsonb->>'recurrence_uid' AND owner_series.project_id=$%d)))`, len(args), len(args), len(args)))
 	}
 	if len(params.Actors) > 0 {
 		positions := make([]string, 0, len(params.Actors))

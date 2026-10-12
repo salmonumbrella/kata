@@ -51,6 +51,7 @@ func (s *Store) searchFTS(ctx context.Context, request searchFTSRequest) ([]db.S
 	if request.params.IncludeDeleted {
 		rowFilter = ""
 	}
+	rowFilter += " AND i.moved_to_authority_uid IS NULL"
 	if request.params.Status != "" {
 		args = append(args, request.params.Status)
 		rowFilter += fmt.Sprintf("\n   AND i.status = $%d", len(args))

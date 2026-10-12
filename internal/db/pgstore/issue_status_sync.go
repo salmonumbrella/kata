@@ -27,7 +27,7 @@ func statusReadBindingTx(ctx context.Context, tx *sql.Tx, guard db.IssueSyncImpo
 
 func loadIssueStatusMappingTx(ctx context.Context, tx *sql.Tx, binding db.IssueSyncBinding, id int64) (db.IssueStatusMapping, error) {
 	mapping, err := scanImportMapping(tx.QueryRowContext(ctx, importMappingSelect+` WHERE id=$1 AND project_id=$2 AND source=$3 AND object_type='issue'
- AND EXISTS (SELECT 1 FROM issues WHERE issues.id=import_mappings.issue_id AND issues.deleted_at IS NULL)`, id, binding.ProjectID, binding.SourceKey))
+ AND import_mappings.moved_issue_uid IS NULL AND EXISTS (SELECT 1 FROM issues WHERE issues.id=import_mappings.issue_id AND issues.moved_to_authority_uid IS NULL AND issues.deleted_at IS NULL)`, id, binding.ProjectID, binding.SourceKey))
 	if err != nil {
 		return db.IssueStatusMapping{}, err
 	}
@@ -61,12 +61,12 @@ func statusMappingPageTx(ctx context.Context, tx *sql.Tx, binding db.IssueSyncBi
 	high := query.ThroughID
 	if high == 0 {
 		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(id),0) FROM import_mappings WHERE project_id=$1 AND source=$2 AND object_type='issue'
- AND EXISTS (SELECT 1 FROM issues WHERE issues.id=import_mappings.issue_id AND issues.deleted_at IS NULL)`, binding.ProjectID, binding.SourceKey).Scan(&high); err != nil {
+ AND import_mappings.moved_issue_uid IS NULL AND EXISTS (SELECT 1 FROM issues WHERE issues.id=import_mappings.issue_id AND issues.moved_to_authority_uid IS NULL AND issues.deleted_at IS NULL)`, binding.ProjectID, binding.SourceKey).Scan(&high); err != nil {
 			return db.IssueStatusPage{}, err
 		}
 	}
 	sqlQuery := `SELECT id FROM import_mappings WHERE project_id=$1 AND source=$2 AND object_type='issue' AND id>$3 AND id<=$4
- AND EXISTS (SELECT 1 FROM issues WHERE issues.id=import_mappings.issue_id AND issues.deleted_at IS NULL)`
+ AND import_mappings.moved_issue_uid IS NULL AND EXISTS (SELECT 1 FROM issues WHERE issues.id=import_mappings.issue_id AND issues.moved_to_authority_uid IS NULL AND issues.deleted_at IS NULL)`
 	if query.PendingOnly {
 		sqlQuery += ` AND pending_event_uid IS NOT NULL`
 	}

@@ -98,7 +98,7 @@ func EventRequiresProjectScopeReset(
 	}
 
 	switch event.Type {
-	case "issue.moved":
+	case "issue.moved", "recurrence.moved":
 		var payload map[string]jsontext.Value
 		if err := json.Unmarshal([]byte(event.Payload), &payload); err != nil {
 			return true, nil
@@ -212,14 +212,15 @@ func ProjectScopeResetEvent(event Event) Event {
 	}
 }
 
-// EventDepartureProjectUID returns the authorized source of an issue move.
-// Scoped streams use it to deliver a reset to readers of the project the issue left.
-func EventDepartureProjectUID(ctx context.Context, event Event) string {
-	if event.Type != "issue.moved" {
+// EventVisibleMoveProjectUID routes a reset to the caller's authorized side.
+// Neither audience learns the other project when it is outside its grant.
+func EventVisibleMoveProjectUID(ctx context.Context, event Event) string {
+	if event.Type != "issue.moved" && event.Type != "recurrence.moved" {
 		return ""
 	}
 	var payload struct {
 		FromProjectUID string `json:"from_project_uid"`
+		ToProjectUID   string `json:"to_project_uid"`
 	}
 	if err := json.Unmarshal([]byte(event.Payload), &payload); err != nil || payload.FromProjectUID == "" {
 		return ""
@@ -231,6 +232,13 @@ func EventDepartureProjectUID(ctx context.Context, event Event) string {
 	for _, uid := range allowed {
 		if uid == payload.FromProjectUID {
 			return uid
+		}
+	}
+	if event.Type == "recurrence.moved" {
+		for _, uid := range allowed {
+			if uid == payload.ToProjectUID {
+				return uid
+			}
 		}
 	}
 	return ""

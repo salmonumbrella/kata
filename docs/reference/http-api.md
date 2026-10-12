@@ -337,6 +337,77 @@ needed to apply a renewal after the spoke missed earlier events. The spoke
 persists those prerequisites before the mutation events and omits them from
 the client-facing response.
 
+## Issue tree moves
+
+`POST /api/v1/issue-moves` previews or moves work by stable UIDs. This API is
+available on main after the latest release. Send a `request` object with
+`source_authority_uid`, `source_project_uid`, `issue_uid`,
+`destination_authority_uid`, `destination_project_uid`, `request_uid`,
+`actor_authority_uid`, and `actor`. Use a new ULID for `request_uid` and retain it
+for exact retries. Configured authentication still controls the actor and project
+access; naming an authority does not grant access to it.
+
+Set `dry_run: true` beside `request` to receive a preview. The default `selection`
+is `subtree`, including completed and soft-deleted children. `issue-only` selects
+one issue. `move_series: true` includes the recurrence owner and its occurrences;
+otherwise an occurrence retains its series identity. `provider_disposition`
+defaults to `preserve`; `detach` explicitly removes active provider ownership.
+Include the returned digest as `preview_digest` when executing a reviewed
+selection. The daemon checks authorization and current content again at commit.
+
+The destination authority must be available through the daemon's configured
+catalog or federation route. Each credential remains pinned to its configured
+origin; the local daemon token is never forwarded to another authority. Moves
+between databases require compatible issue-transfer endpoints on both sides.
+Snapshots contain selected entity records and original public proofs, excluding
+unrelated project data and credentials.
+
+The response contains `preview` for a dry run or `result` for execution:
+
+| Result state | Meaning and next action |
+| --- | --- |
+| `completed` | The destination committed and every requested source finalized. |
+| `partial` | Some source portions finalized. Inspect `applied`, `finalized`, and the remaining conflicts before retrying. |
+| `outcome-unknown` | A response or authority was unavailable. Keep the same request UID and retry to look up the actual commit. |
+| `conflict` | Content or authority changed. Refresh the selection and reconcile retained copies before starting another move. |
+
+`applied` identifies each issue's destination reference and committed event UID
+and hash. A transport acknowledgement alone is not evidence of a move.
+`conflicts`, `unknown_roots`, and `retry_action` describe unfinished work.
+An exact retry does not overwrite destination edits or emit the move again.
+
+Within one database, the selected tree commits atomically. Between databases,
+the destination commits first and sources finalize separately after checking
+the full transferred content. Changed source content remains intact. Interrupted
+moves can leave both copies writable and can overlap recurrence or provider
+activity. Reconcile those copies and external actions explicitly; restoring an
+old backup does not automatically reconcile an interrupted move.
+
+The authenticated `/api/v1/issue-moves/export`, `/accept`, `/lookup`, and
+`/finalize` routes support this transfer. Direct API consumers should prefer the
+coordinating endpoint and retain its request identity and returned evidence.
+
+## Retrying project setup
+
+On main, `POST /api/v1/projects` accepts optional `project_uid` and
+`authority_uid` fields together. Save the destination project UID before the
+first request. Set `authority_uid` to the destination daemon's instance UID.
+Send `name` and, when available, the client-derived `alias` with `kind` set to
+`git` or `local`. This path does not inspect the client's filesystem.
+
+The daemon creates or resolves that project UID and attaches the workspace
+alias in one SQLite or PostgreSQL transaction. If the response is lost, retry
+with the saved UIDs. The retry returns the same project and `created: false`,
+without another creation event. An existing UID keeps its current canonical
+name after a rename.
+
+A wrong daemon instance, a name or alias owned by another project UID, an
+archived project, or a retained name owned by another UID returns HTTP 409.
+These failures leave no new project or alias. Stable UID setup rejects
+`reassign: true`; use ordinary project alias administration for intentional
+reassignment. Requests without these UID fields retain ordinary init behavior.
+All existing authentication and project-access checks still apply.
+
 ## Resolving projects inside mutations
 
 These operations accept either a numeric project ID or a `name:` selector:

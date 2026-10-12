@@ -65,6 +65,8 @@ func (dm detailModel) handleModalOpenKey(
 		kind = inputLabelPrompt
 	case km.RemoveLabel.matches(msg):
 		kind = inputRemoveLabelPrompt
+	case km.Move.matches(msg):
+		kind = inputMovePrompt
 	case km.AssignOwner.matches(msg):
 		kind = inputOwnerPrompt
 	case km.TimedAssignment.matches(msg):

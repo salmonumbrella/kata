@@ -1597,6 +1597,331 @@ func (c *Client) InstanceWithResponse(ctx context.Context, reqEditors ...runtime
 	}
 }
 
+func (c *Client) MoveIssueTreeWithResponse(ctx context.Context, options *MoveIssueTreeRequestOptions, reqEditors ...runtime.RequestEditorFn) (*MoveIssueTreeResp, error) {
+	var err error
+	reqParams := runtime.RequestOptionsParameters{
+		RequestURL:  c.apiClient.GetBaseURL() + "/api/v1/issue-moves",
+		Method:      "POST",
+		Options:     options,
+		ContentType: "application/json",
+	}
+
+	req, err := c.apiClient.CreateRequest(ctx, reqParams, reqEditors...)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %w", err)
+	}
+
+	resp, err := c.apiClient.ExecuteRequest(ctx, req, "/api/v1/issue-moves")
+	if err != nil {
+		return nil, fmt.Errorf("error executing request: %w", err)
+	}
+
+	out := &MoveIssueTreeResp{
+		HTTPResponse: resp.Raw,
+		Body:         resp.Content,
+		StatusCode:   resp.StatusCode,
+	}
+
+	switch resp.StatusCode {
+	case 200:
+		out.JSON200 = new(MoveIssueTreeResponse)
+		bodyBytes := resp.Content
+		if len(bodyBytes) > 0 {
+			if err := json.Unmarshal(bodyBytes, out.JSON200); err != nil {
+				return out, &runtime.ResponseDecodeError{
+					StatusCode:    resp.StatusCode,
+					ContentType:   resp.Headers.Get("Content-Type"),
+					ContentLength: len(bodyBytes),
+					TargetType:    "MoveIssueTreeResponse",
+					Body:          bodyBytes,
+					Err:           err,
+				}
+			}
+		}
+		return out, nil
+	case 500:
+		if len(resp.Content) > 0 {
+			envelope := new(MoveIssueTreeErrorResponse)
+			if json.Unmarshal(resp.Content, envelope) == nil {
+				if errTarget, ok := any(*envelope).(error); ok {
+					return out, runtime.NewClientAPIError(errTarget, runtime.WithStatusCode(resp.StatusCode))
+				}
+			}
+		}
+		return out, runtime.NewClientAPIError(fmt.Errorf("API error (status %d)", resp.StatusCode), runtime.WithStatusCode(resp.StatusCode))
+	default:
+		if len(resp.Content) > 0 {
+			envelope := new(MoveIssueTreeErrorResponse)
+			if json.Unmarshal(resp.Content, envelope) == nil {
+				if errTarget, ok := any(*envelope).(error); ok {
+					return out, runtime.NewClientAPIError(errTarget, runtime.WithStatusCode(resp.StatusCode))
+				}
+			}
+		}
+		return out, runtime.NewClientAPIError(fmt.Errorf("unexpected status code: %d", resp.StatusCode), runtime.WithStatusCode(resp.StatusCode))
+	}
+}
+
+func (c *Client) AcceptIssueTreeWithResponse(ctx context.Context, options *AcceptIssueTreeRequestOptions, reqEditors ...runtime.RequestEditorFn) (*AcceptIssueTreeResp, error) {
+	var err error
+	reqParams := runtime.RequestOptionsParameters{
+		RequestURL:  c.apiClient.GetBaseURL() + "/api/v1/issue-moves/accept",
+		Method:      "POST",
+		Options:     options,
+		ContentType: "application/json",
+	}
+
+	req, err := c.apiClient.CreateRequest(ctx, reqParams, reqEditors...)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %w", err)
+	}
+
+	resp, err := c.apiClient.ExecuteRequest(ctx, req, "/api/v1/issue-moves/accept")
+	if err != nil {
+		return nil, fmt.Errorf("error executing request: %w", err)
+	}
+
+	out := &AcceptIssueTreeResp{
+		HTTPResponse: resp.Raw,
+		Body:         resp.Content,
+		StatusCode:   resp.StatusCode,
+	}
+
+	switch resp.StatusCode {
+	case 200:
+		out.JSON200 = new(AcceptIssueTreeResponse)
+		bodyBytes := resp.Content
+		if len(bodyBytes) > 0 {
+			if err := json.Unmarshal(bodyBytes, out.JSON200); err != nil {
+				return out, &runtime.ResponseDecodeError{
+					StatusCode:    resp.StatusCode,
+					ContentType:   resp.Headers.Get("Content-Type"),
+					ContentLength: len(bodyBytes),
+					TargetType:    "AcceptIssueTreeResponse",
+					Body:          bodyBytes,
+					Err:           err,
+				}
+			}
+		}
+		return out, nil
+	case 500:
+		if len(resp.Content) > 0 {
+			envelope := new(AcceptIssueTreeErrorResponse)
+			if json.Unmarshal(resp.Content, envelope) == nil {
+				if errTarget, ok := any(*envelope).(error); ok {
+					return out, runtime.NewClientAPIError(errTarget, runtime.WithStatusCode(resp.StatusCode))
+				}
+			}
+		}
+		return out, runtime.NewClientAPIError(fmt.Errorf("API error (status %d)", resp.StatusCode), runtime.WithStatusCode(resp.StatusCode))
+	default:
+		if len(resp.Content) > 0 {
+			envelope := new(AcceptIssueTreeErrorResponse)
+			if json.Unmarshal(resp.Content, envelope) == nil {
+				if errTarget, ok := any(*envelope).(error); ok {
+					return out, runtime.NewClientAPIError(errTarget, runtime.WithStatusCode(resp.StatusCode))
+				}
+			}
+		}
+		return out, runtime.NewClientAPIError(fmt.Errorf("unexpected status code: %d", resp.StatusCode), runtime.WithStatusCode(resp.StatusCode))
+	}
+}
+
+func (c *Client) ExportIssueTreeWithResponse(ctx context.Context, options *ExportIssueTreeRequestOptions, reqEditors ...runtime.RequestEditorFn) (*ExportIssueTreeResp, error) {
+	var err error
+	reqParams := runtime.RequestOptionsParameters{
+		RequestURL:  c.apiClient.GetBaseURL() + "/api/v1/issue-moves/export",
+		Method:      "POST",
+		Options:     options,
+		ContentType: "application/json",
+	}
+
+	req, err := c.apiClient.CreateRequest(ctx, reqParams, reqEditors...)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %w", err)
+	}
+
+	resp, err := c.apiClient.ExecuteRequest(ctx, req, "/api/v1/issue-moves/export")
+	if err != nil {
+		return nil, fmt.Errorf("error executing request: %w", err)
+	}
+
+	out := &ExportIssueTreeResp{
+		HTTPResponse: resp.Raw,
+		Body:         resp.Content,
+		StatusCode:   resp.StatusCode,
+	}
+
+	switch resp.StatusCode {
+	case 200:
+		out.JSON200 = new(ExportIssueTreeResponse)
+		bodyBytes := resp.Content
+		if len(bodyBytes) > 0 {
+			if err := json.Unmarshal(bodyBytes, out.JSON200); err != nil {
+				return out, &runtime.ResponseDecodeError{
+					StatusCode:    resp.StatusCode,
+					ContentType:   resp.Headers.Get("Content-Type"),
+					ContentLength: len(bodyBytes),
+					TargetType:    "ExportIssueTreeResponse",
+					Body:          bodyBytes,
+					Err:           err,
+				}
+			}
+		}
+		return out, nil
+	case 500:
+		if len(resp.Content) > 0 {
+			envelope := new(ExportIssueTreeErrorResponse)
+			if json.Unmarshal(resp.Content, envelope) == nil {
+				if errTarget, ok := any(*envelope).(error); ok {
+					return out, runtime.NewClientAPIError(errTarget, runtime.WithStatusCode(resp.StatusCode))
+				}
+			}
+		}
+		return out, runtime.NewClientAPIError(fmt.Errorf("API error (status %d)", resp.StatusCode), runtime.WithStatusCode(resp.StatusCode))
+	default:
+		if len(resp.Content) > 0 {
+			envelope := new(ExportIssueTreeErrorResponse)
+			if json.Unmarshal(resp.Content, envelope) == nil {
+				if errTarget, ok := any(*envelope).(error); ok {
+					return out, runtime.NewClientAPIError(errTarget, runtime.WithStatusCode(resp.StatusCode))
+				}
+			}
+		}
+		return out, runtime.NewClientAPIError(fmt.Errorf("unexpected status code: %d", resp.StatusCode), runtime.WithStatusCode(resp.StatusCode))
+	}
+}
+
+func (c *Client) FinalizeIssueTreeWithResponse(ctx context.Context, options *FinalizeIssueTreeRequestOptions, reqEditors ...runtime.RequestEditorFn) (*FinalizeIssueTreeResp, error) {
+	var err error
+	reqParams := runtime.RequestOptionsParameters{
+		RequestURL:  c.apiClient.GetBaseURL() + "/api/v1/issue-moves/finalize",
+		Method:      "POST",
+		Options:     options,
+		ContentType: "application/json",
+	}
+
+	req, err := c.apiClient.CreateRequest(ctx, reqParams, reqEditors...)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %w", err)
+	}
+
+	resp, err := c.apiClient.ExecuteRequest(ctx, req, "/api/v1/issue-moves/finalize")
+	if err != nil {
+		return nil, fmt.Errorf("error executing request: %w", err)
+	}
+
+	out := &FinalizeIssueTreeResp{
+		HTTPResponse: resp.Raw,
+		Body:         resp.Content,
+		StatusCode:   resp.StatusCode,
+	}
+
+	switch resp.StatusCode {
+	case 200:
+		out.JSON200 = new(FinalizeIssueTreeResponse)
+		bodyBytes := resp.Content
+		if len(bodyBytes) > 0 {
+			if err := json.Unmarshal(bodyBytes, out.JSON200); err != nil {
+				return out, &runtime.ResponseDecodeError{
+					StatusCode:    resp.StatusCode,
+					ContentType:   resp.Headers.Get("Content-Type"),
+					ContentLength: len(bodyBytes),
+					TargetType:    "FinalizeIssueTreeResponse",
+					Body:          bodyBytes,
+					Err:           err,
+				}
+			}
+		}
+		return out, nil
+	case 500:
+		if len(resp.Content) > 0 {
+			envelope := new(FinalizeIssueTreeErrorResponse)
+			if json.Unmarshal(resp.Content, envelope) == nil {
+				if errTarget, ok := any(*envelope).(error); ok {
+					return out, runtime.NewClientAPIError(errTarget, runtime.WithStatusCode(resp.StatusCode))
+				}
+			}
+		}
+		return out, runtime.NewClientAPIError(fmt.Errorf("API error (status %d)", resp.StatusCode), runtime.WithStatusCode(resp.StatusCode))
+	default:
+		if len(resp.Content) > 0 {
+			envelope := new(FinalizeIssueTreeErrorResponse)
+			if json.Unmarshal(resp.Content, envelope) == nil {
+				if errTarget, ok := any(*envelope).(error); ok {
+					return out, runtime.NewClientAPIError(errTarget, runtime.WithStatusCode(resp.StatusCode))
+				}
+			}
+		}
+		return out, runtime.NewClientAPIError(fmt.Errorf("unexpected status code: %d", resp.StatusCode), runtime.WithStatusCode(resp.StatusCode))
+	}
+}
+
+func (c *Client) LookupIssueTreeAcceptanceWithResponse(ctx context.Context, options *LookupIssueTreeAcceptanceRequestOptions, reqEditors ...runtime.RequestEditorFn) (*LookupIssueTreeAcceptanceResp, error) {
+	var err error
+	reqParams := runtime.RequestOptionsParameters{
+		RequestURL:  c.apiClient.GetBaseURL() + "/api/v1/issue-moves/lookup",
+		Method:      "POST",
+		Options:     options,
+		ContentType: "application/json",
+	}
+
+	req, err := c.apiClient.CreateRequest(ctx, reqParams, reqEditors...)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %w", err)
+	}
+
+	resp, err := c.apiClient.ExecuteRequest(ctx, req, "/api/v1/issue-moves/lookup")
+	if err != nil {
+		return nil, fmt.Errorf("error executing request: %w", err)
+	}
+
+	out := &LookupIssueTreeAcceptanceResp{
+		HTTPResponse: resp.Raw,
+		Body:         resp.Content,
+		StatusCode:   resp.StatusCode,
+	}
+
+	switch resp.StatusCode {
+	case 200:
+		out.JSON200 = new(LookupIssueTreeAcceptanceResponse)
+		bodyBytes := resp.Content
+		if len(bodyBytes) > 0 {
+			if err := json.Unmarshal(bodyBytes, out.JSON200); err != nil {
+				return out, &runtime.ResponseDecodeError{
+					StatusCode:    resp.StatusCode,
+					ContentType:   resp.Headers.Get("Content-Type"),
+					ContentLength: len(bodyBytes),
+					TargetType:    "LookupIssueTreeAcceptanceResponse",
+					Body:          bodyBytes,
+					Err:           err,
+				}
+			}
+		}
+		return out, nil
+	case 500:
+		if len(resp.Content) > 0 {
+			envelope := new(LookupIssueTreeAcceptanceErrorResponse)
+			if json.Unmarshal(resp.Content, envelope) == nil {
+				if errTarget, ok := any(*envelope).(error); ok {
+					return out, runtime.NewClientAPIError(errTarget, runtime.WithStatusCode(resp.StatusCode))
+				}
+			}
+		}
+		return out, runtime.NewClientAPIError(fmt.Errorf("API error (status %d)", resp.StatusCode), runtime.WithStatusCode(resp.StatusCode))
+	default:
+		if len(resp.Content) > 0 {
+			envelope := new(LookupIssueTreeAcceptanceErrorResponse)
+			if json.Unmarshal(resp.Content, envelope) == nil {
+				if errTarget, ok := any(*envelope).(error); ok {
+					return out, runtime.NewClientAPIError(errTarget, runtime.WithStatusCode(resp.StatusCode))
+				}
+			}
+		}
+		return out, runtime.NewClientAPIError(fmt.Errorf("unexpected status code: %d", resp.StatusCode), runtime.WithStatusCode(resp.StatusCode))
+	}
+}
+
 func (c *Client) ListAllIssuesWithResponse(ctx context.Context, options *ListAllIssuesRequestOptions, reqEditors ...runtime.RequestEditorFn) (*ListAllIssuesResp, error) {
 	var err error
 	reqParams := runtime.RequestOptionsParameters{

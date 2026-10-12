@@ -88,7 +88,7 @@ func TestMoveCLI_PreviewOutputAndNoComment(t *testing.T) {
 	}
 }
 
-func TestMoveCLI_PreviewRejectsRecurrence(t *testing.T) {
+func TestMoveCLI_PreviewKeepsOccurrenceAtOriginalSeriesAuthority(t *testing.T) {
 	env, dir, source, target, issue := setupMoveCLIProjects(t)
 	recurrence, _, err := env.DB.CreateRecurrence(t.Context(), db.CreateRecurrenceIn{
 		ProjectID: source.ID, Actor: "tester", Rule: "FREQ=WEEKLY", DTStart: "2026-09-28", Timezone: "UTC",
@@ -97,9 +97,15 @@ func TestMoveCLI_PreviewRejectsRecurrence(t *testing.T) {
 	require.NoError(t, err)
 	_, err = env.DB.ExecContext(t.Context(), `UPDATE issues SET recurrence_id=?, occurrence_key='2026-09-28' WHERE id=?`, recurrence.ID, issue.ID)
 	require.NoError(t, err)
-	_, stderr, err := runCLIWithErr(t, env, dir, "--project", source.Name, "move", issue.ShortID, target.Name, "--dry")
-	require.Error(t, err)
-	assert.Contains(t, stderr, "recurrence")
+	out, _, err := runCLIWithErr(t, env, dir, "--project", source.Name, "move", issue.ShortID, target.Name, "--dry")
+	require.NoError(t, err)
+	assert.Contains(t, out, "dry-run")
+	assert.Contains(t, out, "future occurrences remain", "preview explains the retained scheduler")
+	retained, err := env.DB.IssueByUID(t.Context(), issue.UID, db.IncludeDeletedYes)
+	require.NoError(t, err)
+	require.Equal(t, source.ID, retained.ProjectID)
+	require.NotNil(t, retained.RecurrenceID)
+	require.Equal(t, recurrence.ID, *retained.RecurrenceID)
 }
 
 func TestMoveCLI_RejectsDryRunSpelling(t *testing.T) {

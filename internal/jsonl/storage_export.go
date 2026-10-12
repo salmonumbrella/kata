@@ -36,6 +36,12 @@ func Export(ctx context.Context, store db.Storage, w io.Writer, opts ExportOptio
 		return exportForCutover(ctx, q, w, opts)
 	}
 
+	return exportStorageSnapshot(ctx, store, w, opts, v)
+}
+
+// exportStorageSnapshot shares current owner codecs with the cutover path.
+// The caller verifies that its source has the required owner columns.
+func exportStorageSnapshot(ctx context.Context, store db.Storage, w io.Writer, opts ExportOptions, v int) error {
 	if snap, ok := store.(exportSnapshotter); ok {
 		snapshot, release, err := snap.BeginExportSnapshot(ctx)
 		if err != nil {

@@ -289,7 +289,7 @@ ORDER BY id FOR UPDATE`, params.ProjectID, params.Source, issue.ID)
 				if err := checkLinkEndpointsProjectAccessTx(ctx, tx, link.FromIssueID, link.ToIssueID); err != nil {
 					return nil, 0, err
 				}
-				if _, err := tx.ExecContext(ctx, `DELETE FROM links WHERE id=$1`, link.ID); err != nil {
+				if _, err := db.DeleteLinkWithMappings(ctx, tx, link.ID); err != nil {
 					return nil, 0, fmt.Errorf("delete source link: %w", mapSQLError(err, nil))
 				}
 				event, err := s.insertImportLinkEvent(
@@ -485,7 +485,7 @@ func resolveImportLinkTarget(
 		}
 		return db.Issue{}, err
 	}
-	if mapping.IssueID == nil {
+	if mapping.MovedIssueUID != nil || mapping.IssueID == nil {
 		return db.Issue{}, fmt.Errorf("%w: import link target %q", db.ErrNotFound, externalID)
 	}
 	issue, err := scanIssue(tx.QueryRowContext(ctx,

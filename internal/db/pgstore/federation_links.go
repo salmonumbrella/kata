@@ -199,7 +199,7 @@ func reconcileFederatedLinkGroup(
 		if _, ok := desired[key]; ok {
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM links WHERE id=$1`, row.id); err != nil {
+		if _, err := db.DeleteLinkWithMappings(ctx, tx, row.id); err != nil {
 			return mapSQLError(err, nil)
 		}
 	}
@@ -427,6 +427,12 @@ func removeFederatedBoundaryLinksBetweenProjectAndGroup(
 	placeholders, groupArgs := postgresIDPlaceholders(groupProjectIDs, 2)
 	args := append([]any{projectID}, groupArgs...)
 	//nolint:gosec // IN values use generated placeholders with separately bound integer IDs.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM import_mappings WHERE moved_issue_uid IS NULL AND link_id IN (
+SELECT l.id FROM links l JOIN issues f ON f.id=l.from_issue_id JOIN issues t ON t.id=l.to_issue_id
+WHERE (f.project_id=$1 AND t.project_id IN (`+placeholders+`)) OR (t.project_id=$1 AND f.project_id IN (`+placeholders+`)))`, args...); err != nil {
+		return mapSQLError(err, nil)
+	}
+	//nolint:gosec // IN values use generated placeholders with separately bound integer IDs.
 	_, err := tx.ExecContext(ctx, `DELETE FROM links WHERE id IN (
 SELECT l.id FROM links l JOIN issues f ON f.id=l.from_issue_id JOIN issues t ON t.id=l.to_issue_id
 WHERE (f.project_id=$1 AND t.project_id IN (`+placeholders+`))
@@ -471,7 +477,7 @@ WHERE f.project_id<>t.project_id AND (f.project_id=$1 OR t.project_id=$1)`, proj
 		return mapSQLError(err, nil)
 	}
 	for _, linkID := range stale {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM links WHERE id=$1`, linkID); err != nil {
+		if _, err := db.DeleteLinkWithMappings(ctx, tx, linkID); err != nil {
 			return mapSQLError(err, nil)
 		}
 	}

@@ -67,19 +67,17 @@ func (d *Store) createLink(ctx context.Context, p db.CreateLinkParams) (db.Link,
 // classifyLinkInsertError maps SQLite constraint failures to typed errors so
 // the handler can choose the right HTTP status without string-matching.
 //
-// Order matters: the triple-UNIQUE check must run before the partial-parent
-// check because both messages start with "links.from_issue_id". The triple is
-// distinguishable by the trailing column list; once that case is rejected,
-// any remaining "links.from_issue_id" UNIQUE error must be the partial index
-// on (from_issue_id) WHERE type='parent'. modernc.org/sqlite's error text for
-// partial-index violations names only the indexed column, not the WHERE
-// clause — see TestCreateLink_SecondParentIsErrParentAlreadySet.
+// Edge uniqueness must precede the one-parent index: SQLite names the indexed
+// columns rather than the partial index. UID edges retain the same typed errors
+// as legacy numeric endpoints.
 func classifyLinkInsertError(err error) error {
 	msg := err.Error()
 	switch {
-	case strings.Contains(msg, "UNIQUE constraint failed: links.from_issue_id, links.to_issue_id, links.type"):
+	case strings.Contains(msg, "UNIQUE constraint failed: links.from_issue_id, links.to_issue_id, links.type"),
+		strings.Contains(msg, "UNIQUE constraint failed: links.from_issue_uid, links.to_issue_uid, links.type"),
+		strings.Contains(msg, "UNIQUE constraint failed: links.from_comment_uid, links.to_comment_uid, links.type"):
 		return db.ErrLinkExists
-	case strings.Contains(msg, "UNIQUE constraint failed: links.from_issue_id"):
+	case strings.Contains(msg, "UNIQUE constraint failed: links.from_issue_id"), strings.Contains(msg, "UNIQUE constraint failed: links.from_issue_uid"):
 		return db.ErrParentAlreadySet
 	case strings.Contains(msg, "CHECK constraint failed") &&
 		strings.Contains(msg, "from_issue_id <> to_issue_id"):
@@ -340,8 +338,8 @@ func (d *Store) LinksByIssue(ctx context.Context, issueID int64) ([]db.Link, err
 
 // DeleteLinkByID removes a links row. Returns ErrNotFound when no row exists.
 func (d *Store) DeleteLinkByID(ctx context.Context, linkID int64) error {
-	return d.RetryTransient(ctx, func() error {
-		res, err := d.ExecContext(ctx, `DELETE FROM links WHERE id = ?`, linkID)
+	return d.withProjectAccessTx(ctx, func(tx *sql.Tx) error {
+		res, err := db.DeleteLinkWithMappings(ctx, tx, linkID)
 		if err != nil {
 			return fmt.Errorf("delete link: %w", err)
 		}
@@ -551,7 +549,7 @@ func (d *Store) deleteLinkAndEvent(ctx context.Context, link db.Link, ev db.Link
 		return db.Event{}, err
 	}
 
-	res, err := tx.ExecContext(ctx, `DELETE FROM links WHERE id = ?`, link.ID)
+	res, err := db.DeleteLinkWithMappings(ctx, tx, link.ID)
 	if err != nil {
 		return db.Event{}, fmt.Errorf("delete link: %w", err)
 	}

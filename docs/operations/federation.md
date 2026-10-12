@@ -29,15 +29,22 @@ expose workspace paths or block the shared event stream.
 
 ## Moving issues between projects
 
-Cross-project issue moves involving a federated project are unsupported on hubs
-and spokes. Federation replay cannot apply the move event. Disabling sync retains
-the federation binding and replica state, so it does not enable moves.
+The typed issue-tree move API moves complete trees within one daemon or between
+configured, trusted authorities. It preserves issue and comment UIDs, original
+signed history, and relationships. Completed and soft-deleted children are part
+of the default selection; purged identities remain tombstones.
 
-`kata move <issue-ref> <project> --dry` validates this restriction through the
-daemon and returns the same `federated_move_unsupported` conflict as a real move.
-The preview does not change issues or refresh claims. It validates the current
-state without reserving a future move. See the [CLI reference](../reference/cli.md)
-for the other move restrictions.
+A move within one database commits the selected tree in one transaction. A move
+between databases commits the complete selection at the destination first, then
+checks and finalizes each source authority. An interruption can leave writable
+copies at both ends, including overlapping provider or recurrence activity.
+Separate source authorities can finalize independently. Inspect the returned
+state and committed evidence before treating the move as complete.
+
+See [Issue tree moves](../reference/http-api.md#issue-tree-moves) for the request,
+result states, retry rules, and credential requirements. The legacy numeric
+single-issue endpoint retains its federation restriction; use the typed endpoint
+for federated selections.
 
 ## Connect a project through the daemon catalog
 

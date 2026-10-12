@@ -443,3 +443,18 @@ export interface KataTaskAPI {
     ifMatch?: string,
   ): Promise<void>
 }
+
+export interface KataMoveDaemon {
+  id: string
+  label: string
+}
+export interface KataMoveDestination {
+  authorityUID: string
+  projects: KataProjectSummary[]
+}
+export interface KataMoveOptions {
+  destinationAuthorityUID?: string
+  issueOnly?: boolean
+  moveSeries?: boolean
+  detachProvider?: boolean
+}

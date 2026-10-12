@@ -12,7 +12,7 @@ func registerTaskOperationPolicies(policies map[string]HostOperationPolicy) {
 		"listLabels", "listRecurrences", "showRecurrence", "readyIssues", "readyIssuesGlobal",
 		"searchIssues", "pollEvents", "pollProjectEvents", "auditCloses", "digestGlobal",
 		"digestProject", "getIssueLeaseStatus", "readUISnapshot", "readUIReferences",
-		"resolveUIIssueReference", "readUILaunchTarget")
+		"resolveUIIssueReference", "readUILaunchTarget", "exportIssueTree", "lookupIssueTreeAcceptance")
 
 	registerHostOperations(policies, HostOperationPolicy{
 		Kind: hostOperationTaskRead, Capability: hostCapabilityRead, LongLived: true,
@@ -24,7 +24,7 @@ func registerTaskOperationPolicies(policies map[string]HostOperationPolicy) {
 		"createLink", "deleteLink", "assignIssue", "unassignIssue", "claimIssue",
 		"setIssuePriority", "closeIssue", "reopenIssue", "deleteIssue", "restoreIssue",
 		"createRecurrence", "patchRecurrence", "deleteRecurrence", "patchIssueMetadata",
-		"moveIssue", "importIssues", "acquireIssueLease", "renewIssueLease", "releaseIssueLease")
+		"moveIssue", "moveIssueTree", "acceptIssueTree", "finalizeIssueTree", "importIssues", "acquireIssueLease", "renewIssueLease", "releaseIssueLease")
 
 	registerHostOperations(policies, HostOperationPolicy{
 		Kind: hostOperationTaskAdministration, Capability: hostCapabilityManage, Mutation: true,

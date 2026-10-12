@@ -19,7 +19,7 @@ func checkLinkEndpointsProjectAccessTx(ctx context.Context, tx *sql.Tx, issueIDs
 		err := tx.QueryRowContext(ctx, `
 			SELECT p.uid
 			  FROM issues i JOIN projects p ON p.id = i.project_id
-			 WHERE i.id = ?`, issueID).Scan(&projectUID)
+			 WHERE i.id = ? AND i.moved_to_authority_uid IS NULL`, issueID).Scan(&projectUID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return db.ErrNotFound
 		}

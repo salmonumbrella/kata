@@ -202,3 +202,27 @@ func TestPurgeProjectHandler_BroadcastsResetToScopedSubscribers(t *testing.T) {
 
 	assertNoReceive(t, otherSub.Ch, 100*time.Millisecond, "unrelated-project reset")
 }
+
+// A retained namespace collision is a user-fixable conflict, not a server fault.
+func TestPurgeProjectHandlerRetainedNameConflict(t *testing.T) {
+	h, _ := bootstrapProject(t)
+	ctx := t.Context()
+	source, err := h.DB().CreateProject(ctx, "source-project")
+	require.NoError(t, err)
+	destination, err := h.DB().CreateProject(ctx, "destination-project")
+	require.NoError(t, err)
+	issue, _, err := h.DB().CreateIssue(ctx, db.CreateIssueParams{ProjectID: source.ID, Title: "Moved task", Author: "tester"})
+	require.NoError(t, err)
+	_, err = h.DB().MoveIssueProject(ctx, db.MoveIssueProjectIn{IssueID: issue.ID, FromProjectID: source.ID, ToProjectID: destination.ID, IfMatchRev: issue.Revision, Actor: "tester"})
+	require.NoError(t, err)
+	_, err = h.DB().ExecContext(ctx, `INSERT INTO project_aliases(project_id,alias_identity,alias_kind,authority_uid,project_uid) VALUES(NULL,$1,'name',$2,$3)`, source.Name, h.DB().InstanceUID(), destination.UID)
+	require.NoError(t, err)
+	_, _, err = h.DB().RemoveProject(ctx, db.RemoveProjectParams{ProjectID: source.ID, Actor: "tester"})
+	require.NoError(t, err)
+	resp := postWithHeader(t, h.ts.(*httptest.Server), purgeProjectPath(source.ID), map[string]string{"X-Kata-Confirm": "PURGE " + source.Name}, map[string]any{"actor": "tester"})
+	assertAPIError(t, resp.status, resp.body, http.StatusConflict, "project_name_retained")
+	require.Contains(t, string(resp.body), "rename")
+	retained, err := h.DB().ProjectByNameIncludingArchived(ctx, source.Name)
+	require.NoError(t, err)
+	require.Equal(t, source.UID, retained.UID)
+}

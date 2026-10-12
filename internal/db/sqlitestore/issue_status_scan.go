@@ -48,7 +48,7 @@ func updateIssueStatusScanTx(ctx context.Context, tx *sql.Tx, guard db.IssueSync
 func (s *Store) CountPendingIssueStatuses(ctx context.Context, bindingID int64) (int, error) {
 	var count int
 	err := s.QueryRowContext(ctx, `SELECT COUNT(*) FROM import_mappings m JOIN issue_sync_bindings b ON b.project_id=m.project_id AND b.source_key=m.source JOIN issues i ON i.id=m.issue_id
- WHERE b.id=$1 AND m.object_type='issue' AND m.pending_event_uid IS NOT NULL AND i.deleted_at IS NULL`, bindingID).Scan(&count)
+ WHERE b.id=$1 AND m.object_type='issue' AND m.moved_issue_uid IS NULL AND m.pending_event_uid IS NOT NULL AND i.moved_to_authority_uid IS NULL AND i.deleted_at IS NULL`, bindingID).Scan(&count)
 	return count, err
 }
 

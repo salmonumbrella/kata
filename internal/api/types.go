@@ -366,12 +366,14 @@ type AliasInput struct {
 // Exactly one of start_path or name must be set.
 type InitProjectRequest struct {
 	Body struct {
-		StartPath string      `json:"start_path,omitempty" doc:"absolute path on the daemon's filesystem; omit for path-free init"`
-		Name      string      `json:"name,omitempty" doc:"project name; required when start_path is empty"`
-		Replace   bool        `json:"replace,omitempty,omitzero"`
-		Reassign  bool        `json:"reassign,omitempty,omitzero"`
-		Alias     *AliasInput `json:"alias,omitempty" doc:"client-derived alias metadata; only honored when start_path is empty"`
-		Actor     string      `json:"actor,omitempty"`
+		ProjectUID   string      `json:"project_uid,omitempty" doc:"stable project UID for atomic setup; requires authority_uid"`
+		AuthorityUID string      `json:"authority_uid,omitempty" doc:"expected daemon instance UID for atomic setup; requires project_uid"`
+		StartPath    string      `json:"start_path,omitempty" doc:"absolute path on the daemon's filesystem; omit for path-free init"`
+		Name         string      `json:"name,omitempty" doc:"project name; required when start_path is empty"`
+		Replace      bool        `json:"replace,omitempty,omitzero"`
+		Reassign     bool        `json:"reassign,omitempty,omitzero"`
+		Alias        *AliasInput `json:"alias,omitempty" doc:"client-derived alias metadata; only honored when start_path is empty"`
+		Actor        string      `json:"actor,omitempty"`
 	}
 }
 

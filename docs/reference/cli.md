@@ -61,11 +61,45 @@ Errors go to stderr in the selected output mode.
 ```sh
 kata init [--project <name>] [--with-agents] [--with-hooks] [--with-codex-hooks]
 kata init [--replace | --reassign]
+kata init --setup [--project <name>]
+kata init --kickoff <ref> [--source-daemon <catalog-name>] [--project <name>]
+  [--move-series] [--provider-disposition preserve|detach]
 ```
 
 `kata init` writes the secret-free `.kata.toml` binding for the current
 workspace. Pass `--project` to choose the project name explicitly instead of
 deriving it from the git remote.
+
+`--setup` saves ignored client progress before the stable-UID project create
+request. Existing progress is resumed even without that flag. Retries verify
+the saved daemon authority, project UID, actor, and workspace alias. Keep
+`.kata.setup-progress.json` and `.kata.setup-progress.lock` out of version
+control; Kata adds their ignore entries before creation. Neither contains a
+bearer token. See [resumable setup](../guide/workspaces-projects.md#resume-project-setup-after-a-timeout)
+for route selection and alias-conflict recovery.
+
+`--kickoff` captures the issue at its original project and implies `--setup`.
+`--source-daemon` selects the source's catalog credential independently of the
+destination. Kickoff moves the complete descendant tree, including completed
+children, through the native move endpoint after verified workspace binding.
+`--move-series` includes recurrence definitions and their full families.
+Provider ownership defaults to `preserve`; choose `detach` explicitly when
+required. These options require a kickoff ref or saved kickoff progress.
+
+The complete request is saved before project creation. After a native preview,
+Kata saves its digest and selected issue UIDs before execution. Retries reuse
+that exact request, including after a lost response or source finalization.
+Options can be corrected after preview blockers, but cannot change once the
+preview-bound request has been saved for execution.
+
+JSON success includes `kickoff` with the native completed result and committed
+event UID/hash evidence. Partial, unknown, or conflict outcomes exit with code
+5 and retain the verified destination binding. JSON error data includes
+`setup_state: bound`, `kickoff_state`, the stable `request_uid`, `issue_uid`,
+destination UIDs, and the native result when received. Preserve the progress
+file and follow the retry or reconciliation hint. A conflicting `KATA_SERVER`
+is rejected before project creation because it would override later workspace
+commands.
 
 Pass `--with-agents` to add or refresh kata's marker-delimited guidance block
 where coding agents look for workspace instructions. Existing real `AGENTS.md`
@@ -822,24 +856,35 @@ refs as you supplied them (a ULID input echoes the ULID). Adds targeting
 archived projects are rejected with a hint to unarchive the project first.
 `--remove-*` flags work against archived or soft-deleted peers.
 
-Move between projects:
+Move complete issue trees between projects:
 
 ```sh
-kata move <issue-ref> <project> [--dry] [--comment TEXT]
+kata move <issue-ref>... <project> [--dry] [--comment TEXT]
+  [--issue-only] [--move-series] [--provider-disposition preserve|detach]
+  [--to-daemon NAME]
 ```
 
-`move` keeps the issue UID and history, then assigns the issue to the target
-project. The target project is resolved the same way as `kata projects show`.
-The issue's target `short_id` is assigned by the daemon during the move, so it
-may differ from the source `short_id` if the target project already has a
-collision. `--dry` asks the daemon to validate the same move restrictions
-without changing the issue, claims, comments, or event cursor. It rejects
-recurrence-pinned issues, archived projects, federation bindings, active external
-root claims, and import mapping or issue-sync ownership conflicts just as a real
-move does. A preview validates the current state; a later move checks it again.
-The target short ID is assigned only during the real move. `--comment` is ignored
-by a preview. Previews require daemon API 0.23.0 or newer; the CLI checks before
-sending the `dry_run` request field.
+The default includes completed and deleted descendants. Issue UIDs and original
+history remain stable; destination short IDs may change on collision. Selecting
+a parent and its child transfers their overlapping tree once. Disjoint roots
+move independently, so a later failure does not undo an earlier committed root.
+
+`--dry` captures the complete membership and revisions without writing data.
+`--issue-only` leaves descendants in place. `--move-series` includes recurrence
+definitions and their families. Provider ownership is preserved unless you
+choose `--provider-disposition detach`. `--to-daemon` resolves the destination
+through the configured daemon catalog with that daemon's own credential.
+
+Results include `completed`, `partial`, `conflict`, and `outcome-unknown`, plus
+per-UID destination references and committed event evidence. A cross-store move
+commits the destination before finalizing each source. Keep the returned request
+UID and preview digest: retry with the full issue UID, `--request-uid`,
+`--preview-digest`, and `--source-project-uid` from the original request. Preserve
+all original selection, provider, series, and destination options. Reconcile a
+conflict before retrying; do not make a new request for an unknown outcome.
+`--comment` adds a follow-up only after a completed move and is ignored by a
+preview. See [issue tree moves](http-api.md#issue-tree-moves) for recovery limits.
+
 A preview is a move request, so it needs the same write authority as a real
 move. Read-only tokens and `--insecure-readonly` clients cannot preview.
 
@@ -1796,6 +1841,13 @@ with redacted scope and lifecycle metadata. `r` refreshes the view and `Esc`
 returns to the issue browser. The TUI never displays token plaintext or hashes
 and never substitutes a different administrator credential when access is
 denied.
+
+In issue detail, press uppercase `M` to preview a complete tree move. Enter a
+project name or `authorityUID/projectUID`, optionally followed by
+`--issue-only`, `--move-series`, or `--detach`. The first Enter captures the
+preview; the next Enter confirms it. Partial and unknown outcomes retain the
+exact request for another Enter to retry. Esc cancels an uncommitted preview;
+retain the reported request UID before leaving an unfinished move.
 
 In issue detail, press `t` to start or renew a temporary assignment for the
 current actor. Enter a duration from one minute through 24 hours, such as

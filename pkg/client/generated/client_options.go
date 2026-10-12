@@ -958,6 +958,226 @@ func (o *GetFederationStatusRequestOptions) GetHeader() (map[string]string, erro
 	return nil, nil
 }
 
+// MoveIssueTreeRequestOptions is the options needed to make a request to MoveIssueTree.
+type MoveIssueTreeRequestOptions struct {
+	Body *MoveIssueTreeBody
+}
+
+// Validate validates all the fields in the options.
+// Use it if fields validation was not run.
+func (o *MoveIssueTreeRequestOptions) Validate() error {
+	var errors runtime.ValidationErrors
+
+	if o.Body != nil {
+		if v, ok := any(o.Body).(runtime.Validator); ok {
+			if err := v.Validate(); err != nil {
+				errors = errors.Append("Body", err)
+			}
+		}
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+
+	return errors
+}
+
+// GetPathParams returns the path params as a map.
+func (o *MoveIssueTreeRequestOptions) GetPathParams() (map[string]any, error) {
+	return nil, nil
+}
+
+// GetQuery returns the query params as a map.
+func (o *MoveIssueTreeRequestOptions) GetQuery() (map[string]any, error) {
+	return nil, nil
+}
+
+// GetBody returns the payload in any type that can be marshalled to JSON by the client.
+func (o *MoveIssueTreeRequestOptions) GetBody() any {
+	return o.Body
+}
+
+// GetHeader returns the headers as a map.
+func (o *MoveIssueTreeRequestOptions) GetHeader() (map[string]string, error) {
+	return nil, nil
+}
+
+// AcceptIssueTreeRequestOptions is the options needed to make a request to AcceptIssueTree.
+type AcceptIssueTreeRequestOptions struct {
+	Body *AcceptIssueTreeBody
+}
+
+// Validate validates all the fields in the options.
+// Use it if fields validation was not run.
+func (o *AcceptIssueTreeRequestOptions) Validate() error {
+	var errors runtime.ValidationErrors
+
+	if o.Body != nil {
+		if v, ok := any(o.Body).(runtime.Validator); ok {
+			if err := v.Validate(); err != nil {
+				errors = errors.Append("Body", err)
+			}
+		}
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+
+	return errors
+}
+
+// GetPathParams returns the path params as a map.
+func (o *AcceptIssueTreeRequestOptions) GetPathParams() (map[string]any, error) {
+	return nil, nil
+}
+
+// GetQuery returns the query params as a map.
+func (o *AcceptIssueTreeRequestOptions) GetQuery() (map[string]any, error) {
+	return nil, nil
+}
+
+// GetBody returns the payload in any type that can be marshalled to JSON by the client.
+func (o *AcceptIssueTreeRequestOptions) GetBody() any {
+	return o.Body
+}
+
+// GetHeader returns the headers as a map.
+func (o *AcceptIssueTreeRequestOptions) GetHeader() (map[string]string, error) {
+	return nil, nil
+}
+
+// ExportIssueTreeRequestOptions is the options needed to make a request to ExportIssueTree.
+type ExportIssueTreeRequestOptions struct {
+	Body *ExportIssueTreeBody
+}
+
+// Validate validates all the fields in the options.
+// Use it if fields validation was not run.
+func (o *ExportIssueTreeRequestOptions) Validate() error {
+	var errors runtime.ValidationErrors
+
+	if o.Body != nil {
+		if v, ok := any(o.Body).(runtime.Validator); ok {
+			if err := v.Validate(); err != nil {
+				errors = errors.Append("Body", err)
+			}
+		}
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+
+	return errors
+}
+
+// GetPathParams returns the path params as a map.
+func (o *ExportIssueTreeRequestOptions) GetPathParams() (map[string]any, error) {
+	return nil, nil
+}
+
+// GetQuery returns the query params as a map.
+func (o *ExportIssueTreeRequestOptions) GetQuery() (map[string]any, error) {
+	return nil, nil
+}
+
+// GetBody returns the payload in any type that can be marshalled to JSON by the client.
+func (o *ExportIssueTreeRequestOptions) GetBody() any {
+	return o.Body
+}
+
+// GetHeader returns the headers as a map.
+func (o *ExportIssueTreeRequestOptions) GetHeader() (map[string]string, error) {
+	return nil, nil
+}
+
+// FinalizeIssueTreeRequestOptions is the options needed to make a request to FinalizeIssueTree.
+type FinalizeIssueTreeRequestOptions struct {
+	Body *FinalizeIssueTreeBody
+}
+
+// Validate validates all the fields in the options.
+// Use it if fields validation was not run.
+func (o *FinalizeIssueTreeRequestOptions) Validate() error {
+	var errors runtime.ValidationErrors
+
+	if o.Body != nil {
+		if v, ok := any(o.Body).(runtime.Validator); ok {
+			if err := v.Validate(); err != nil {
+				errors = errors.Append("Body", err)
+			}
+		}
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+
+	return errors
+}
+
+// GetPathParams returns the path params as a map.
+func (o *FinalizeIssueTreeRequestOptions) GetPathParams() (map[string]any, error) {
+	return nil, nil
+}
+
+// GetQuery returns the query params as a map.
+func (o *FinalizeIssueTreeRequestOptions) GetQuery() (map[string]any, error) {
+	return nil, nil
+}
+
+// GetBody returns the payload in any type that can be marshalled to JSON by the client.
+func (o *FinalizeIssueTreeRequestOptions) GetBody() any {
+	return o.Body
+}
+
+// GetHeader returns the headers as a map.
+func (o *FinalizeIssueTreeRequestOptions) GetHeader() (map[string]string, error) {
+	return nil, nil
+}
+
+// LookupIssueTreeAcceptanceRequestOptions is the options needed to make a request to LookupIssueTreeAcceptance.
+type LookupIssueTreeAcceptanceRequestOptions struct {
+	Body *LookupIssueTreeAcceptanceBody
+}
+
+// Validate validates all the fields in the options.
+// Use it if fields validation was not run.
+func (o *LookupIssueTreeAcceptanceRequestOptions) Validate() error {
+	var errors runtime.ValidationErrors
+
+	if o.Body != nil {
+		if v, ok := any(o.Body).(runtime.Validator); ok {
+			if err := v.Validate(); err != nil {
+				errors = errors.Append("Body", err)
+			}
+		}
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+
+	return errors
+}
+
+// GetPathParams returns the path params as a map.
+func (o *LookupIssueTreeAcceptanceRequestOptions) GetPathParams() (map[string]any, error) {
+	return nil, nil
+}
+
+// GetQuery returns the query params as a map.
+func (o *LookupIssueTreeAcceptanceRequestOptions) GetQuery() (map[string]any, error) {
+	return nil, nil
+}
+
+// GetBody returns the payload in any type that can be marshalled to JSON by the client.
+func (o *LookupIssueTreeAcceptanceRequestOptions) GetBody() any {
+	return o.Body
+}
+
+// GetHeader returns the headers as a map.
+func (o *LookupIssueTreeAcceptanceRequestOptions) GetHeader() (map[string]string, error) {
+	return nil, nil
+}
+
 // ListAllIssuesRequestOptions is the options needed to make a request to ListAllIssues.
 type ListAllIssuesRequestOptions struct {
 	Query *ListAllIssuesQuery

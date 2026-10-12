@@ -38,7 +38,7 @@ type Storage interface { Only(context.Context) error }
 func TestStorageMethodInventoryClassifiesEveryMethod(t *testing.T) {
 	methods, err := CollectStorageMethodInventory("../../storage.go")
 	require.NoError(t, err)
-	require.Len(t, methods, 308)
+	require.Len(t, methods, 317)
 
 	var implemented []string
 	var stubbed []string
@@ -56,6 +56,7 @@ func TestStorageMethodInventoryClassifiesEveryMethod(t *testing.T) {
 	sort.Strings(implemented)
 	assert.Equal(t, []string{
 		"APITokenByID",
+		"AcceptIssueTree",
 		"AcceptRelayDeliveries",
 		"AccessibleProjectUIDs",
 		"AckRelayDeliveries",
@@ -164,6 +165,7 @@ func TestStorageMethodInventoryClassifiesEveryMethod(t *testing.T) {
 		"ExportIssueLabels",
 		"ExportIssueSyncBindings",
 		"ExportIssueSyncStatus",
+		"ExportIssueTree",
 		"ExportIssues",
 		"ExportLinks",
 		"ExportMeta",
@@ -183,6 +185,7 @@ func TestStorageMethodInventoryClassifiesEveryMethod(t *testing.T) {
 		"FederationBindingByProject",
 		"FederationEnrollmentTransactionFence",
 		"FederationSyncStatusByProject",
+		"FinalizeIssueTree",
 		"FindActiveFederationEnrollment",
 		"ForceReleaseClaim",
 		"GetRecurrenceByID",
@@ -245,6 +248,8 @@ func TestStorageMethodInventoryClassifiesEveryMethod(t *testing.T) {
 		"LookupCommentIdempotency",
 		"LookupIdempotency",
 		"LookupIssueMutationIdempotency",
+		"LookupIssueTreeAcceptance",
+		"LookupIssueTreeSourceReceipt",
 		"MarkClaimStatusRefreshError",
 		"MarkPendingClaimAttempt",
 		"MaterializeFederatedProject",
@@ -255,6 +260,8 @@ func TestStorageMethodInventoryClassifiesEveryMethod(t *testing.T) {
 		"MergeProjects",
 		"MigrateTeamActor",
 		"MoveIssueProject",
+		"MoveIssueTree",
+		"MoveIssueTreeLocal",
 		"ObserveCronRun",
 		"OpenChildrenOf",
 		"ParentOf",
@@ -268,6 +275,7 @@ func TestStorageMethodInventoryClassifiesEveryMethod(t *testing.T) {
 		"PendingFederationPushStats",
 		"PendingRelayDeliveries",
 		"PinRootAuthority",
+		"PreviewIssueTree",
 		"ProjectAccessPolicy",
 		"ProjectAccessRevision",
 		"ProjectAccessTransactionFence",
@@ -343,6 +351,7 @@ func TestStorageMethodInventoryClassifiesEveryMethod(t *testing.T) {
 		"SetProjectAccessPolicy",
 		"SetRelayBindingConfig",
 		"SetTeamMembership",
+		"SetupProject",
 		"SkipFederationQuarantine",
 		"SoftDeleteIssue",
 		"SoftDeleteRecurrence",

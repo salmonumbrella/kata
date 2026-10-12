@@ -23,32 +23,44 @@ import (
 
 // initOptions holds the flags specific to `kata init`.
 type initOptions struct {
-	Project        string
-	Replace        bool
-	Reassign       bool
-	WithAgents     bool
-	WithHooks      bool
-	WithCodexHooks bool
-	WithAgentHooks []string
-	AgentHooks     []string
-	ContractOnly   bool
-	OpenCodeAPI    string
-	Actor          string
+	MoveSeries          bool
+	MoveSeriesSet       bool
+	ProviderDisposition string
+	Setup               bool
+	Kickoff             string
+	SourceDaemon        string
+	Project             string
+	Replace             bool
+	Reassign            bool
+	WithAgents          bool
+	WithHooks           bool
+	WithCodexHooks      bool
+	WithAgentHooks      []string
+	AgentHooks          []string
+	ContractOnly        bool
+	OpenCodeAPI         string
+	Actor               string
 }
 
 // callInitOpts is the parameter bag passed to callInit.
 type callInitOpts struct {
-	Project        string
-	Replace        bool
-	Reassign       bool
-	WithAgents     bool
-	WithHooks      bool
-	WithCodexHooks bool
-	WithAgentHooks []string
-	AgentHooks     []string
-	ContractOnly   bool
-	OpenCodeAPI    string
-	Actor          string
+	MoveSeries          bool
+	MoveSeriesSet       bool
+	ProviderDisposition string
+	Setup               bool
+	Kickoff             string
+	SourceDaemon        string
+	Project             string
+	Replace             bool
+	Reassign            bool
+	WithAgents          bool
+	WithHooks           bool
+	WithCodexHooks      bool
+	WithAgentHooks      []string
+	AgentHooks          []string
+	ContractOnly        bool
+	OpenCodeAPI         string
+	Actor               string
 }
 
 // cliError is a structured error that carries an exit code for main().
@@ -152,6 +164,7 @@ Name agents for explicit setup; use --local for project scope. If a user-level h
 		Example: `  kata init --project example-project --agent
   kata init --with-agents --agent`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			opts.MoveSeriesSet = cmd.Flags().Changed("move-series")
 			if cmd.Flags().Changed("agent-hooks") {
 				for name := range strings.SplitSeq(agentHooksCSV, ",") {
 					name = strings.TrimSpace(name)
@@ -189,6 +202,11 @@ Name agents for explicit setup; use --local for project scope. If a user-level h
 		},
 	}
 
+	cmd.Flags().BoolVar(&opts.Setup, "setup", false, "durably save project identity and bind a verified destination")
+	cmd.Flags().StringVar(&opts.Kickoff, "kickoff", "", "capture an initiating issue before binding; implies --setup")
+	cmd.Flags().StringVar(&opts.SourceDaemon, "source-daemon", "", "configured daemon owning the initiating issue")
+	cmd.Flags().BoolVar(&opts.MoveSeries, "move-series", false, "include kickoff recurrence definitions and their full families")
+	cmd.Flags().StringVar(&opts.ProviderDisposition, "provider-disposition", "", "kickoff provider ownership: preserve (default) or detach")
 	cmd.Flags().BoolVar(&opts.Replace, "replace", false, "overwrite .kata.toml binding when it conflicts")
 	cmd.Flags().BoolVar(&opts.Reassign, "reassign", false, "move an existing alias to this project")
 	cmd.Flags().BoolVar(&opts.WithAgents, "with-agents", false, "write kata agent guidance into AGENTS.md/CLAUDE.md in the workspace")
@@ -226,9 +244,25 @@ func callInit(ctx context.Context, baseURL, startPath string, opts callInitOpts)
 	if opts.Project == "" {
 		opts.Project = flags.Project
 	}
+	if opts.ProviderDisposition != "" && opts.ProviderDisposition != "preserve" && opts.ProviderDisposition != "detach" {
+		return "", &cliError{Message: "--provider-disposition must be preserve or detach", Kind: kindUsage, ExitCode: ExitUsage}
+	}
+	opts, err = initSetupOptionsFromProgress(startPath, opts)
+	if err != nil {
+		return "", err
+	}
+	if opts.SourceDaemon != "" && opts.Kickoff == "" && !opts.Setup {
+		return "", &cliError{Message: "--source-daemon requires --kickoff or saved kickoff progress", Kind: kindUsage, ExitCode: ExitUsage}
+	}
+	if opts.Kickoff != "" {
+		opts.Setup = true
+	}
 	derived, err := localDerive(ctx, startPath, opts)
 	switch {
 	case err == nil:
+		if opts.Setup {
+			return runSetupInit(ctx, baseURL, derived, opts)
+		}
 		return runNameInit(ctx, baseURL, derived, opts)
 	case errors.Is(err, config.ErrNameConflict):
 		return "", &cliError{
@@ -256,6 +290,9 @@ func callInit(ctx context.Context, baseURL, startPath string, opts callInitOpts)
 // optional alias metadata so the daemon can attach an alias without
 // stat'ing the client's filesystem.
 type localInit struct {
+	SetupRoute   *initSetupRoute
+	ProjectUID   string
+	AuthorityUID string
 	Choice       config.NameChoice
 	Disc         config.DiscoveredPaths
 	ExistingToml *config.ProjectConfig
@@ -329,13 +366,17 @@ func runNameInit(ctx context.Context, baseURL string, in localInit, opts callIni
 	reqBody := map[string]any{
 		"name": in.Choice.Name,
 	}
+	if in.ProjectUID != "" {
+		reqBody["project_uid"] = in.ProjectUID
+		reqBody["authority_uid"] = in.AuthorityUID
+	}
 	if opts.Actor != "" {
 		reqBody["actor"] = opts.Actor
 	}
 	if opts.Replace {
 		reqBody["replace"] = true
 	}
-	if opts.Reassign {
+	if opts.Reassign && in.ProjectUID == "" {
 		reqBody["reassign"] = true
 	}
 	if in.Alias != nil {
@@ -352,6 +393,7 @@ func runNameInit(ctx context.Context, baseURL string, in localInit, opts callIni
 	var resp struct {
 		Project struct {
 			Name string `json:"name"`
+			UID  string `json:"uid"`
 		} `json:"project"`
 		Created bool `json:"created"`
 	}
@@ -359,11 +401,30 @@ func runNameInit(ctx context.Context, baseURL string, in localInit, opts callIni
 		return "", fmt.Errorf("decode response: %w", err)
 	}
 
+	if in.ProjectUID != "" && resp.Project.UID != in.ProjectUID {
+		return "", &cliError{Message: "daemon response does not match the saved destination project UID; workspace binding was preserved", Code: "setup_project_conflict", Kind: kindConflict, ExitCode: ExitConflict}
+	}
 	dest := config.WriteDestination(in.Disc, in.StartPath)
 	tomlChanged := needsTomlWrite(in.ExistingToml, resp.Project.Name)
 	if tomlChanged {
-		if err := config.WriteProjectConfig(dest, resp.Project.Name); err != nil {
+
+		var err error
+		if in.ProjectUID != "" {
+			err = writeInitSetupProjectBinding(dest, resp.Project.Name)
+		} else {
+			err = config.WriteProjectConfig(dest, resp.Project.Name)
+		}
+		if err != nil {
 			return "", fmt.Errorf("write .kata.toml: %w", err)
+		}
+	}
+
+	if in.SetupRoute != nil {
+		if _, err := ensureGitignoreEntry(dest, config.LocalConfigFilename); err != nil {
+			return "", err
+		}
+		if err := bindInitSetupRoute(ctx, dest, resp.Project.Name, *in.SetupRoute); err != nil {
+			return "", fmt.Errorf("bind verified destination route before kickoff: %w", err)
 		}
 	}
 	gitignoreChanged, err := ensureGitignoreEntry(dest, ".kata.local.toml")

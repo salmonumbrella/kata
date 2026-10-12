@@ -211,3 +211,20 @@ does not expose federation, integration, purge, or owner-filesystem
 administration. For the
 full boundary and reverse-proxy requirements, see [Remote daemon](../operations/remote-daemon.md)
 and the [HTTP API browser-session reference](../reference/http-api.md#browser-ui-endpoints).
+
+## Move a complete issue tree
+
+Open **More actions**, choose **Move**, and select a destination project. For another configured daemon,
+choose its name in **Destination daemon**, then select one of its projects.
+Kata reads that catalog through the existing credential broker and sends only
+the destination authority and project UIDs in the move request.
+The default includes completed and deleted children. Choose **Only this issue**
+to leave descendants in place, **Move entire recurrence series** for a recurring
+family, or **Detach provider tracking** to detach its provider ownership.
+
+The browser shows the complete preview before **Confirm move**. Results display
+the native state and destination references with committed event evidence.
+**Retry exact move** preserves the same request and preview for `partial` and
+`outcome-unknown`; changing daemons does not send that request elsewhere. Keep
+the tab open while resolving an unfinished move. A conflict requires manual
+reconciliation; see [issue tree moves](../reference/http-api.md#issue-tree-moves).

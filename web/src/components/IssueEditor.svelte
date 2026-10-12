@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { KataMoveOptions, KataMoveDaemon, KataMoveDestination } from '../lib/kata/types'
   import { Markdown, type TypeaheadOption } from '@kenn-io/kit-ui'
   import NetworkIcon from '@lucide/svelte/icons/network'
   import PencilIcon from '@lucide/svelte/icons/pencil'
@@ -65,7 +66,9 @@
     draftResetGeneration?: number | undefined
     draftFenceGeneration?: number | undefined
     movePending?: boolean | undefined
-    onMoveIssue: (toProjectUID: string) => boolean | Promise<boolean>
+    moveDaemons?: KataMoveDaemon[] | undefined
+    onLoadMoveProjects?: ((daemonID: string) => Promise<KataMoveDestination>) | undefined
+    onMoveIssue: (toProjectUID: string, options?: KataMoveOptions) => boolean | Promise<boolean>
     onPatchMetadata: (uid: string, patch: Record<string, unknown>) => boolean | Promise<boolean>
     onAddComment?:
       | ((uid: string, body: string, reply?: KataCommentReplyIntent) => boolean | Promise<boolean>)
@@ -113,6 +116,8 @@
     draftResetGeneration = 0,
     draftFenceGeneration = 0,
     movePending = false,
+    moveDaemons = [],
+    onLoadMoveProjects,
     onMoveIssue,
     onPatchMetadata,
     onAddComment = async () => false,
@@ -419,6 +424,8 @@
             allowMove={administrativeActionsAllowed}
             allowRecurrence={administrativeActionsAllowed}
             allowDelete={administrativeActionsAllowed}
+            {moveDaemons}
+            {onLoadMoveProjects}
             {onMoveIssue}
             onAddChecklist={() => {
               checklistRevealed = true

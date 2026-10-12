@@ -134,6 +134,10 @@ import type {
   IssuePlanningDatesParams,
   IssuePlanningDatesPathParameters,
   IssueSyncBody,
+  IssueTreeMoveRequestBody,
+  IssueTreeMoveResponseBody,
+  IssueTreeTransferRequestBody,
+  IssueTreeTransferResponseBody,
   LabelsListResponseBody,
   LeaveFederationReplicaPathParameters,
   LeaveFederationReplicaRequestBody,
@@ -1379,6 +1383,225 @@ export const instance = async (
   return orvalFetch<instanceResponse>(getInstanceUrl(), {
     ...options,
     method: 'GET',
+  })
+}
+
+export type moveIssueTreeResponse200 = {
+  data: IssueTreeMoveResponseBody
+  status: 200
+}
+
+export type moveIssueTreeResponseDefault = {
+  data: ErrorEnvelope
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type moveIssueTreeResponseSuccess = moveIssueTreeResponse200 & {
+  headers: Headers
+}
+export type moveIssueTreeResponseError = moveIssueTreeResponseDefault & {
+  headers: Headers
+}
+
+export type moveIssueTreeResponse = moveIssueTreeResponseSuccess | moveIssueTreeResponseError
+
+export const getMoveIssueTreeUrl = () => {
+  return `/api/v1/issue-moves`
+}
+
+export const moveIssueTree = async (
+  issueTreeMoveRequestBody: IssueTreeMoveRequestBody,
+  options?: Parameters<typeof orvalFetch>[1],
+): Promise<moveIssueTreeResponse> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit['headers']>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {}
+    if (h instanceof Headers) return Object.fromEntries(h.entries())
+    if (Array.isArray(h)) return Object.fromEntries(h)
+    return h
+  }
+  return orvalFetch<moveIssueTreeResponse>(getMoveIssueTreeUrl(), {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(issueTreeMoveRequestBody),
+  })
+}
+
+export type acceptIssueTreeResponse200 = {
+  data: IssueTreeTransferResponseBody
+  status: 200
+}
+
+export type acceptIssueTreeResponseDefault = {
+  data: ErrorEnvelope
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type acceptIssueTreeResponseSuccess = acceptIssueTreeResponse200 & {
+  headers: Headers
+}
+export type acceptIssueTreeResponseError = acceptIssueTreeResponseDefault & {
+  headers: Headers
+}
+
+export type acceptIssueTreeResponse = acceptIssueTreeResponseSuccess | acceptIssueTreeResponseError
+
+export const getAcceptIssueTreeUrl = () => {
+  return `/api/v1/issue-moves/accept`
+}
+
+export const acceptIssueTree = async (
+  issueTreeTransferRequestBody: IssueTreeTransferRequestBody,
+  options?: Parameters<typeof orvalFetch>[1],
+): Promise<acceptIssueTreeResponse> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit['headers']>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {}
+    if (h instanceof Headers) return Object.fromEntries(h.entries())
+    if (Array.isArray(h)) return Object.fromEntries(h)
+    return h
+  }
+  return orvalFetch<acceptIssueTreeResponse>(getAcceptIssueTreeUrl(), {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(issueTreeTransferRequestBody),
+  })
+}
+
+export type exportIssueTreeResponse200 = {
+  data: IssueTreeTransferResponseBody
+  status: 200
+}
+
+export type exportIssueTreeResponseDefault = {
+  data: ErrorEnvelope
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type exportIssueTreeResponseSuccess = exportIssueTreeResponse200 & {
+  headers: Headers
+}
+export type exportIssueTreeResponseError = exportIssueTreeResponseDefault & {
+  headers: Headers
+}
+
+export type exportIssueTreeResponse = exportIssueTreeResponseSuccess | exportIssueTreeResponseError
+
+export const getExportIssueTreeUrl = () => {
+  return `/api/v1/issue-moves/export`
+}
+
+export const exportIssueTree = async (
+  issueTreeTransferRequestBody: IssueTreeTransferRequestBody,
+  options?: Parameters<typeof orvalFetch>[1],
+): Promise<exportIssueTreeResponse> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit['headers']>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {}
+    if (h instanceof Headers) return Object.fromEntries(h.entries())
+    if (Array.isArray(h)) return Object.fromEntries(h)
+    return h
+  }
+  return orvalFetch<exportIssueTreeResponse>(getExportIssueTreeUrl(), {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(issueTreeTransferRequestBody),
+  })
+}
+
+export type finalizeIssueTreeResponse200 = {
+  data: IssueTreeTransferResponseBody
+  status: 200
+}
+
+export type finalizeIssueTreeResponseDefault = {
+  data: ErrorEnvelope
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type finalizeIssueTreeResponseSuccess = finalizeIssueTreeResponse200 & {
+  headers: Headers
+}
+export type finalizeIssueTreeResponseError = finalizeIssueTreeResponseDefault & {
+  headers: Headers
+}
+
+export type finalizeIssueTreeResponse =
+  | finalizeIssueTreeResponseSuccess
+  | finalizeIssueTreeResponseError
+
+export const getFinalizeIssueTreeUrl = () => {
+  return `/api/v1/issue-moves/finalize`
+}
+
+export const finalizeIssueTree = async (
+  issueTreeTransferRequestBody: IssueTreeTransferRequestBody,
+  options?: Parameters<typeof orvalFetch>[1],
+): Promise<finalizeIssueTreeResponse> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit['headers']>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {}
+    if (h instanceof Headers) return Object.fromEntries(h.entries())
+    if (Array.isArray(h)) return Object.fromEntries(h)
+    return h
+  }
+  return orvalFetch<finalizeIssueTreeResponse>(getFinalizeIssueTreeUrl(), {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(issueTreeTransferRequestBody),
+  })
+}
+
+export type lookupIssueTreeAcceptanceResponse200 = {
+  data: IssueTreeTransferResponseBody
+  status: 200
+}
+
+export type lookupIssueTreeAcceptanceResponseDefault = {
+  data: ErrorEnvelope
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type lookupIssueTreeAcceptanceResponseSuccess = lookupIssueTreeAcceptanceResponse200 & {
+  headers: Headers
+}
+export type lookupIssueTreeAcceptanceResponseError = lookupIssueTreeAcceptanceResponseDefault & {
+  headers: Headers
+}
+
+export type lookupIssueTreeAcceptanceResponse =
+  | lookupIssueTreeAcceptanceResponseSuccess
+  | lookupIssueTreeAcceptanceResponseError
+
+export const getLookupIssueTreeAcceptanceUrl = () => {
+  return `/api/v1/issue-moves/lookup`
+}
+
+export const lookupIssueTreeAcceptance = async (
+  issueTreeTransferRequestBody: IssueTreeTransferRequestBody,
+  options?: Parameters<typeof orvalFetch>[1],
+): Promise<lookupIssueTreeAcceptanceResponse> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit['headers']>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {}
+    if (h instanceof Headers) return Object.fromEntries(h.entries())
+    if (Array.isArray(h)) return Object.fromEntries(h)
+    return h
+  }
+  return orvalFetch<lookupIssueTreeAcceptanceResponse>(getLookupIssueTreeAcceptanceUrl(), {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(issueTreeTransferRequestBody),
   })
 }
 

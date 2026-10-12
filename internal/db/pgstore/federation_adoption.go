@@ -231,6 +231,9 @@ WHERE project_id=$1 AND origin_instance_uid=$2 AND `+pgFederationPushEventTypeCo
 }
 
 func replaceProjectUIDTx(ctx context.Context, tx *sql.Tx, projectID int64, projectUID string) error {
+	if err := db.RetainRelocatedProjectHistory(ctx, tx, projectID, true); err != nil {
+		return err
+	}
 	var oldUID string
 	if err := tx.QueryRowContext(ctx, `SELECT uid FROM projects WHERE id=$1`, projectID).Scan(&oldUID); err != nil {
 		return fmt.Errorf("read project uid before adoption: %w", mapSQLError(err, nil))

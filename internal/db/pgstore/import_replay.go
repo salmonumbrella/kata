@@ -91,6 +91,22 @@ func (s *Store) importReplayTx(
 			skippedMappings++
 		}
 	}
+	// Apply retained routing after history is present. This preserves immediate
+	// RESTRICT foreign keys without publishing an intermediate active projection.
+	for _, record := range records {
+		issue, ok := record.(*db.IssueExport)
+		if !ok || issue.MovedEventUID == nil {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE issues SET moved_to_authority_uid=$1,
+ moved_to_project_uid=$2,moved_to_short_id=$3,moved_event_uid=$4 WHERE uid=$5`,
+			issue.MovedToAuthorityUID, issue.MovedToProjectUID, issue.MovedToShortID, issue.MovedEventUID, issue.UID); err != nil {
+			return pgReplayError(db.ImportKindIssue, err)
+		}
+	}
+	if err := db.ReplayMoveOwners(ctx, tx, records); err != nil {
+		return err
+	}
 	if missingPeers > 0 {
 		fmt.Fprintf(os.Stderr,
 			"note: skipped %d link record(s) whose peer issue is not in this envelope or database\n",

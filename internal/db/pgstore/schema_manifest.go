@@ -11,14 +11,14 @@ import (
 )
 
 const (
-	canonicalColumnFingerprint     = "e39313e493aca5629098c150076ee7e1aa04a8d747d8704001e741401fe3df50"
-	canonicalConstraintFingerprint = "3d24c94a0242090c2a1ce423a1399d3f3d6d9d67bbb9063f08bc1112fb7c86ef"
-	canonicalIndexFingerprint      = "573f8ac2285e68c9eb61430b425f9f851811194be6b88e53567b54dbfefdb496"
+	canonicalColumnFingerprint     = "8a10137faca7fd8ddb1892f53012daa8c8da6b5bc3f03b9b7935761871ec1eef"
+	canonicalConstraintFingerprint = "b82bc8d231345acb5ebba14ffd08bc27f59663f393506dfc53ff0c4d4d81ed85"
+	canonicalIndexFingerprint      = "76b64d058818367c0b548618017e23995f0f984f311a49ce6a7f1b72f4563dcb"
 	vectorColumnFingerprint        = "b8c7cb5e43f3c17502fc3e1deba77a772c3e9a486be623a96729de8866381c31"
 	vectorConstraintFingerprint    = "3a39a82331175295586fb3399dff2221fe511171f21e31a88410dd091c3a3cf4"
 	vectorIndexFingerprint         = "7868c4a815ebee6451cef203509dcedcd21401c76f49fb666e9facaad2f7aef3"
 	canonicalTriggerFingerprint    = "34f80f8e2b61c6cb1705bb8effb1548164e91f181fb58b68cf929ac90a190154"
-	canonicalFunctionFingerprint   = "f96c6a857ec7bc7c3e5c1cebdd3d7b795547f4399f8f65ea0aa9befa98681741"
+	canonicalFunctionFingerprint   = "27b8cd77669af684c2ca1a77b568ff7d8a86feb419f711cf036a879aae8c4972"
 	canonicalTextSearchFingerprint = "1206eb613d5e4cf9c00c447998c337ece326819f8b3261668f7a8c685571db06"
 )
 
@@ -40,7 +40,7 @@ var canonicalTableColumns = map[string]string{
 	"project_access_teams":           "project_uid,team_uid", //nolint:gosec // Catalog column names, not credential values.
 	"api_tokens":                     "id,token_hash,actor,name,scope_kind,scope_project_uid,scope_root_issue_uid,expires_at,created_at,last_used_at,revoked_at",
 	"comments":                       "id,uid,issue_id,author,body,created_at,teammate,reply_to_uid,reply_kind,edited_at",
-	"events":                         "id,uid,origin_instance_uid,project_id,project_name,issue_id,issue_uid,related_issue_id,related_issue_uid,type,actor,payload,hlc_physical_ms,hlc_counter,content_hash,created_at",
+	"events":                         "id,uid,origin_instance_uid,project_id,project_name,issue_id,issue_uid,related_issue_id,related_issue_uid,type,actor,payload,hlc_physical_ms,hlc_counter,content_hash,created_at,source_project_uid,source_event_bytes",
 	"external_field_mappings":        "id,connector_instance,kata_field,external_field_id,external_field_name,accepted_kinds_json,nullable,writable,schema_revision,active,created_at,updated_at",
 	"external_field_states":          "binding_id,mapping_id,baseline_json,conflicted,conflict_kata,conflict_external,conflict_at,updated_at",
 	"external_root_bindings":         "id,uid,project_id,issue_id,root_mapping_id,connector_instance,external_root_key,external_account_key,active,enabled,paused_reason,receive_comments,receive_comments_after,publish_comments,publish_comments_after,complete_external,claim_token,claim_started_at,last_external_state,last_external_revision,pending_comment_uid,pending_comment_started_at,last_attempt_at,last_success_at,last_error_at,last_error,consecutive_failures,next_attempt_at,created_at,updated_at,unbound_at",
@@ -48,21 +48,21 @@ var canonicalTableColumns = map[string]string{
 	"federation_enrollments":         "id,token_hash,spoke_instance_uid,project_id,capabilities,bound_actor,allow_adoption_snapshot_authors,adoption_baseline_open,adoption_baseline_next_source_event_id,adoption_baseline_end_source_event_id,created_at,updated_at,revoked_at,relay_binding_uid,relay_protocol_version,parent_token_id,relay_reset_epoch,relay_serve_downstream",
 	"federation_quarantine":          "id,project_id,direction,first_event_id,last_event_id,event_uids,error,created_at,skipped_at,skipped_by,skip_reason",
 	"federation_sync_status":         "project_id,last_pull_started_at,last_pull_success_at,last_push_started_at,last_push_success_at,last_error_at,last_error,last_reset_at",
-	"import_mappings":                "id,source,external_id,object_type,project_id,issue_id,comment_id,link_id,label,source_updated_at,imported_at,observed_status,observed_status_at,pending_event_uid,remote_locator",
+	"import_mappings":                "id,source,external_id,object_type,project_id,issue_id,comment_id,link_id,label,source_updated_at,imported_at,observed_status,observed_status_at,pending_event_uid,remote_locator,moved_issue_uid,moved_to_authority_uid,moved_to_project_uid",
 	"issue_claims":                   "id,claim_uid,project_id,issue_id,issue_uid,holder,holder_instance_uid,client_kind,purpose,claim_kind,acquired_at,expires_at,released_at,release_reason,revision,updated_at",
 	"issue_labels":                   "issue_id,label,author,created_at",
 	"issue_sync_bindings":            "id,project_id,provider,source_key,remote_id,display_name,config_json,enabled,interval_seconds,last_cursor_at,created_at,updated_at",
 	"issue_sync_status":              "binding_id,project_id,sync_started_at,last_attempt_at,last_success_at,last_error_at,last_error,last_created,last_updated,last_unchanged,last_comments",
-	"issues":                         "id,uid,project_id,short_id,title,body,status,closed_reason,owner,assignment_expires_on,priority,author,created_at,updated_at,closed_at,deleted_at,metadata,revision,content_revision,recurrence_id,occurrence_key",
+	"issues":                         "id,uid,project_id,short_id,title,body,status,closed_reason,owner,assignment_expires_on,priority,author,created_at,updated_at,closed_at,deleted_at,metadata,revision,content_revision,recurrence_id,occurrence_key,moved_to_authority_uid,moved_to_project_uid,moved_event_uid,recurrence_uid,recurrence_authority_uid,recurrence_project_uid,owner_authority_uid,location_generation,moved_to_short_id",
 	"issues_search":                  "issue_id,tsv",
-	"links":                          "id,from_issue_id,to_issue_id,from_issue_uid,to_issue_uid,type,author,created_at",
+	"links":                          "id,from_issue_id,to_issue_id,from_issue_uid,to_issue_uid,type,author,created_at,from_authority_uid,from_project_uid,to_authority_uid,to_project_uid,from_comment_uid,to_comment_uid,reply_kind",
 	"meta":                           "key,value",
 	"pending_claim_requests":         "id,request_uid,project_id,issue_id,issue_uid,holder,holder_instance_uid,client_kind,claim_kind,ttl_seconds,purpose,requested_at,last_attempt_at,last_error,rejected_at,resolved_at",
-	"project_aliases":                "id,project_id,alias_identity,alias_kind,created_at",
+	"project_aliases":                "id,project_id,alias_identity,alias_kind,created_at,authority_uid,project_uid",
 	"project_purge_log":              "id,uid,origin_instance_uid,project_id,project_uid,project_name,issue_count,event_count,alias_count,comment_count,link_count,label_count,claim_count,pending_claim_request_count,events_deleted_min_id,events_deleted_max_id,purge_reset_after_event_id,actor,reason,purged_at",
 	"projects":                       "id,uid,name,created_at,deleted_at,metadata,revision",
-	"purge_log":                      "id,uid,origin_instance_uid,project_id,purged_issue_id,issue_uid,project_uid,project_name,issue_title,issue_author,comment_count,link_count,label_count,event_count,events_deleted_min_id,events_deleted_max_id,purge_reset_after_event_id,short_id,actor,reason,purged_at",
-	"recurrences":                    "id,uid,project_id,rrule,dtstart,timezone,template_title,template_body,template_owner,template_priority,template_labels,template_metadata,next_occurrence_key,last_materialized_uid,author,revision,created_at,updated_at,deleted_at",
+	"purge_log":                      "id,uid,origin_instance_uid,project_id,purged_issue_id,issue_uid,project_uid,project_name,issue_title,issue_author,comment_count,link_count,label_count,event_count,events_deleted_min_id,events_deleted_max_id,purge_reset_after_event_id,short_id,actor,reason,purged_at,recurrence_uid,occurrence_key",
+	"recurrences":                    "id,uid,project_id,rrule,dtstart,timezone,template_title,template_body,template_owner,template_priority,template_labels,template_metadata,next_occurrence_key,last_materialized_uid,author,revision,created_at,updated_at,deleted_at,moved_to_authority_uid,moved_to_project_uid,moved_event_uid,location_generation",
 }
 
 var optionalVectorTableColumns = map[string]string{
@@ -73,6 +73,7 @@ var optionalVectorTableColumns = map[string]string{
 }
 
 var canonicalIndexes = strings.Fields(`
+idx_comments_reply_to idx_issues_move_route uniq_issues_series_key idx_recurrences_move_route uniq_purge_log_series_key idx_events_move_request uniq_events_move_request idx_events_move_reference idx_events_move_location uniq_project_aliases_workspace_identity uniq_project_aliases_name idx_project_aliases_namespace uniq_links_issue_edge uniq_links_comment_edge idx_links_from_comment idx_links_to_comment idx_import_mappings_moved
 idx_cron_jobs_project_name idx_cron_workflows_project_name idx_cron_runs_project_time idx_cron_runs_job_time idx_events_project_cron
 idx_embedding_artifacts_input idx_embedding_artifacts_staging
 idx_relay_outbox_pending idx_relay_inbox_prefix

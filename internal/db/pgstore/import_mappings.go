@@ -10,7 +10,7 @@ import (
 )
 
 const importMappingSelect = `SELECT id, source, external_id, object_type, project_id,
-       issue_id, comment_id, link_id, label, source_updated_at, imported_at
+       issue_id, comment_id, link_id, label, source_updated_at, imported_at, moved_issue_uid, moved_to_authority_uid, moved_to_project_uid
   FROM import_mappings`
 
 // UpsertImportMapping records the current local projection for one external
@@ -105,7 +105,7 @@ ON CONFLICT(source, external_id, object_type, project_id) DO UPDATE SET
   source_updated_at=excluded.source_updated_at,
   imported_at=to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
 RETURNING id, source, external_id, object_type, project_id,
-          issue_id, comment_id, link_id, label, source_updated_at, imported_at`,
+          issue_id, comment_id, link_id, label, source_updated_at, imported_at, moved_issue_uid, moved_to_authority_uid, moved_to_project_uid`,
 		params.Source, params.ExternalID, params.ObjectType, params.ProjectID,
 		params.IssueID, params.CommentID, params.LinkID, params.Label, sourceUpdatedAt))
 	return mapping, mapSQLError(err, nil)
@@ -277,7 +277,7 @@ func scanImportMapping(row rowScanner) (db.ImportMapping, error) {
 	var importedAt string
 	err := row.Scan(
 		&mapping.ID, &mapping.Source, &mapping.ExternalID, &mapping.ObjectType, &mapping.ProjectID,
-		&issueID, &commentID, &linkID, &label, &sourceUpdatedAt, &importedAt,
+		&issueID, &commentID, &linkID, &label, &sourceUpdatedAt, &importedAt, &mapping.MovedIssueUID, &mapping.MovedToAuthorityUID, &mapping.MovedToProjectUID,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return db.ImportMapping{}, db.ErrNotFound

@@ -11,28 +11,27 @@ import (
 
 	"github.com/spf13/cobra"
 	"go.kenn.io/kata/internal/textsafe"
-	kataclient "go.kenn.io/kata/pkg/client"
-	"go.kenn.io/kata/pkg/client/generated"
 )
 
 func newMoveCmd() *cobra.Command {
-	var dryRun bool
+	var opts moveTreeOptions
 	cmd := &cobra.Command{
-		Use:   "move <issue-ref> <project>",
-		Short: "move an issue to another project",
-		Long: `Move an issue to another project.
-
-The issue keeps its UID, comments, history, and all of its links
-(parent, blocks/blocked-by, related) — relationships are never severed
-by a move and may span projects afterward. A fresh short_id is
-assigned in the target project.`,
-		Example: `  kata move abc4 example-project --dry --agent`,
-		Args:    cobra.ExactArgs(2),
+		Use:   "move <issue-ref>... <project>",
+		Short: "move complete issue trees to another project",
+		Long:  "Move complete issue trees, including completed and deleted children, preserving UIDs and history. Overlapping selections move once. Use --issue-only to select only each named issue.",
+		Args:  cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runMove(cmd, args[0], args[1], dryRun)
+			return runMoveSelection(cmd, args[:len(args)-1], args[len(args)-1], opts)
 		},
 	}
-	cmd.Flags().BoolVar(&dryRun, "dry", false, "validate and preview without mutating")
+	cmd.Flags().BoolVar(&opts.DryRun, "dry", false, "preview the complete selection without changing work")
+	cmd.Flags().BoolVar(&opts.IssueOnly, "issue-only", false, "select only the named issues")
+	cmd.Flags().BoolVar(&opts.MoveSeries, "move-series", false, "include recurrence owners and their occurrences")
+	cmd.Flags().StringVar(&opts.ProviderDisposition, "provider-disposition", "preserve", "provider ownership: preserve or detach")
+	cmd.Flags().StringVar(&opts.ToDaemon, "to-daemon", "", "resolve the destination through this configured daemon")
+	cmd.Flags().StringVar(&opts.RequestUID, "request-uid", "", "stable request UID for one tree and its exact retries")
+	cmd.Flags().StringVar(&opts.PreviewDigest, "preview-digest", "", "reuse the original preview digest on an exact retry")
+	cmd.Flags().StringVar(&opts.SourceProjectUID, "source-project-uid", "", "original source project UID when retrying a moved full issue UID")
 	addCommentFlag(cmd)
 	return cmd
 }
@@ -52,78 +51,7 @@ type moveResponseWire struct {
 }
 
 func runMove(cmd *cobra.Command, rawRef, targetProject string, dryRun bool) error {
-	comment, handle, err := prepareFollowupComment(cmd)
-	if err != nil {
-		return err
-	}
-	ctx, baseURL, pid, ref, err := resolveIssueRefForCommand(cmd, rawRef)
-	if err != nil {
-		return err
-	}
-	client, err := httpClientFor(ctx, baseURL)
-	if err != nil {
-		return err
-	}
-	if dryRun {
-		if err := requireDaemonAPIVersion(ctx, client, baseURL, apiVersionMoveDryRun, "move --dry"); err != nil {
-			return err
-		}
-	}
-	target, err := resolveProjectSelector(
-		daemonAPI{ctx: ctx, client: client, baseURL: baseURL}, targetProject)
-	if err != nil {
-		return err
-	}
-	if target.UID == "" {
-		return &cliError{
-			Message:  fmt.Sprintf("project %q has no UID", target.Name),
-			Kind:     kindValidation,
-			ExitCode: ExitValidation,
-		}
-	}
-	// Showing an issue may refresh federation claims. Previews obtain the
-	// source issue from the validation response instead, without that GET.
-	var sourceIssue moveIssueWire
-	if !dryRun {
-		sourceIssue, err = fetchMoveIssue(ctx, client, baseURL, pid, ref.RefForAPI)
-		if err != nil {
-			return err
-		}
-	}
-	actor, _ := resolveActor(ctx, flags.As, nil)
-	apiClient, err := kataclient.NewWithHTTPClient(baseURL, client)
-	if err != nil {
-		return err
-	}
-	request := &generated.MoveIssueRequestOptions{
-		PathParams: &generated.MoveIssuePath{ProjectID: pid, Ref: ref.RefForAPI},
-		Body:       &generated.MoveIssueBody{Actor: &actor, ToProjectUID: target.UID},
-	}
-	if dryRun {
-		request.Body.DryRun = &dryRun
-	} else {
-		etag := fmt.Sprintf(`"rev-%d"`, sourceIssue.Revision)
-		request.Header = &generated.MoveIssueHeaders{IfMatch: &etag}
-	}
-	response, callErr := apiClient.MoveIssueWithResponse(ctx, request)
-	if response == nil {
-		return externalCLITransportError(response, callErr)
-	}
-	if err := externalCLIResponseError(response.StatusCode, response.Body, callErr); err != nil {
-		return err
-	}
-	bs := response.Body
-	var moved moveResponseWire
-	if err := json.Unmarshal(bs, &moved); err != nil {
-		return err
-	}
-	if dryRun {
-		return printMovePreview(cmd, ref.ProjectName, moved.Issue.ShortID, target.Name)
-	}
-	if err := postFollowupComment(ctx, client, baseURL, moved.Issue.ProjectID, moved.Issue.ShortID, actor, comment, handle); err != nil {
-		return err
-	}
-	return printMove(cmd, bs, ref.ProjectName, sourceIssue.ShortID, target.Name)
+	return runMoveSelection(cmd, []string{rawRef}, targetProject, moveTreeOptions{DryRun: dryRun, ProviderDisposition: "preserve"})
 }
 
 func fetchMoveIssue(ctx context.Context, client *http.Client, baseURL string, projectID int64, ref string) (moveIssueWire, error) {

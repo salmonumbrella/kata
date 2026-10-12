@@ -16,7 +16,9 @@ import (
 	oapiruntime "github.com/doordash-oss/oapi-codegen-dd/v3/pkg/runtime"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"go.kenn.io/kata/internal/issuemove"
 	"go.kenn.io/kata/internal/shortid"
+	"go.kenn.io/kata/internal/uid"
 	"go.kenn.io/kata/pkg/client/generated"
 )
 
@@ -70,19 +72,37 @@ type GraphOutput struct {
 
 // MoveInput selects an issue and destination project.
 type MoveInput struct {
-	Ref       string `json:"ref"`
-	ToProject string `json:"to_project"`
-	Revision  *int64 `json:"revision,omitempty"`
+	Ref                     string   `json:"ref,omitempty"`
+	Refs                    []string `json:"refs,omitempty"`
+	ToProject               string   `json:"to_project"`
+	Revision                *int64   `json:"revision,omitempty"`
+	DryRun                  bool     `json:"dry_run,omitempty"`
+	IssueOnly               bool     `json:"issue_only,omitempty"`
+	MoveSeries              bool     `json:"move_series,omitempty"`
+	ProviderDisposition     string   `json:"provider_disposition,omitempty"`
+	DestinationAuthorityUID string   `json:"destination_authority_uid,omitempty"`
+	RequestUID              string   `json:"request_uid,omitempty"`
+	PreviewDigest           string   `json:"preview_digest,omitempty"`
 }
 
-// MoveOutput reports the issue after a project move.
+// MoveOutput retains the complete native state and per-root commit evidence.
 type MoveOutput struct {
-	From       ProjectIdentity `json:"from"`
-	To         ProjectIdentity `json:"to"`
-	Issue      IssueSummary    `json:"issue"`
-	Changed    bool            `json:"changed"`
-	EventID    int64           `json:"event_id"`
-	NewShortID string          `json:"new_short_id"`
+	From       ProjectIdentity                    `json:"from"`
+	To         ProjectIdentity                    `json:"to"`
+	Issue      *IssueSummary                      `json:"issue,omitempty"`
+	Changed    bool                               `json:"changed"`
+	EventID    int64                              `json:"event_id,omitempty"`
+	NewShortID string                             `json:"new_short_id,omitempty"`
+	State      string                             `json:"state,omitempty"`
+	RequestUID string                             `json:"request_uid,omitempty"`
+	Preview    *generated.MoveTreePreviewResponse `json:"preview,omitempty"`
+	Result     *generated.MoveTreeResultResponse  `json:"result,omitempty"`
+	Moves      []MoveTreeToolResult               `json:"moves,omitempty"`
+}
+type MoveTreeToolResult struct {
+	Request generated.MoveTreeRequest          `json:"request"`
+	Preview *generated.MoveTreePreviewResponse `json:"preview,omitempty"`
+	Result  *generated.MoveTreeResultResponse  `json:"result,omitempty"`
 }
 
 // DeleteInput carries a soft-delete confirmation.
@@ -375,38 +395,198 @@ func (h toolHandlers) graph(ctx context.Context, _ *sdkmcp.CallToolRequest, inpu
 }
 
 func (h toolHandlers) move(ctx context.Context, _ *sdkmcp.CallToolRequest, input MoveInput) (*sdkmcp.CallToolResult, MoveOutput, error) {
-	from, ref, err := h.options.Scope.IssueTarget(ctx, h.options.Client, input.Ref, true)
-	if err != nil {
-		return nil, MoveOutput{}, err
+	refs := append([]string{}, input.Refs...)
+	if input.Ref != "" {
+		refs = append([]string{input.Ref}, refs...)
+	}
+	if len(refs) == 0 {
+		return nil, MoveOutput{}, errors.New("ref or refs is required")
+	}
+	if (input.RequestUID != "" || input.PreviewDigest != "" || input.Revision != nil) && len(refs) != 1 {
+		return nil, MoveOutput{}, errors.New("exact retry and revision options require one root")
+	}
+	if input.PreviewDigest != "" && input.RequestUID == "" {
+		return nil, MoveOutput{}, errors.New("preview_digest requires request_uid")
 	}
 	to, err := h.options.Scope.Project(ctx, h.options.Client, input.ToProject, false)
 	if err != nil {
 		return nil, MoveOutput{}, err
 	}
 	if to.UID == "" {
-		return nil, MoveOutput{}, errors.New("target project UID is required")
-	}
-	revision := input.Revision
-	if revision == nil {
-		shown, showErr := h.options.Client.ShowIssue(ctx, &generated.ShowIssueRequestOptions{PathParams: &generated.ShowIssuePath{ProjectID: from.ID, Ref: ref}})
-		if showErr != nil {
-			return nil, MoveOutput{}, showErr
+		project, err := h.options.Client.ShowProject(ctx, &generated.ShowProjectRequestOptions{PathParams: &generated.ShowProjectPath{ProjectID: to.ID}})
+		if err != nil {
+			return nil, MoveOutput{}, err
 		}
-		revision = &shown.Issue.Revision
+		to.UID = project.Project.UID
 	}
-	ifMatch := fmt.Sprintf(`"rev-%d"`, *revision)
-	response, err := h.options.Client.MoveIssue(ctx, &generated.MoveIssueRequestOptions{
-		PathParams: &generated.MoveIssuePath{ProjectID: from.ID, Ref: ref},
-		Body:       &generated.MoveIssueBody{Actor: &h.options.Actor, ToProjectUID: to.UID},
-		Header:     &generated.MoveIssueHeaders{IfMatch: &ifMatch},
-	})
+	instance, err := h.options.Client.Instance(ctx)
 	if err != nil {
 		return nil, MoveOutput{}, err
 	}
-	return successResult(), MoveOutput{
-		From: from, To: to, Issue: h.summaryFromIssue(to, response.Issue), Changed: response.Changed,
-		EventID: response.EventID, NewShortID: response.Issue.ShortID,
-	}, nil
+	destination := input.DestinationAuthorityUID
+	if destination == "" {
+		destination = instance.InstanceUID
+	}
+	if !uid.Valid(destination) {
+		return nil, MoveOutput{}, errors.New("destination authority must be a UID")
+	}
+	selection := "subtree"
+	if input.IssueOnly {
+		selection = "issue-only"
+	}
+	disposition := input.ProviderDisposition
+	if disposition == "" {
+		disposition = "preserve"
+	}
+	allowedProjectUIDs := map[string]bool{}
+	if h.options.Scope.Mode() != ScopeAll {
+		projects, err := h.options.Scope.Projects(ctx, h.options.Client, false)
+		if err != nil {
+			return nil, MoveOutput{}, err
+		}
+		for _, project := range projects {
+			projectUID := project.UID
+			if projectUID == "" {
+				shown, err := h.options.Client.ShowProject(ctx, &generated.ShowProjectRequestOptions{PathParams: &generated.ShowProjectPath{ProjectID: project.ID}})
+				if err != nil {
+					return nil, MoveOutput{}, err
+				}
+				projectUID = shown.Project.UID
+			}
+			allowedProjectUIDs[projectUID] = true
+		}
+	}
+	output := MoveOutput{To: to}
+	var prepared []issuemove.PreparedMove
+	for _, raw := range refs {
+		var from ProjectIdentity
+		var ref string
+		var err error
+		if projectName, entity, qualified := strings.Cut(raw, "#"); qualified && uid.Valid(strings.ToUpper(entity)) {
+			from, err = h.options.Scope.Project(ctx, h.options.Client, projectName, false)
+			ref = strings.ToUpper(entity)
+		} else {
+			from, ref, err = h.options.Scope.IssueTarget(ctx, h.options.Client, raw, true)
+		}
+		if err != nil {
+			return nil, MoveOutput{}, err
+		}
+		if output.From.ID == 0 {
+			output.From = from
+		}
+		// Qualified short-id parsing lowercases its suffix. Full UIDs retain
+		// their canonical case when used as stable cold-retry identities.
+		if uid.Valid(strings.ToUpper(ref)) {
+			ref = strings.ToUpper(ref)
+		}
+		issueUID, sourceProjectUID := ref, from.UID
+		if input.PreviewDigest == "" || !uid.Valid(ref) || sourceProjectUID == "" {
+			identity, err := h.options.Client.ResolveUIIssueReference(ctx, &generated.ResolveUIIssueReferenceRequestOptions{Query: &generated.ResolveUIIssueReferenceQuery{ProjectID: from.ID, Ref: ref}})
+			if err != nil {
+				return nil, MoveOutput{}, err
+			}
+			issueUID, sourceProjectUID = identity.Issue.UID, identity.Issue.ProjectUID
+		}
+		if h.options.Scope.Mode() != ScopeAll && !allowedProjectUIDs[sourceProjectUID] {
+			return nil, MoveOutput{}, errors.New("resolved source project is outside the MCP startup scope")
+		}
+		requestUID := input.RequestUID
+		if requestUID == "" {
+			requestUID, err = uid.New()
+			if err != nil {
+				return nil, MoveOutput{}, err
+			}
+		}
+		request := generated.MoveTreeRequest{SourceAuthorityUID: instance.InstanceUID, SourceProjectUID: sourceProjectUID, IssueUID: issueUID, DestinationAuthorityUID: destination, DestinationProjectUID: to.UID, RequestUID: requestUID, ActorAuthorityUID: instance.InstanceUID, Actor: h.options.Actor, Selection: &selection, MoveSeries: &input.MoveSeries, ProviderDisposition: &disposition}
+		operation := issuemove.PreparedMove{Request: request}
+		if input.PreviewDigest != "" {
+			operation.Request.PreviewDigest = &input.PreviewDigest
+		}
+		if input.PreviewDigest == "" || h.options.Scope.Mode() != ScopeAll {
+			preview, err := h.options.Client.MoveIssueTree(ctx, &generated.MoveIssueTreeRequestOptions{Body: &generated.MoveIssueTreeBody{Request: operation.Request, DryRun: new(true)}})
+			if err != nil {
+				if input.PreviewDigest != "" {
+					return successResult(), moveScopeUnverifiable(output, operation.Request), nil
+				}
+				return nil, MoveOutput{}, err
+			}
+			if preview == nil || preview.Preview == nil {
+				if input.PreviewDigest != "" && h.options.Scope.Mode() != ScopeAll {
+					return successResult(), moveScopeUnverifiable(output, operation.Request), nil
+				}
+				return nil, MoveOutput{}, errors.New("daemon returned no complete-tree preview")
+			}
+			if input.PreviewDigest != "" && h.options.Scope.Mode() != ScopeAll && (len(preview.Preview.Members) == 0 || preview.Preview.Digest != input.PreviewDigest) {
+				return successResult(), moveScopeUnverifiable(output, operation.Request), nil
+			}
+			if input.Revision != nil && preview.Preview.SourceRevisions[issueUID] != *input.Revision {
+				return nil, MoveOutput{}, errors.New("issue revision changed; refresh the preview")
+			}
+			for _, member := range preview.Preview.Members {
+				if h.options.Scope.Mode() != ScopeAll && !allowedProjectUIDs[member.ProjectUID] {
+					return nil, MoveOutput{}, fmt.Errorf("move member %s is outside the MCP startup project scope", member.IssueUID)
+				}
+			}
+			operation.Preview = *preview.Preview
+			if input.PreviewDigest == "" {
+				operation.Request.PreviewDigest = &operation.Preview.Digest
+			}
+		}
+		prepared = append(prepared, operation)
+	}
+	if input.PreviewDigest == "" {
+		prepared, err = issuemove.NormalizePreparedMoves(prepared)
+		if err != nil {
+			return nil, MoveOutput{}, err
+		}
+	}
+	output.State = "completed"
+	for _, operation := range prepared {
+		entry := MoveTreeToolResult{Request: operation.Request}
+		if input.PreviewDigest == "" {
+			preview := operation.Preview
+			entry.Preview = &preview
+		}
+		if !input.DryRun {
+			response, err := h.options.Client.MoveIssueTree(ctx, &generated.MoveIssueTreeRequestOptions{Body: &generated.MoveIssueTreeBody{Request: operation.Request}})
+			if err != nil || response == nil || response.Result == nil {
+				entry.Result = &generated.MoveTreeResultResponse{State: "outcome-unknown", RequestUID: operation.Request.RequestUID, RetryAction: new("retry the same request UID and preview digest; inspect retained copies")}
+			} else {
+				entry.Result = response.Result
+			}
+			output.Changed = output.Changed || len(entry.Result.Applied) > 0
+			if entry.Result.State != "completed" {
+				output.State = entry.Result.State
+			}
+		}
+		output.Moves = append(output.Moves, entry)
+	}
+	if len(output.Moves) > 1 && output.Changed && output.State != "completed" {
+		output.State = "partial"
+	}
+	if len(output.Moves) == 1 {
+		entry := output.Moves[0]
+		output.RequestUID, output.Preview, output.Result = entry.Request.RequestUID, entry.Preview, entry.Result
+		if entry.Result != nil && entry.Result.State == "completed" {
+			for _, applied := range entry.Result.Applied {
+				if applied.IssueUID == entry.Request.IssueUID {
+					output.NewShortID = applied.ShortID
+				}
+			}
+			if destination == instance.InstanceUID {
+				shown, err := h.options.Client.ShowIssue(ctx, &generated.ShowIssueRequestOptions{PathParams: &generated.ShowIssuePath{ProjectID: to.ID, Ref: entry.Request.IssueUID}})
+				if err == nil {
+					summary := h.summaryFromIssue(to, issueFromShow(shown.Issue))
+					output.Issue = &summary
+				}
+			}
+		}
+	}
+	if input.DryRun {
+		output.State = ""
+		output.Changed = false
+	}
+	return successResult(), output, nil
 }
 
 func (h toolHandlers) deleteIssue(ctx context.Context, _ *sdkmcp.CallToolRequest, input DeleteInput) (*sdkmcp.CallToolResult, MutationOutput, error) {
@@ -1393,4 +1573,13 @@ func redactEventPeerUIDList(payload map[string]any, uidsKey, displayKey string, 
 			delete(payload, displayKey)
 		}
 	}
+}
+
+func moveScopeUnverifiable(output MoveOutput, request generated.MoveTreeRequest) MoveOutput {
+	result := &generated.MoveTreeResultResponse{State: "outcome-unknown", RequestUID: request.RequestUID,
+		Applied: []generated.MoveTreeAppliedResponse{}, Finalized: []string{}, Conflicts: []generated.MoveTreeActionResponse{}, UnknownRoots: []string{request.IssueUID},
+		RetryAction: new("authorized membership is unavailable; reconcile retained copies with an authorized daemon client before retrying")}
+	output.State, output.RequestUID, output.Result = result.State, request.RequestUID, result
+	output.Moves = []MoveTreeToolResult{{Request: request, Result: result}}
+	return output
 }

@@ -22,7 +22,7 @@ type keymap struct {
 	FilterStatus, FilterForm, ClearFilters            key
 	Close, Reopen, Undo                               key
 	NextTab, PrevTab, JumpRef, Back                   key
-	EditBody, NewComment                              key
+	Move, EditBody, NewComment                        key
 	ReplyComment, NextCommentLink, PrevCommentLink    key
 	SetParent, AddBlocker, AddLink                    key
 	AddLabel, RemoveLabel, AssignOwner, ClearOwner    key
@@ -107,6 +107,7 @@ func newKeymap() keymap {
 		RemoveLabel:     key{Keys: []string{"-"}, Help: "remove label"},
 		AssignOwner:     key{Keys: []string{"a"}, Help: "assign owner"},
 		ClearOwner:      key{Keys: []string{"A"}, Help: "clear owner"},
+		Move:            key{Keys: []string{"M"}, Help: "preview/move tree"},
 		TimedAssignment: key{Keys: []string{"t"}, Help: "timed assignment"},
 		SetPriority:     key{Keys: []string{"!"}, Help: "set priority"},
 	}

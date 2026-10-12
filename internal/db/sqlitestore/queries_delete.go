@@ -307,13 +307,16 @@ func rejectActiveExternalRootProjectPurge(ctx context.Context, q sqlReader, proj
 // readable and to bound its cyclomatic complexity.
 func purgeCascade(
 	ctx context.Context,
-	c connExec,
+	c *sql.Conn,
 	issue db.Issue,
 	projectName string,
 	actor string,
 	reason *string,
 	originInstanceUID string,
 ) (int64, error) {
+	if err := db.RetainMovedIssueCreationHistory(ctx, c, issue.ID); err != nil {
+		return 0, err
+	}
 	// Step 2: capture the events.id range about to be cascade-deleted so the
 	// audit row records what the SSE reset cursor is reserving past. The
 	// where clause matches per-link events (issue.linked / unlinked) via
@@ -355,6 +358,12 @@ func purgeCascade(
 		return 0, fmt.Errorf("count events: %w", err)
 	}
 
+	// Ordinary provider mappings follow deleted owners. Moved mappings retain
+	// their portable routing tuple and lose only local pointers through SET NULL.
+	if err := db.DeleteOrdinaryIssueOwnerMappings(ctx, c, issue.ID); err != nil {
+		return 0, err
+	}
+
 	// Step 4: cascade-delete dependents. Order is bounded by foreign keys —
 	// events (which can reference issues via issue_id/related_issue_id) and
 	// the relationship rows (comments, links, labels) all reference issues, so
@@ -363,6 +372,11 @@ func purgeCascade(
 	if _, err := c.ExecContext(ctx,
 		`DELETE FROM events WHERE `+eventsWhere, eventsArgs...); err != nil {
 		return 0, fmt.Errorf("delete events: %w", err)
+	}
+	// Permanent old references retain the original move audit envelope after
+	// the current body is removed. Only its local subject pointer is detached.
+	if _, err := c.ExecContext(ctx, `UPDATE events SET issue_id=CASE WHEN issue_id=$1 THEN NULL ELSE issue_id END,related_issue_id=CASE WHEN related_issue_id=$1 THEN NULL ELSE related_issue_id END WHERE (issue_id=$1 OR related_issue_id=$1) AND (type IN ('issue.moved','issue.move_received') OR source_event_bytes IS NOT NULL)`, issue.ID); err != nil {
+		return 0, fmt.Errorf("detach retained move audit subject: %w", err)
 	}
 	// Detach surviving aggregated issue.links_changed events from the
 	// purged issue by clearing only the local FK. The UID is part of the
@@ -439,12 +453,12 @@ func purgeCascade(
 		   project_id, purged_issue_id, issue_uid, project_uid, project_name,
 		   short_id, issue_title, issue_author, comment_count, link_count, label_count,
 		   event_count, events_deleted_min_id, events_deleted_max_id,
-		   purge_reset_after_event_id, actor, reason)
-		 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		   purge_reset_after_event_id, actor, reason, recurrence_uid, occurrence_key)
+		 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(i.recurrence_uid,r.uid) FROM issues i LEFT JOIN recurrences r ON r.id=i.recurrence_id WHERE i.id=?), ?)`,
 		purgeUID, originInstanceUID,
 		issue.ProjectID, issue.ID, issue.UID, issue.ProjectUID, projectName,
 		issue.ShortID, issue.Title, issue.Author, commentCount, linkCount, labelCount,
-		eventCount, minEventID, maxEventID, reservedCursor, actor, reason)
+		eventCount, minEventID, maxEventID, reservedCursor, actor, reason, issue.ID, issue.OccurrenceKey)
 	if err != nil {
 		return 0, fmt.Errorf("insert purge_log: %w", err)
 	}
@@ -543,7 +557,7 @@ func scanPurgeLog(ctx context.Context, r sqlReader, id int64) (db.PurgeLog, erro
 func lookupIssueIncludingDeleted(ctx context.Context, r sqlReader, issueID int64) (db.Issue, string, error) {
 	const q = `SELECT ` + issueColumns + `, p.name
 		FROM issues i
-		JOIN projects p ON p.id = i.project_id
+		JOIN projects p ON p.id = i.project_id AND i.moved_to_authority_uid IS NULL
 		WHERE i.id = ?`
 	var (
 		i           db.Issue
@@ -590,7 +604,7 @@ func lookupIssueIncludingDeleted(ctx context.Context, r sqlReader, issueID int64
 // (issue.created with an initial-link to this issue, issue.links_changed
 // with this issue in a *_uids slice) are likewise PRESERVED.
 func purgeEventsCleanupWhere(issue db.Issue) (string, []any) {
-	clause := `(issue_id = ? OR (related_issue_id = ? AND type NOT IN ('issue.links_changed', 'issue.commented')))`
+	clause := `(issue_id = ? OR (related_issue_id = ? AND type NOT IN ('issue.links_changed', 'issue.commented'))) AND type NOT IN ('issue.moved','issue.move_received') AND source_event_bytes IS NULL`
 	args := []any{issue.ID, issue.ID}
 	return clause, args
 }

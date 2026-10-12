@@ -233,7 +233,7 @@ func (d *Store) ImportCommentMappingsByIssue(ctx context.Context, issueID int64)
 	return out, rows.Err()
 }
 
-const importMappingSelect = `SELECT id, source, external_id, object_type, project_id, issue_id, comment_id, link_id, label, source_updated_at, imported_at FROM import_mappings`
+const importMappingSelect = `SELECT id, source, external_id, object_type, project_id, issue_id, comment_id, link_id, label, source_updated_at, imported_at, moved_issue_uid, moved_to_authority_uid, moved_to_project_uid FROM import_mappings`
 
 type queryer interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
@@ -250,7 +250,7 @@ func scanImportMapping(r rowScanner) (db.ImportMapping, error) {
 	var label sql.NullString
 	var sourceUpdated sql.NullTime
 	err := r.Scan(&m.ID, &m.Source, &m.ExternalID, &m.ObjectType, &m.ProjectID,
-		&issueID, &commentID, &linkID, &label, &sourceUpdated, &m.ImportedAt)
+		&issueID, &commentID, &linkID, &label, &sourceUpdated, &m.ImportedAt, &m.MovedIssueUID, &m.MovedToAuthorityUID, &m.MovedToProjectUID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return db.ImportMapping{}, db.ErrNotFound
 	}

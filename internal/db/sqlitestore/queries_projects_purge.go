@@ -130,8 +130,10 @@ func countProjectPurge(ctx context.Context, c connExec, projectID int64) (projec
 // intact. federation_bindings is absent (refused upfront).
 // NOTE: purge_log (issue tombstones) is intentionally NOT deleted — it has no FK
 // to projects so it survives, preserving prior-purge audit history (spec Finding 3).
-// recurrences / issue_sync_bindings / issue_sync_status / import_mappings are not
-// listed here: they ON DELETE CASCADE off the final `DELETE FROM projects`.
+// Recurrences and issue sync rows cascade off the final project deletion.
+// Ordinary import mappings are removed before their owner rows so nullable
+// foreign keys cannot violate owner requirements. Moved mappings remain until
+// the final project cascade.
 func deleteProjectScoped(ctx context.Context, c connExec, projectID int64) error {
 	var projectUID string
 	if err := c.QueryRowContext(ctx, `SELECT uid FROM projects WHERE id = ?`, projectID).Scan(&projectUID); err != nil {
@@ -143,6 +145,9 @@ func deleteProjectScoped(ctx context.Context, c connExec, projectID int64) error
 	if err := db.DeleteCronProject(ctx, c, projectID); err != nil {
 		return err
 	}
+	if err := db.DeleteOrdinaryProjectOwnerMappings(ctx, c, projectID); err != nil {
+		return err
+	}
 	const sub = `(SELECT id FROM issues WHERE project_id = ?)`
 	stmts := []struct {
 		q    string
@@ -151,6 +156,7 @@ func deleteProjectScoped(ctx context.Context, c connExec, projectID int64) error
 		{`DELETE FROM events WHERE project_id = ?`, []any{projectID}},
 		{`UPDATE events SET issue_id = NULL WHERE issue_id IN ` + sub, []any{projectID}},
 		{`UPDATE events SET related_issue_id = NULL WHERE related_issue_id IN ` + sub, []any{projectID}},
+
 		{`DELETE FROM comments WHERE issue_id IN ` + sub, []any{projectID}},
 		{`DELETE FROM links WHERE from_issue_id IN ` + sub + ` OR to_issue_id IN ` + sub, []any{projectID, projectID}},
 		{`DELETE FROM issue_labels WHERE issue_id IN ` + sub, []any{projectID}},
@@ -173,6 +179,9 @@ func deleteProjectScoped(ctx context.Context, c connExec, projectID int64) error
 
 func purgeProjectCascade(ctx context.Context, c projectPurgeQueryer, project db.Project,
 	actor string, reason *string, originInstanceUID string) (int64, error) {
+	if err := db.RetainProjectMoveHistory(ctx, c, project.ID, false); err != nil {
+		return 0, err
+	}
 	counts, err := countProjectPurge(ctx, c, project.ID)
 	if err != nil {
 		return 0, err

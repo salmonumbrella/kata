@@ -22,6 +22,16 @@ type RebindFederationReplicaBody = RebindFederationReplicaRequestBody
 
 type ConfigureFederationSigningBody = ConfigureFederationSigningRequestBody
 
+type MoveIssueTreeBody = IssueTreeMoveRequestBody
+
+type AcceptIssueTreeBody = IssueTreeTransferRequestBody
+
+type ExportIssueTreeBody = IssueTreeTransferRequestBody
+
+type FinalizeIssueTreeBody = IssueTreeTransferRequestBody
+
+type LookupIssueTreeAcceptanceBody = IssueTreeTransferRequestBody
+
 type InitProjectBody = InitProjectRequestBody
 
 type ResolveProjectBody = ResolveProjectRequestBody

@@ -163,7 +163,7 @@ func registerIssueMutationTools(server *sdkmcp.Server, handlers toolHandlers) {
 	addTool(server, "kata.create", "Create issue", "Create project work after searching for duplicates. A stable idempotency key is required.", additive, handlers.create)
 	addTool(server, "kata.edit", "Edit issue", "Edit issue fields, ownership, priority, and relationship deltas atomically.", mutating, handlers.edit)
 	addTool(server, "kata.edit_comment", "Edit comment", "Replace one comment body as the startup actor.", mutating, handlers.editComment)
-	addTool(server, "kata.move", "Move issue", "Move an issue to another in-scope project while preserving its UID and relationships.", mutating, handlers.move)
+	addTool(server, "kata.move", "Move issue", "Preview or move complete issue trees, including completed/deleted children, to an in-scope project. Overlapping refs move once. Inspect state and per-root evidence; retry partial or unknown outcomes with the same request UID and preview digest.", mutating, handlers.move)
 	addTool(server, "kata.set_deadline", "Set deadline", "Set or clear an issue deadline. Values accept a date, local date-time, or RFC 3339 UTC instant ending in Z.", mutating, handlers.setDeadline)
 	addTool(server, "kata.set_label", "Set label presence", "Ensure that a label is present or absent on an issue.", mutating, handlers.setLabel)
 	addTool(server, "kata.set_metadata", "Patch metadata", "Patch issue metadata; JSON null removes a key. An optional revision makes the write conditional.", mutating, handlers.setMetadata)

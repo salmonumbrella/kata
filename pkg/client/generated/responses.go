@@ -103,6 +103,26 @@ type InstanceResponse = InstanceResponseBody
 
 type InstanceErrorResponse = ErrorEnvelope
 
+type MoveIssueTreeResponse = IssueTreeMoveResponseBody
+
+type MoveIssueTreeErrorResponse = ErrorEnvelope
+
+type AcceptIssueTreeResponse = IssueTreeTransferResponseBody
+
+type AcceptIssueTreeErrorResponse = ErrorEnvelope
+
+type ExportIssueTreeResponse = IssueTreeTransferResponseBody
+
+type ExportIssueTreeErrorResponse = ErrorEnvelope
+
+type FinalizeIssueTreeResponse = IssueTreeTransferResponseBody
+
+type FinalizeIssueTreeErrorResponse = ErrorEnvelope
+
+type LookupIssueTreeAcceptanceResponse = IssueTreeTransferResponseBody
+
+type LookupIssueTreeAcceptanceErrorResponse = ErrorEnvelope
+
 type ListAllIssuesResponse = ListAllIssuesResponseBody
 
 type ListAllIssuesErrorResponse = ErrorEnvelope
@@ -746,6 +766,41 @@ type InstanceResp struct {
 	Body         []byte
 	StatusCode   int
 	JSON200      *InstanceResponse
+}
+
+type MoveIssueTreeResp struct {
+	HTTPResponse *http.Response
+	Body         []byte
+	StatusCode   int
+	JSON200      *MoveIssueTreeResponse
+}
+
+type AcceptIssueTreeResp struct {
+	HTTPResponse *http.Response
+	Body         []byte
+	StatusCode   int
+	JSON200      *AcceptIssueTreeResponse
+}
+
+type ExportIssueTreeResp struct {
+	HTTPResponse *http.Response
+	Body         []byte
+	StatusCode   int
+	JSON200      *ExportIssueTreeResponse
+}
+
+type FinalizeIssueTreeResp struct {
+	HTTPResponse *http.Response
+	Body         []byte
+	StatusCode   int
+	JSON200      *FinalizeIssueTreeResponse
+}
+
+type LookupIssueTreeAcceptanceResp struct {
+	HTTPResponse *http.Response
+	Body         []byte
+	StatusCode   int
+	JSON200      *LookupIssueTreeAcceptanceResponse
 }
 
 type ListAllIssuesResp struct {

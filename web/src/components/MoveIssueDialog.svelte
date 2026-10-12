@@ -1,6 +1,7 @@
 <script lang="ts">
+  import type { KataMoveOptions, KataMoveDaemon, KataMoveDestination } from '../lib/kata/types'
   /* eslint-disable svelte/prefer-svelte-reactivity */
-  import { IconButton, SearchInput } from '@kenn-io/kit-ui'
+  import { Checkbox, IconButton, SearchInput } from '@kenn-io/kit-ui'
   import MoreHorizontalIcon from '@lucide/svelte/icons/more-horizontal'
   import { tick } from 'svelte'
   import type { KataProjectSummary, KataTaskDetail } from '../lib/kata/types'
@@ -15,7 +16,9 @@
     allowMove?: boolean | undefined
     allowRecurrence?: boolean | undefined
     allowDelete?: boolean | undefined
-    onMoveIssue: (toProjectUID: string) => boolean | Promise<boolean>
+    moveDaemons?: KataMoveDaemon[] | undefined
+    onLoadMoveProjects?: ((daemonID: string) => Promise<KataMoveDestination>) | undefined
+    onMoveIssue: (toProjectUID: string, options?: KataMoveOptions) => boolean | Promise<boolean>
     onAddChecklist: () => void
     onCreateRecurrence: () => void
     onDeleteIssue: () => boolean | Promise<boolean>
@@ -30,6 +33,8 @@
     allowMove = true,
     allowRecurrence = true,
     allowDelete = true,
+    moveDaemons = [],
+    onLoadMoveProjects,
     onMoveIssue,
     onAddChecklist,
     onCreateRecurrence,
@@ -40,7 +45,15 @@
   let menuView = $state<'actions' | 'move'>('actions')
   let menuRoot: HTMLDivElement | null = $state(null)
   let moveSearchInput = $state() as HTMLInputElement
+  let selectedMoveDaemon = $state('')
+  let remoteDestination = $state<KataMoveDestination>()
+  let destinationLoading = $state(false)
+  let destinationError = $state('')
+  let destinationGeneration = 0
   let moveQuery = $state('')
+  let issueOnly = $state(false)
+  let moveSeries = $state(false)
+  let detachProvider = $state(false)
   let pendingMoves = $state.raw(
     new Map<string, { operation: number; project: KataProjectSummary }>(),
   )
@@ -57,8 +70,8 @@
   const canCreateRecurrence = $derived(allowRecurrence && !hasRecurrence)
   const canDeleteIssue = $derived(allowDelete && issue.issue.status !== 'closed')
   const eligibleProjects = $derived.by(() => {
-    if (!allowMove) return []
-    return projects
+    if (!allowMove || (selectedMoveDaemon && !remoteDestination)) return []
+    return (remoteDestination?.projects ?? projects)
       .filter(
         (project) => project.uid !== issue.issue.project_uid && project.metadata.role !== 'inbox',
       )
@@ -165,8 +178,34 @@
   async function openMovePicker(): Promise<void> {
     menuView = 'move'
     moveQuery = ''
+    selectedMoveDaemon = ''
+    remoteDestination = undefined
+    destinationError = ''
+    destinationGeneration += 1
+    destinationLoading = false
     await tick()
     moveSearchInput?.focus()
+  }
+
+  async function chooseMoveDaemon(id: string): Promise<void> {
+    if (movePending || activeMoveOperation !== null || !onLoadMoveProjects) return
+    selectedMoveDaemon = id
+    const generation = ++destinationGeneration
+    const interaction = interactionGeneration
+    destinationLoading = true
+    destinationError = ''
+    remoteDestination = undefined
+    try {
+      const destination = await onLoadMoveProjects(id)
+      if (generation === destinationGeneration && interaction === interactionGeneration)
+        remoteDestination = destination
+    } catch {
+      if (generation === destinationGeneration && interaction === interactionGeneration)
+        destinationError =
+          'Destination projects are unavailable. Check the configured daemon and retry.'
+    } finally {
+      if (generation === destinationGeneration) destinationLoading = false
+    }
   }
 
   function handleMoveKeydown(event: KeyboardEvent): void {
@@ -182,7 +221,14 @@
     const operation = ++moveOperationGeneration
     pendingMoves = new Map(pendingMoves).set(sourceIssueUID, { operation, project })
     try {
-      const moved = await onMoveIssue(project.uid)
+      const options: KataMoveOptions = {}
+      if (remoteDestination) options.destinationAuthorityUID = remoteDestination.authorityUID
+      if (issueOnly) options.issueOnly = true
+      if (moveSeries) options.moveSeries = true
+      if (detachProvider) options.detachProvider = true
+      const moved = Object.keys(options).length
+        ? await onMoveIssue(project.uid, options)
+        : await onMoveIssue(project.uid)
       if (
         pendingMoves.get(sourceIssueUID)?.operation !== operation ||
         interactionGeneration !== sourceInteraction ||
@@ -278,6 +324,30 @@
         tabindex="-1"
         onkeydown={handleMoveKeydown}
       >
+        {#if moveDaemons.length > 0 && onLoadMoveProjects}
+          <div aria-label="Destination daemon">
+            <button
+              type="button"
+              disabled={movePending || activeMoveOperation !== null || destinationLoading}
+              onclick={() => {
+                destinationGeneration += 1
+                selectedMoveDaemon = ''
+                destinationLoading = false
+                remoteDestination = undefined
+                destinationError = ''
+              }}>Current daemon</button
+            >
+            {#each moveDaemons as daemon (daemon.id)}
+              <button
+                type="button"
+                disabled={movePending || activeMoveOperation !== null || destinationLoading}
+                onclick={() => void chooseMoveDaemon(daemon.id)}>{daemon.label}</button
+              >
+            {/each}
+          </div>
+        {/if}
+        {#if destinationLoading}<p role="status">Loading destination projects…</p>{/if}
+        {#if destinationError}<p role="alert">{destinationError}</p>{/if}
         <SearchInput
           bind:value={moveQuery}
           bind:inputEl={moveSearchInput}
@@ -285,11 +355,29 @@
           ariaLabel="Find project"
           placeholder="Search projects"
         />
+        <p>Includes completed and deleted children. Preview before confirming.</p>
+        <Checkbox
+          bind:checked={issueOnly}
+          label="Only this issue"
+          disabled={movePending || activeMoveOperation !== null || destinationLoading}
+        />
+        {#if hasRecurrence}
+          <Checkbox
+            bind:checked={moveSeries}
+            label="Move entire recurrence series"
+            disabled={movePending || activeMoveOperation !== null || destinationLoading}
+          />
+        {/if}
+        <Checkbox
+          bind:checked={detachProvider}
+          label="Detach provider tracking"
+          disabled={movePending || activeMoveOperation !== null || destinationLoading}
+        />
         <div class="move-options" aria-label="Project destinations">
           {#each displayedProjects as project (project.uid)}
             <button
               type="button"
-              disabled={movePending || activeMoveOperation !== null}
+              disabled={movePending || activeMoveOperation !== null || destinationLoading}
               aria-busy={movingProjectUID === project.uid}
               onclick={() => void moveIssue(project)}
             >

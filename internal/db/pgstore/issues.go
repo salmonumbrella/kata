@@ -21,11 +21,11 @@ const issueColumns = `i.id, i.uid, i.project_id, p.uid, i.short_id, i.title, i.b
        i.occurrence_key, i.created_at, i.updated_at, i.closed_at, i.deleted_at, ` + issueAttributionColumn
 
 const issueSelect = `SELECT ` + issueColumns + `
-  FROM issues i JOIN projects p ON p.id = i.project_id`
+  FROM issues i JOIN projects p ON p.id = i.project_id AND i.moved_to_authority_uid IS NULL`
 
 const scheduledIssueSelect = `SELECT ` + issueColumns + `, schedule_recurrence.timezone
   FROM issues i
-  JOIN projects p ON p.id = i.project_id
+  JOIN projects p ON p.id = i.project_id AND i.moved_to_authority_uid IS NULL
   LEFT JOIN recurrences schedule_recurrence ON schedule_recurrence.id = i.recurrence_id`
 
 type issueCreatedPayload struct {
@@ -303,7 +303,7 @@ func (s *Store) IssueUIDPrefixMatch(
 }
 
 func buildListIssuesQuery(ctx context.Context, params db.ListIssuesParams, count bool) (string, []any) {
-	conditions := []string{"i.project_id = $1", "i.deleted_at IS NULL"}
+	conditions := []string{"i.project_id = $1", "i.deleted_at IS NULL", "i.moved_to_authority_uid IS NULL"}
 	args := []any{params.ProjectID}
 	add := func(predicate string, value any) {
 		args = append(args, value)
@@ -411,7 +411,7 @@ func (s *Store) CountIssues(ctx context.Context, params db.ListIssuesParams) (in
 }
 
 func buildListAllIssuesQuery(ctx context.Context, params db.ListAllIssuesParams, count bool) (string, []any) {
-	conditions := []string{"i.deleted_at IS NULL", "p.deleted_at IS NULL"}
+	conditions := []string{"i.moved_to_authority_uid IS NULL", "i.deleted_at IS NULL", "p.deleted_at IS NULL"}
 	var args []any
 	add := func(predicate string, value any) {
 		args = append(args, value)

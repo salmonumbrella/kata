@@ -78,6 +78,11 @@ func (d *Store) importBatch(ctx context.Context, p db.ImportBatchParams) (db.Imp
 		if evt != nil {
 			events = append(events, *evt)
 		}
+		if state == nil {
+			result.Unchanged++
+			result.Items = append(result.Items, db.ImportItemResult{ExternalID: item.ExternalID, Status: "unchanged", Reason: "moved"})
+			continue
+		}
 		states[item.ExternalID] = state
 		switch {
 		case state.created:
@@ -292,6 +297,9 @@ func (d *Store) importIssue(ctx context.Context, tx *sql.Tx, p db.ImportBatchPar
 			}
 		}
 		return &importIssueState{item: item, issue: issue, created: true, sourceNewer: true}, &evt, nil
+	}
+	if mapping.MovedIssueUID != nil {
+		return nil, nil, nil
 	}
 	if mapping.IssueID == nil {
 		return nil, nil, fmt.Errorf("%w: issue mapping missing issue_id", db.ErrNotFound)
@@ -747,7 +755,7 @@ func (d *Store) reconcileImportLinks(ctx context.Context, tx *sql.Tx, p db.Impor
 				if err := checkLinkEndpointsProjectAccessTx(ctx, tx, link.FromIssueID, link.ToIssueID); err != nil {
 					return nil, 0, err
 				}
-				if _, err := tx.ExecContext(ctx, `DELETE FROM links WHERE id = ?`, link.ID); err != nil {
+				if _, err := db.DeleteLinkWithMappings(ctx, tx, link.ID); err != nil {
 					return nil, 0, fmt.Errorf("delete source link: %w", err)
 				}
 				evt, err := d.insertLinkEvent(ctx, tx, p, issue, projectName, "issue.unlinked", link, item.UpdatedAt)
@@ -901,7 +909,7 @@ func resolveImportLinkTarget(ctx context.Context, tx *sql.Tx, p db.ImportBatchPa
 		}
 		return db.Issue{}, err
 	}
-	if mapping.IssueID == nil {
+	if mapping.MovedIssueUID != nil || mapping.IssueID == nil {
 		return db.Issue{}, fmt.Errorf("%w: import link target %q", db.ErrNotFound, externalID)
 	}
 	issue, err := scanIssue(tx.QueryRowContext(ctx, issueSelect+` WHERE i.id = ? AND i.deleted_at IS NULL`, *mapping.IssueID))

@@ -64,15 +64,16 @@ func authorizedEventPredicate(ctx context.Context, args *[]any) string {
 	if _, restricted := db.AuthorizedProjects(ctx); !restricted {
 		return "1=1"
 	}
-	source := authorizedProjectPredicate(ctx, "p.uid", args)
+	source := authorizedEventSourcePredicate(ctx, args)
 	subject := authorizedIssuePredicate(ctx, "endpoint.project_id", args)
 	related := authorizedIssuePredicate(ctx, "endpoint.project_id", args)
 	predicate := source + " AND (e.issue_uid IS NULL OR EXISTS(SELECT 1 FROM issues endpoint WHERE endpoint.uid=e.issue_uid AND " + subject + "))"
+	predicate += " AND " + authorizedSeriesEventSubject(ctx, args)
 	predicate += " AND (e.related_issue_uid IS NULL OR EXISTS(SELECT 1 FROM issues endpoint WHERE endpoint.uid=e.related_issue_uid AND " + related + "))"
 	from := authorizedProjectPredicate(ctx, "(e.payload::jsonb->>'from_project_uid')", args)
 	to := authorizedProjectPredicate(ctx, "(e.payload::jsonb->>'to_project_uid')", args)
 	peers := authorizedIssuePredicate(ctx, "endpoint.project_id", args)
-	predicate += " AND (e.type<>'issue.moved' OR (" + from + " AND " + to + "))"
+	predicate += " AND (e.type NOT IN ('issue.moved','recurrence.moved') OR (" + from + " AND " + to + "))"
 	predicate += ` AND (e.type<>'issue.links_changed' OR NOT EXISTS(
  SELECT 1 FROM jsonb_each(CASE WHEN e.type='issue.links_changed' THEN e.payload::jsonb ELSE '{}'::jsonb END) field,
  LATERAL jsonb_array_elements_text(CASE WHEN jsonb_typeof(field.value)='array' THEN field.value ELSE jsonb_build_array(field.value) END) ref(uid)
@@ -131,11 +132,13 @@ func authorizedEventStreamPredicate(ctx context.Context, args *[]any) string {
 	if _, restricted := db.AuthorizedProjects(ctx); !restricted {
 		return "1=1"
 	}
-	source := authorizedProjectPredicate(ctx, "p.uid", args)
+	source := authorizedEventSourcePredicate(ctx, args)
 	subject := authorizedIssuePredicate(ctx, "endpoint.project_id", args)
 	visibleSubject := source + " AND (e.issue_uid IS NULL OR EXISTS(SELECT 1 FROM issues endpoint WHERE endpoint.uid=e.issue_uid AND " + subject + "))"
+	visibleSubject += " AND " + authorizedSeriesEventSubject(ctx, args)
 	departure := authorizedProjectPredicate(ctx, "(e.payload::jsonb->>'from_project_uid')", args)
-	return "((" + visibleSubject + ") OR (e.type='issue.moved' AND e.issue_uid IS NOT NULL AND " + departure + "))"
+	arrival := authorizedProjectPredicate(ctx, "(e.payload::jsonb->>'to_project_uid')", args)
+	return "((" + visibleSubject + ") OR (e.type IN ('issue.moved','recurrence.moved') AND " + departure + ") OR (e.type='recurrence.moved' AND " + arrival + " AND EXISTS(SELECT 1 FROM recurrences endpoint JOIN projects owner_project ON owner_project.id=endpoint.project_id WHERE endpoint.uid=(e.payload::jsonb->>'recurrence_uid') AND owner_project.uid=(e.payload::jsonb->>'to_project_uid') AND endpoint.moved_to_authority_uid IS NULL)))"
 }
 
 // authorizeRelationshipQuery intersects every referenced link endpoint before
@@ -153,4 +156,19 @@ func authorizeRelationshipQuery(ctx context.Context, query string, args []any, a
 		query = strings.ReplaceAll(query, "WHERE "+alias+".type", "WHERE "+boundary+" AND "+alias+".type")
 	}
 	return "WITH authorized_endpoint_issues AS (SELECT endpoint.id FROM issues endpoint JOIN projects endpoint_project ON endpoint_project.id=endpoint.project_id WHERE " + predicate + ") " + query, scopeArgs
+}
+
+// History is authorized through its current subject; project-level events still
+// require the original project grant. Its signed project identity stays intact.
+func authorizedEventSourcePredicate(ctx context.Context, args *[]any) string {
+	source := authorizedProjectPredicate(ctx, "p.uid", args)
+	current := authorizedIssuePredicate(ctx, "history_owner.project_id", args)
+	series := authorizedIssuePredicate(ctx, "history_series.project_id", args)
+	return "(" + source + " OR EXISTS(SELECT 1 FROM issues history_owner WHERE history_owner.uid=e.issue_uid AND history_owner.moved_to_authority_uid IS NULL AND " + current + ") OR EXISTS(SELECT 1 FROM recurrences history_series WHERE e.type LIKE 'recurrence.%' AND history_series.uid=(e.payload::jsonb->>'recurrence_uid') AND history_series.moved_to_authority_uid IS NULL AND " + series + "))"
+}
+
+// A series definition's history follows its actual current authorized owner.
+func authorizedSeriesEventSubject(ctx context.Context, args *[]any) string {
+	current := authorizedIssuePredicate(ctx, "series_subject.project_id", args)
+	return "(e.type NOT LIKE 'recurrence.%' OR EXISTS(SELECT 1 FROM recurrences series_subject WHERE series_subject.uid=(e.payload::jsonb->>'recurrence_uid') AND series_subject.moved_to_authority_uid IS NULL AND " + current + "))"
 }

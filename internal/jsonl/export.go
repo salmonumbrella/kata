@@ -43,6 +43,13 @@ func exportSnapshot(ctx context.Context, d exportQuerier, w io.Writer, opts Expo
 	if err != nil {
 		return fmt.Errorf("parse schema_version %q: %w", version, err)
 	}
+	if sourceSchemaVersion >= 34 {
+		store, ok := d.(db.Storage)
+		if !ok {
+			return fmt.Errorf("cutover source cannot export move owners")
+		}
+		return exportStorageSnapshot(ctx, store, w, opts, sourceSchemaVersion)
+	}
 	if err := writeRecord(enc, KindMeta, metaRecord{Key: "export_version", Value: version}); err != nil {
 		return err
 	}

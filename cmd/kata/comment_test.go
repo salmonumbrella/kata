@@ -25,6 +25,18 @@ func TestPostFollowupCommentFailureRecommendsSafeKeyedRetry(t *testing.T) {
 	assert.Contains(t, err.Error(), "rerun the original kata close command with the same --idempotency-key")
 }
 
+func TestPostFollowupMoveCommentFailureRecommendsExactMoveRetry(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		http.Error(writer, "temporary failure", http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(server.Close)
+
+	err := postFollowupCommentWithKey(t.Context(), server.Client(), server.URL,
+		1, "abc1", "example-agent", "finished work", "", "move-01AAAAAAAAAAAAAAAAAAAAAAAA")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rerun the original kata move command with the same --request-uid and --preview-digest")
+}
+
 func TestComment_AppendsToIssue(t *testing.T) {
 	env, dir := setupCLIEnv(t)
 	short := createIssueViaHTTP(t, env, dir, "x")

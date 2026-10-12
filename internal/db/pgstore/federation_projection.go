@@ -707,6 +707,9 @@ func reconcileFederatedComments(
 		if owned {
 			return fmt.Errorf("%w: %w", db.ErrFederationIngestValidation, db.ErrExternalCommentContentOwned)
 		}
+		if err := db.DeleteOrdinaryCommentMappings(ctx, tx, row.id); err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM comments WHERE id=$1`, row.id); err != nil {
 			return mapSQLError(err, nil)
 		}
@@ -921,6 +924,11 @@ WHERE NOT EXISTS (
 	}
 	if len(unreferenced) == 0 {
 		return nil
+	}
+	for _, id := range unreferenced {
+		if err := db.DeleteOrdinaryIssueOwnerMappings(ctx, tx, id); err != nil {
+			return err
+		}
 	}
 	_, err = tx.ExecContext(ctx, `DELETE FROM issues WHERE id = ANY($1::bigint[])`, unreferenced)
 	return mapSQLError(err, nil)

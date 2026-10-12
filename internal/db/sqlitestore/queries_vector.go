@@ -21,7 +21,7 @@ func (d *Store) ListIssueContent(ctx context.Context, afterID int64, limit int) 
 		SELECT i.id, i.uid, p.uid, i.title, i.body, i.content_revision
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
-		WHERE i.deleted_at IS NULL AND p.deleted_at IS NULL AND i.id > ?
+		WHERE i.moved_to_authority_uid IS NULL AND i.deleted_at IS NULL AND p.deleted_at IS NULL AND i.id > ?
 		ORDER BY i.id ASC
 		LIMIT ?`, afterID, limit)
 	if err != nil {

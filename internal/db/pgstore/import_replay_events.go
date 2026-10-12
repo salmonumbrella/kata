@@ -37,14 +37,14 @@ func pgReplayEvent(
 	_, err = tx.ExecContext(ctx, `INSERT INTO events(
 id,uid,origin_instance_uid,project_id,project_name,issue_id,issue_uid,
 related_issue_id,related_issue_uid,type,actor,payload,hlc_physical_ms,
-hlc_counter,content_hash,created_at
+hlc_counter,content_hash,created_at,source_project_uid,source_event_bytes
 ) OVERRIDING SYSTEM VALUE VALUES(
 $1,$2,$3,$4,$5,$6,COALESCE($7,(SELECT uid FROM issues WHERE id=$6)),
-$8,COALESCE($9,(SELECT uid FROM issues WHERE id=$8)),$10,$11,$12,$13,$14,$15,$16
-)`, event.ID, event.UID, event.OriginInstanceUID, event.ProjectID, durableProjectName,
+$8,COALESCE($9,(SELECT uid FROM issues WHERE id=$8)),$10,$11,$12,$13,$14,$15,$16,$17,$18
+)`, event.ID, event.UID, event.OriginInstanceUID, pgNullableEventProjectID(event), durableProjectName,
 		event.IssueID, event.IssueUID, event.RelatedIssueID, event.RelatedIssueUID,
 		event.Type, event.Actor, string(event.Payload), event.HLCPhysicalMS,
-		event.HLCCounter, event.ContentHash, event.CreatedAt)
+		event.HLCCounter, event.ContentHash, event.CreatedAt, event.SourceProjectUID, event.SourceEventBytes)
 	return pgReplayError(db.ImportKindEvent, err)
 }
 
@@ -84,6 +84,10 @@ func pgReplayEventProjectIdentity(
 	tx *sql.Tx,
 	event *db.EventExport,
 ) (name string, uid string, err error) {
+	if event.SourceProjectUID != nil {
+		return event.ProjectName, *event.SourceProjectUID, nil
+	}
+
 	err = tx.QueryRowContext(ctx, `SELECT name,uid FROM projects WHERE id=$1`, event.ProjectID).
 		Scan(&name, &uid)
 	if err == nil {
@@ -108,16 +112,16 @@ func pgReplayPurgeLog(ctx context.Context, tx *sql.Tx, purge *db.PurgeLogExport)
 id,uid,origin_instance_uid,project_id,purged_issue_id,issue_uid,project_uid,
 project_name,short_id,issue_title,issue_author,comment_count,link_count,label_count,
 event_count,events_deleted_min_id,events_deleted_max_id,purge_reset_after_event_id,
-actor,reason,purged_at
+actor,reason,purged_at,recurrence_uid,occurrence_key
 ) OVERRIDING SYSTEM VALUE VALUES(
 $1,$2,$3,$4,$5,COALESCE($6,(SELECT uid FROM issues WHERE id=$5)),
 COALESCE($7,(SELECT uid FROM projects WHERE id=$4)),$8,$9,$10,$11,$12,$13,$14,
-$15,$16,$17,$18,$19,$20,$21
+$15,$16,$17,$18,$19,$20,$21,$22,$23
 )`, purge.ID, purge.UID, purge.OriginInstanceUID, purge.ProjectID, purge.PurgedIssueID,
 		purge.IssueUID, purge.ProjectUID, projectName, purge.ShortID, purge.IssueTitle,
 		purge.IssueAuthor, purge.CommentCount, purge.LinkCount, purge.LabelCount,
 		purge.EventCount, purge.EventsDeletedMinID, purge.EventsDeletedMaxID,
-		purge.PurgeResetAfterEventID, purge.Actor, purge.Reason, purge.PurgedAt)
+		purge.PurgeResetAfterEventID, purge.Actor, purge.Reason, purge.PurgedAt, purge.RecurrenceUID, purge.OccurrenceKey)
 	return pgReplayError(db.ImportKindPurgeLog, err)
 }
 
@@ -332,4 +336,11 @@ func (s *Store) reconcileReplayIdentities(
 		}
 	}
 	return nil
+}
+
+func pgNullableEventProjectID(e *db.EventExport) any {
+	if e.ProjectID == 0 && e.SourceProjectUID != nil {
+		return nil
+	}
+	return e.ProjectID
 }

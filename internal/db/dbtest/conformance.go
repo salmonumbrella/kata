@@ -41,6 +41,13 @@ type scenario struct {
 }
 
 var storageScenarios = []scenario{
+	{name: "atomic project setup", methods: []string{"SetupProject"}, run: func(t *testing.T, store db.Storage) error { RunProjectSetup(t, store); return nil }},
+	{name: "concurrent atomic project setup", methods: []string{"SetupProject"}, runWithBackend: func(t *testing.T, store db.Storage, backend Backend) error {
+		require.NotNil(t, backend.OpenSame)
+		RunProjectSetupConcurrent(t, store, backend.OpenSame(t, store))
+		return nil
+	}},
+
 	{name: "close transcript", run: checkCloseTranscript},
 	{name: "relay ingress", methods: []string{"AcceptRelayDeliveries", "CreateAPIToken", "CreateIssue", "CreateProject", "CreateRelayEnrollment", "IssueByUID", "LinksByIssue", "MaterializeFederatedProject", "PinRootAuthority", "UpsertFederationBinding"}, run: func(t *testing.T, store db.Storage) error { RunRelayIngressAtomicity(t, store); return nil }},
 	{name: "relay topology", methods: []string{"SetRelayBindingConfig"}, run: func(t *testing.T, store db.Storage) error { RunRelayTopology(t, store); return nil }},
@@ -153,6 +160,30 @@ var storageScenarios = []scenario{
 	{name: "issue status archive fence", methods: []string{"CreateProject", "ClaimIssueSyncBinding", "UpsertIssueSyncBinding", "RemoveProject", "RestoreProject"}, run: checkIssueStatusArchiveFence},
 	{name: "issue status locator", methods: []string{"CreateIssue", "CreateProject", "CloseIssue", "ClaimIssueSyncBinding", "SoftDeleteIssue", "UpsertIssueSyncBinding", "UpsertImportMapping"}, runWithBackend: checkIssueStatusLocator},
 	{name: "issue status move", methods: []string{"CreateProject", "CreateIssue", "CloseIssueWithEvents", "MoveIssueProject", "UpsertIssueSyncBinding", "UpsertImportMapping"}, run: checkIssueStatusMove},
+	{name: "UID issue tree move", methods: []string{"PreviewIssueTree", "MoveIssueTree"}, run: func(t *testing.T, store db.Storage) error {
+		RunUIDMoveTreeFacade(t, store)
+		return nil
+	}},
+	{name: "issue tree scoped export", methods: []string{"ExportIssueTree"}, run: func(t *testing.T, store db.Storage) error {
+		RunIssueTreeSnapshotScope(t, store)
+		return nil
+	}},
+	{name: "issue tree destination acceptance", methods: []string{"AcceptIssueTree", "LookupIssueTreeAcceptance"}, runWithBackend: func(t *testing.T, store db.Storage, backend Backend) error {
+		destination := backend.Open(t)
+		t.Cleanup(func() { require.NoError(t, destination.Close()) })
+		RunIssueTreeAcceptance(t, store, destination)
+		return nil
+	}},
+	{name: "issue tree source finalization", methods: []string{"FinalizeIssueTree", "LookupIssueTreeSourceReceipt"}, runWithBackend: func(t *testing.T, store db.Storage, backend Backend) error {
+		destination := backend.Open(t)
+		t.Cleanup(func() { require.NoError(t, destination.Close()) })
+		RunIssueTreeFinalization(t, store, destination)
+		return nil
+	}},
+	{name: "atomic issue tree move", methods: []string{"CreateProject", "CreateIssue", "CreateLink", "CloseIssueWithEvents", "SoftDeleteIssue", "MoveIssueProject", "MoveIssueTreeLocal"}, run: func(t *testing.T, store db.Storage) error {
+		RunIssueTreeMoves(t, store)
+		return nil
+	}},
 	{name: "issue status settings keep content cursor", methods: []string{"CreateProject", "UpsertIssueSyncBinding"}, run: checkIssueStatusSettingsKeepContentCursor},
 	{name: "issue status page isolates invalid mapping", methods: []string{"CreateProject", "CreateIssue", "ClaimIssueSyncBinding", "UpsertIssueSyncBinding", "UpsertImportMapping"}, run: checkIssueStatusPageIsolatesInvalidMapping},
 	{name: "issue status claim recovery", methods: []string{"CreateProject", "ClaimIssueSyncBinding", "UpsertIssueSyncBinding", "DisableIssueSyncBinding"}, run: checkIssueStatusClaimRecovery},

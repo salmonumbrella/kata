@@ -107,6 +107,9 @@ func rejectLegacyFederationResetTx(ctx context.Context, tx *sql.Tx, projectID in
 }
 
 func clearFederatedProjectTx(ctx context.Context, tx *sql.Tx, projectID int64) error {
+	if err := db.RetainRelocatedProjectHistory(ctx, tx, projectID, true); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM cron_runs WHERE project_id=$1`, projectID); err != nil {
 		return err
 	}
@@ -117,6 +120,9 @@ func clearFederatedProjectTx(ctx context.Context, tx *sql.Tx, projectID int64) e
 		}
 	}
 
+	if err := db.DeleteOrdinaryProjectOwnerMappings(ctx, tx, projectID); err != nil {
+		return err
+	}
 	statements := []struct {
 		query string
 		args  []any

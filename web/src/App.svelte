@@ -5,8 +5,10 @@
   import { SvelteMap } from 'svelte/reactivity'
 
   import { commentRetryIdentity } from './lib/kata/commentRetry'
-  import type { KataCommentReplyIntent } from './lib/kata/types'
+  import { buildMoveTreeRequest, loadMoveDestination } from './lib/moves/destination'
+  import type { KataMoveOptions, KataCommentReplyIntent } from './lib/kata/types'
   import AppShell from './components/AppShell.svelte'
+  import IssueTreeMoveStatus from './components/IssueTreeMoveStatus.svelte'
   import KataDaemonSwitcher from './components/KataDaemonSwitcher.svelte'
   import LaunchHint from './components/LaunchHint.svelte'
   import LoginView from './components/LoginView.svelte'
@@ -27,7 +29,11 @@
     editIssue as editIssueRequest,
     initProject,
     listTokens,
-    moveIssue as moveIssueRequest,
+    moveIssueTree,
+    instance,
+    type MoveTreeRequest,
+    type MoveTreePreviewResponse,
+    type MoveTreeResultResponse,
     patchIssueMetadata,
     patchProjectMetadata,
     patchRecurrence as patchRecurrenceRequest,
@@ -711,18 +717,79 @@
     return template
   }
 
-  async function moveIssue(toProjectUID: string): Promise<boolean> {
+  let treeMove = $state<{
+    daemonID: string | undefined
+    request: MoveTreeRequest
+    preview: MoveTreePreviewResponse
+    result?: MoveTreeResultResponse
+  }>()
+
+  async function moveIssue(toProjectUID: string, options: KataMoveOptions = {}): Promise<boolean> {
+    if (treeMove && treeMove.result?.state !== 'completed') return false
     const selected = selectedIssue()
-    const target = selected ? selectedMutationTarget(selected.uid) : undefined
-    const revision = selected ? selectedRevision(selected.uid) : undefined
-    if (!target || !revision) return false
-    return runMutation({ draft: toProjectUID, revision }, (context) =>
-      moveIssueRequest(
-        { projectId: target.project_id, ref: target.ref },
-        context.body({ to_project_uid: toProjectUID }, requestActor),
-        { headers: context.headers },
-      ),
+    const source = authority?.snapshot?.catalog.find(
+      (entry) => entry.project.id === selected?.project_id,
     )
+    if (!selected || !source) return false
+    const daemonID = activeDaemonID
+    await runMutation({ draft: { toProjectUID, options } }, async (context) => {
+      const identity = await instance({ headers: context.headers })
+      if (identity.status !== 200) return identity
+      const authorityUID = identity.data.instance_uid
+      const request = buildMoveTreeRequest({
+        sourceAuthorityUID: authorityUID,
+        sourceProjectUID: source.project.uid,
+        issueUID: selected.uid,
+        destinationProjectUID: toProjectUID,
+        actor: context.body({ actor: '' }, requestActor).actor,
+        options,
+      })
+      const response = await moveIssueTree({ request, dry_run: true }, { headers: context.headers })
+      if (response.status === 200 && response.data.preview && activeDaemonID === daemonID) {
+        treeMove = {
+          daemonID,
+          request: { ...request, preview_digest: response.data.preview.digest },
+          preview: response.data.preview,
+        }
+      }
+      return response
+    })
+    return false
+  }
+
+  async function loadMoveProjects(daemonID: string) {
+    if (!daemonInfos.some((daemon) => daemon.id === daemonID))
+      throw new Error('Unknown configured destination')
+    const fetcher = createCredentialedFetch(
+      undefined,
+      createDaemonFetch(() => daemonID, observedFetch),
+      rejectCredentialsAndRequireAuthentication,
+    )
+    return loadMoveDestination(fetcher)
+  }
+
+  async function executeTreeMove(): Promise<void> {
+    const saved = treeMove
+    if (!saved || saved.daemonID !== activeDaemonID || saved.preview.blockers.length > 0) return
+    await runMutation({ draft: saved.request }, async (context) => {
+      treeMove = {
+        ...saved,
+        result: {
+          state: 'outcome-unknown',
+          request_uid: saved.request.request_uid,
+          applied: saved.result?.applied ?? [],
+          finalized: saved.result?.finalized ?? [],
+          conflicts: [],
+          unknown_roots: [saved.request.issue_uid],
+          retry_action: 'Retry this exact request to resolve the committed outcome.',
+        },
+      }
+      const response = await moveIssueTree({ request: saved.request }, { headers: context.headers })
+      if (response.status === 200 && response.data.result && activeDaemonID === saved.daemonID) {
+        treeMove = { ...saved, result: response.data.result }
+      }
+      return response
+    })
   }
 
   async function assignOwner(uid: string, owner: string): Promise<boolean> {
@@ -1239,6 +1306,19 @@
       />
     {/if}
     {#if authority?.snapshot && (mode === 'ready' || mode === 'launch' || mode === 'login')}
+      {#if treeMove && treeMove.daemonID === activeDaemonID}
+        <IssueTreeMoveStatus
+          request={treeMove.request}
+          preview={treeMove.preview}
+          result={treeMove.result}
+          canMutate={authority.canMutate && !authority.stale}
+          {mutationPending}
+          onConfirm={executeTreeMove}
+          onDismiss={() => {
+            treeMove = undefined
+          }}
+        />
+      {/if}
       <AppShell
         route={acceptedRoute ?? route}
         snapshot={authority.snapshot}
@@ -1270,6 +1350,13 @@
         onDesignateInbox={designateInbox}
         onCreateIssue={createIssue}
         {searchReferences}
+        moveDaemons={daemonInfos
+          .filter(
+            (daemon) =>
+              daemon.id !== activeDaemonID && !(activeDaemonID === undefined && daemon.local),
+          )
+          .map((daemon) => ({ id: daemon.id, label: daemon.id }))}
+        onLoadMoveProjects={loadMoveProjects}
         onMoveIssue={moveIssue}
         onPatchMetadata={patchMetadata}
         onAddComment={addComment}

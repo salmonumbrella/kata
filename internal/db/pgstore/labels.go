@@ -23,11 +23,12 @@ var labelConstraintErrors = map[string]error{
 // AddLabel attaches a label without emitting an event.
 func (s *Store) AddLabel(ctx context.Context, issueID int64, label, author string) (db.IssueLabel, error) {
 	var issueLabel db.IssueLabel
-	err := s.RetryTransient(ctx, func() error {
+	err := s.withSerializableTx(ctx, func(tx *sql.Tx) error {
+		if _, _, err := lockedIssueTx(ctx, tx, issueID, true); err != nil {
+			return err
+		}
 		var err error
-		issueLabel, err = fencedQueryRow(ctx, s, scanLabel,
-			`INSERT INTO issue_labels(issue_id, label, author) VALUES($1,$2,$3)
-			 RETURNING issue_id, label, author, created_at`, issueID, label, author)
+		issueLabel, err = scanLabel(tx.QueryRowContext(ctx, `INSERT INTO issue_labels(issue_id,label,author) VALUES($1,$2,$3) RETURNING issue_id,label,author,created_at`, issueID, label, author))
 		return mapSQLError(err, labelConstraintErrors)
 	})
 	return issueLabel, err

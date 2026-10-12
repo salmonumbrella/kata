@@ -45,9 +45,12 @@ func (s *Store) PurgeIssue(ctx context.Context, issueID int64, actor string, rea
 			return db.ErrFederationResetBlockedByPendingPush
 		}
 
+		if err := db.RetainMovedIssueCreationHistory(ctx, tx, issue.ID); err != nil {
+			return err
+		}
 		var minEventID, maxEventID sql.NullInt64
 		if err := tx.QueryRowContext(ctx, `SELECT MIN(id), MAX(id) FROM events
-          WHERE issue_id = $1 OR (related_issue_id = $1 AND type NOT IN ('issue.links_changed', 'issue.commented'))`, issue.ID,
+          WHERE (issue_id = $1 OR (related_issue_id = $1 AND type NOT IN ('issue.links_changed', 'issue.commented'))) AND type NOT IN ('issue.moved','issue.move_received') AND source_event_bytes IS NULL`, issue.ID,
 		).Scan(&minEventID, &maxEventID); err != nil {
 			return mapSQLError(err, nil)
 		}
@@ -56,15 +59,24 @@ func (s *Store) PurgeIssue(ctx context.Context, issueID int64, actor string, rea
 			`SELECT COUNT(*) FROM comments WHERE issue_id = $1`,
 			`SELECT COUNT(*) FROM links WHERE from_issue_id = $1 OR to_issue_id = $1`,
 			`SELECT COUNT(*) FROM issue_labels WHERE issue_id = $1`,
-			`SELECT COUNT(*) FROM events WHERE issue_id = $1 OR (related_issue_id = $1 AND type NOT IN ('issue.links_changed', 'issue.commented'))`,
+			`SELECT COUNT(*) FROM events WHERE (issue_id = $1 OR (related_issue_id = $1 AND type NOT IN ('issue.links_changed', 'issue.commented'))) AND type NOT IN ('issue.moved','issue.move_received') AND source_event_bytes IS NULL`,
 		}
 		for index, query := range queries {
 			if err := tx.QueryRowContext(ctx, query, issue.ID).Scan(&counts[index]); err != nil {
 				return mapSQLError(err, nil)
 			}
 		}
+		// Remove ordinary owner mappings before SET NULL would violate their
+		// owner requirements; retain moved mappings as source suppression facts.
+		if err := db.DeleteOrdinaryIssueOwnerMappings(ctx, tx, issue.ID); err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM events
-          WHERE issue_id = $1 OR (related_issue_id = $1 AND type NOT IN ('issue.links_changed', 'issue.commented'))`, issue.ID); err != nil {
+          WHERE (issue_id = $1 OR (related_issue_id = $1 AND type NOT IN ('issue.links_changed', 'issue.commented'))) AND type NOT IN ('issue.moved','issue.move_received') AND source_event_bytes IS NULL`, issue.ID); err != nil {
+			return mapSQLError(err, nil)
+		}
+		// Retain old-reference evidence without a dangling local subject.
+		if _, err := tx.ExecContext(ctx, `UPDATE events SET issue_id=CASE WHEN issue_id=$1 THEN NULL ELSE issue_id END,related_issue_id=CASE WHEN related_issue_id=$1 THEN NULL ELSE related_issue_id END WHERE (issue_id=$1 OR related_issue_id=$1) AND (type IN ('issue.moved','issue.move_received') OR source_event_bytes IS NOT NULL)`, issue.ID); err != nil {
 			return mapSQLError(err, nil)
 		}
 		_, err = tx.ExecContext(ctx, `UPDATE events SET related_issue_id = NULL
@@ -131,12 +143,12 @@ WHERE id = $1 AND last_materialized_uid = $4`,
           uid, origin_instance_uid, project_id, purged_issue_id, issue_uid, project_uid,
           project_name, short_id, issue_title, issue_author, comment_count, link_count,
           label_count, event_count, events_deleted_min_id, events_deleted_max_id,
-          purge_reset_after_event_id, actor, reason
-        ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+          purge_reset_after_event_id, actor, reason, recurrence_uid, occurrence_key
+        ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,(SELECT COALESCE(i.recurrence_uid,r.uid) FROM issues i LEFT JOIN recurrences r ON r.id=i.recurrence_id WHERE i.id=$20),$21)
         RETURNING id`,
 			purgeUID, s.instanceUID, issue.ProjectID, issue.ID, issue.UID, issue.ProjectUID,
 			projectName, issue.ShortID, issue.Title, issue.Author, counts[0], counts[1], counts[2], counts[3],
-			minEventID, maxEventID, resetCursor, actor, reason,
+			minEventID, maxEventID, resetCursor, actor, reason, issue.ID, issue.OccurrenceKey,
 		).Scan(&purgeID)
 		if err != nil {
 			return mapSQLError(err, nil)

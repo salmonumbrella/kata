@@ -24,6 +24,7 @@ const (
 	inputSearchBar
 	inputLabelPrompt         // detail `+` — add label
 	inputRemoveLabelPrompt   // detail `-` — remove label
+	inputMovePrompt          // detail M — preview and move a complete tree
 	inputOwnerPrompt         // detail `a` — assign owner
 	inputAssignmentTTLPrompt // detail `t` — start or renew a timed assignment
 	inputParentPrompt        // detail `p` — set parent
@@ -48,7 +49,7 @@ const (
 // prompt kinds (anchored to the bottom of the detail pane).
 func (k inputKind) isPanelPrompt() bool {
 	switch k {
-	case inputLabelPrompt, inputRemoveLabelPrompt, inputOwnerPrompt, inputAssignmentTTLPrompt,
+	case inputMovePrompt, inputLabelPrompt, inputRemoveLabelPrompt, inputOwnerPrompt, inputAssignmentTTLPrompt,
 		inputParentPrompt, inputBlockerPrompt, inputLinkPrompt,
 		inputPriorityPrompt:
 		return true
@@ -784,6 +785,8 @@ func newPanelPrompt(kind inputKind, target formTarget) inputState {
 // than a CLI-style colon prefix.
 func panelPromptTitle(kind inputKind, ref string) string {
 	switch kind {
+	case inputMovePrompt:
+		return "move tree: project [--issue-only] [--move-series] [--detach]"
 	case inputLabelPrompt:
 		return fmt.Sprintf("add label to #%s", ref)
 	case inputRemoveLabelPrompt:

@@ -543,7 +543,7 @@ func atomicLinkByEndpointsTx(
 }
 
 func deleteAtomicLinkTx(ctx context.Context, tx *sql.Tx, linkID int64) (bool, error) {
-	result, err := tx.ExecContext(ctx, `DELETE FROM links WHERE id = $1`, linkID)
+	result, err := db.DeleteLinkWithMappings(ctx, tx, linkID)
 	if err != nil {
 		return false, mapSQLError(err, nil)
 	}

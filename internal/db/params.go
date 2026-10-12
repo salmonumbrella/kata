@@ -542,6 +542,11 @@ type ProjectMergeResult struct {
 
 // MoveIssueProjectIn carries inputs for MoveIssueProject.
 type MoveIssueProjectIn struct {
+	// Request identity and options are scalar facts on ordinary move events.
+	RequestUID          string
+	RequestDigest       string
+	ActorAuthorityUID   string
+	ProviderDisposition string
 	// DryRun validates inside the move transaction, then rolls back without moving.
 	DryRun        bool
 	IssueID       int64
@@ -559,6 +564,25 @@ type MoveIssueProjectOut struct {
 	NewRevision           int64
 	ProjectAccessRevision int64
 	Event                 *Event `json:"-"`
+}
+
+// MoveIssueTreeIn selects the complete descendant tree unless IssueOnly is set.
+// Native numeric IDs are local transaction inputs, not transfer identities.
+type MoveIssueTreeIn struct {
+	// PreviewDigest revalidates the complete ephemeral selection before writes.
+	PreviewDigest string
+	MoveSeries    bool
+	MoveIssueProjectIn
+	IssueOnly bool
+}
+
+// MoveIssueTreeOut retains exact transaction events for immediate delivery.
+type MoveIssueTreeOut struct {
+	Replayed      bool
+	PreviewDigest string
+	Root          MoveIssueProjectOut
+	Issues        []Issue
+	Events        []Event
 }
 
 // IfMatch wraps a revision for the optional IfMatchRev fields on the

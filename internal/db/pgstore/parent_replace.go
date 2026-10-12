@@ -79,6 +79,9 @@ func (s *Store) ReplaceParentAndEvents(
 		input.UnlinkEvent.Actor = actor
 		input.LinkEvent.Actor = actor
 
+		if err := db.DeleteOrdinaryLinkMappings(ctx, tx, oldLink.ID); err != nil {
+			return err
+		}
 		deleted, err := tx.ExecContext(ctx,
 			`DELETE FROM links WHERE id = $1 AND from_issue_id = $2 AND to_issue_id = $3 AND type = 'parent'`,
 			oldLink.ID, input.Link.FromIssueID, input.ExpectedParentIssueID,

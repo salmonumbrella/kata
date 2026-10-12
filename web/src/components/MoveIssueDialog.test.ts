@@ -84,6 +84,54 @@ async function openMovePicker(): Promise<void> {
 }
 
 describe('MoveIssueDialog', () => {
+  it('does not fall back to current daemon projects when a configured destination fails', async () => {
+    renderMenu({
+      moveDaemons: [{ id: 'destination-service', label: 'Destination service' }],
+      onLoadMoveProjects: vi.fn().mockRejectedValue(new Error('unavailable')),
+    })
+    await openMovePicker()
+    await fireEvent.click(screen.getByRole('button', { name: 'Destination service' }))
+    await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy())
+    expect(screen.queryByRole('button', { name: /Roadmap/ })).toBeNull()
+  })
+
+  it('chooses a configured daemon project and passes only its authority UID', async () => {
+    const onMoveIssue = vi.fn().mockResolvedValue(false)
+    const onLoadMoveProjects = vi.fn().mockResolvedValue({
+      authorityUID: '01AAAAAAAAAAAAAAAAAAAAAAAA',
+      projects: [makeProject('remote-project', 'Remote project', 4)],
+    })
+    renderMenu({
+      onMoveIssue,
+      moveDaemons: [{ id: 'destination-service', label: 'Destination service' }],
+      onLoadMoveProjects,
+    })
+    await openMovePicker()
+    await fireEvent.click(screen.getByRole('button', { name: 'Destination service' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Remote project/ })).toBeTruthy())
+    await fireEvent.click(screen.getByRole('button', { name: /Remote project/ }))
+    expect(onLoadMoveProjects).toHaveBeenCalledWith('destination-service')
+    expect(onMoveIssue).toHaveBeenCalledWith('remote-project', {
+      destinationAuthorityUID: '01AAAAAAAAAAAAAAAAAAAAAAAA',
+    })
+  })
+
+  it('explains the complete tree default and exposes issue-only selection', async () => {
+    renderMenu()
+    await openMovePicker()
+    expect(screen.getByText(/Includes completed and deleted children/)).not.toBeNull()
+    expect(screen.getByRole('checkbox', { name: 'Only this issue' })).not.toBeNull()
+  })
+
+  it('passes an explicit issue-only selection to the move request', async () => {
+    const onMoveIssue = vi.fn(async () => true)
+    renderMenu({ onMoveIssue })
+    await openMovePicker()
+    await fireEvent.click(screen.getByRole('checkbox', { name: 'Only this issue' }))
+    await fireEvent.click(screen.getByRole('button', { name: /Roadmap/ }))
+    expect(onMoveIssue).toHaveBeenCalledWith('project-roadmap', { issueOnly: true })
+  })
+
   afterEach(() => {
     cleanup()
   })

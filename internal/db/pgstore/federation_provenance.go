@@ -210,20 +210,23 @@ func persistReceiptTx(ctx context.Context, tx db.Transaction, receipt db.Attribu
 			return err
 		}
 	}
-	rawForRelay, err := json.Marshal(receipt)
-	if err != nil {
-		return err
-	}
-	var projectID int64
-	var instanceUID string
-	if err := tx.QueryRowContext(ctx, `SELECT id FROM projects WHERE uid=$1`, receipt.ProjectUID).Scan(&projectID); err != nil {
-		return err
-	}
-	if err := tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key='instance_uid'`).Scan(&instanceUID); err != nil {
-		return err
-	}
-	if err := queueRelayBodyTx(ctx, tx, projectID, receipt.ProjectUID, db.RelayStreamReceipt, receipt.EventUID, receipt.ContentHash, rawForRelay, instanceUID); err != nil {
-		return err
+	if !db.RelayStateCapture(ctx) {
+		rawForRelay, err := json.Marshal(receipt)
+		if err != nil {
+			return err
+		}
+		var projectID int64
+		var instanceUID string
+		if err := tx.QueryRowContext(ctx, `SELECT id FROM projects WHERE uid=$1`, receipt.ProjectUID).Scan(&projectID); err != nil {
+			return err
+		}
+		if err := tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key='instance_uid'`).Scan(&instanceUID); err != nil {
+			return err
+		}
+		if err := queueRelayBodyTx(ctx, tx, projectID, receipt.ProjectUID, db.RelayStreamReceipt, receipt.EventUID, receipt.ContentHash, rawForRelay, instanceUID); err != nil {
+			return err
+		}
+
 	}
 
 	changed := false
@@ -308,10 +311,8 @@ func (d *Store) ApplyUpstreamAttribution(ctx context.Context, pin db.RootKeyPin,
 
 // EntityAttribution reads an entity’s retained creation receipt.
 func (d *Store) EntityAttribution(ctx context.Context, projectUID, kind, entityUID string) (db.AttributionReceipt, error) {
-	if !db.ProjectAttributionVisible(ctx, projectUID) {
-		return db.AttributionReceipt{}, db.ErrNotFound
-	}
-	return readReceipt(d.QueryRowContext(ctx, `SELECT p.receipt FROM federation_entity_provenance e JOIN federation_event_provenance p ON p.project_uid=e.project_uid AND p.event_uid=e.event_uid WHERE e.project_uid=$1 AND e.kind=$2 AND e.entity_uid=$3`, projectUID, kind, entityUID))
+	scope, args := db.EntityAttributionOwnerClause(ctx, []any{projectUID, kind, entityUID}, true)
+	return readReceipt(d.QueryRowContext(ctx, `SELECT receipt.receipt FROM federation_entity_provenance k JOIN federation_event_provenance receipt ON receipt.project_uid=k.project_uid AND receipt.event_uid=k.event_uid WHERE k.project_uid=$1 AND k.kind=$2 AND k.entity_uid=$3 AND (`+scope+`)`, args...))
 }
 
 // AttributionReceiptsAfter reads the next bounded prefix of retained attribution receipts.
@@ -345,11 +346,11 @@ func (d *Store) ExportAttribution(ctx context.Context, filter db.ExportFilter) i
 			var query string
 			switch kind {
 			case "federation_root_key":
-				query = `SELECT k.project_uid,k.authority_uid,k.key_id,k.public_key,k.active FROM federation_root_keys k JOIN projects p ON p.uid=k.project_uid`
+				query = `SELECT k.project_uid,k.authority_uid,k.key_id,k.public_key,k.active FROM federation_root_keys k LEFT JOIN projects p ON p.uid=k.project_uid`
 			case "federation_event_provenance":
-				query = `SELECT k.receipt FROM federation_event_provenance k JOIN projects p ON p.uid=k.project_uid`
+				query = `SELECT k.receipt FROM federation_event_provenance k LEFT JOIN projects p ON p.uid=k.project_uid`
 			default:
-				query = `SELECT k.project_uid,k.kind,k.entity_uid,k.event_uid FROM federation_entity_provenance k JOIN projects p ON p.uid=k.project_uid`
+				query = `SELECT k.project_uid,k.kind,k.entity_uid,k.event_uid FROM federation_entity_provenance k LEFT JOIN projects p ON p.uid=k.project_uid`
 			}
 			args := []any{}
 			where := []string{}
@@ -390,9 +391,20 @@ func (d *Store) ExportAttribution(ctx context.Context, filter db.ExportFilter) i
 				}
 				where = append(where, "p.uid IN ("+strings.Join(places, ",")+")")
 			}
+			foreign, exportArgs := db.ForeignAttributionExportClause(ctx, filter, kind, args, true)
+			args = exportArgs
+			own := "p.id IS NOT NULL"
 			if len(where) > 0 {
-				query += " WHERE " + strings.Join(where, " AND ")
+				own += " AND " + strings.Join(where, " AND ")
 			}
+
+			if kind == "federation_event_provenance" {
+				// A creation receipt follows the current entity owner, even while
+				// its original project still has a local row.
+				relocated, _ := db.ForeignAttributionExportClause(context.Background(), db.ExportFilter{IncludeDeleted: true}, kind, nil, true)
+				own += " AND NOT (" + relocated + ")"
+			}
+			query += " WHERE (" + own + ") OR (" + foreign + ")"
 			switch kind {
 			case "federation_root_key":
 				query += " ORDER BY k.project_uid,k.key_id"

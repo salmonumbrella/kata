@@ -39,6 +39,20 @@ func (d *Store) moveIssueProject(ctx context.Context, in db.MoveIssueProjectIn) 
 		return out, err
 	}
 
+	out, err = d.moveIssueProjectTx(ctx, tx, in, false, false, false)
+	if err != nil {
+		return out, err
+	}
+	if in.DryRun {
+		return out, tx.Rollback()
+	}
+	return out, tx.Commit()
+}
+
+// moveIssueProjectTx shares one writer transaction with a whole-tree move.
+// Legacy one-issue calls keep their existing deleted-row rejection.
+func (d *Store) moveIssueProjectTx(ctx context.Context, tx *sql.Tx, in db.MoveIssueProjectIn, allowDeleted, preserveProviderIntent, allowOccurrence bool) (db.MoveIssueProjectOut, error) {
+	var out db.MoveIssueProjectOut
 	if err := ensureFederatedMoveAllowedTx(ctx, tx, in.FromProjectID, in.ToProjectID); err != nil {
 		return out, err
 	}
@@ -53,8 +67,8 @@ func (d *Store) moveIssueProject(ctx context.Context, in db.MoveIssueProjectIn) 
 	if err := tx.QueryRowContext(ctx, `
 		SELECT i.revision, i.short_id, i.recurrence_id, i.uid, p.uid
 		  FROM issues i JOIN projects p ON p.id = i.project_id
-		 WHERE i.id = ? AND i.project_id = ? AND i.deleted_at IS NULL AND p.deleted_at IS NULL`,
-		in.IssueID, in.FromProjectID,
+		 WHERE i.id = ? AND i.project_id = ? AND (? OR i.deleted_at IS NULL) AND p.deleted_at IS NULL`,
+		in.IssueID, in.FromProjectID, allowDeleted,
 	).Scan(&curRev, &curShortID, &recurrenceID, &issueUID, &fromProjectUID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return out, fmt.Errorf("issue %d not in project %d: %w", in.IssueID, in.FromProjectID, db.ErrNotFound)
@@ -68,7 +82,12 @@ func (d *Store) moveIssueProject(ctx context.Context, in db.MoveIssueProjectIn) 
 		return out, &db.RevisionConflictError{CurrentRevision: curRev}
 	}
 	if recurrenceID != nil {
-		return out, &db.RecurrencePinnedError{}
+		if !allowOccurrence {
+			return out, &db.RecurrencePinnedError{}
+		}
+		if err := db.RetainLocalRecurrenceIdentity(ctx, tx, in.IssueID); err != nil {
+			return out, err
+		}
 	}
 	if err := lockAndRejectFreshExternalRootClaimsForIssueTx(
 		ctx, tx, in.IssueID, time.Now().UTC().Add(-db.ExternalRootClaimStaleAfter),
@@ -97,6 +116,11 @@ func (d *Store) moveIssueProject(ctx context.Context, in db.MoveIssueProjectIn) 
 	); err != nil {
 		return out, err
 	}
+	if preserveProviderIntent {
+		if err := db.ReclaimLocalMoveMappings(ctx, tx, in.IssueID, in.FromProjectID, in.ToProjectID); err != nil {
+			return out, err
+		}
+	}
 	mappingCollisions, err := issueMoveImportMappingCollisions(
 		ctx, tx, in.IssueID, in.FromProjectID, in.ToProjectID,
 	)
@@ -114,8 +138,8 @@ func (d *Store) moveIssueProject(ctx context.Context, in db.MoveIssueProjectIn) 
 		}
 		out.Issue = issue
 		out.NewRevision = curRev
-		// Validation may provisionally clear stale claims. Roll it all back.
-		return out, tx.Rollback()
+		// The enclosing transaction rolls back provisional validation changes.
+		return out, nil
 	}
 
 	newShortID, err := assignShortIDIn(ctx, tx,
@@ -131,7 +155,8 @@ func (d *Store) moveIssueProject(ctx context.Context, in db.MoveIssueProjectIn) 
 		UPDATE issues
 		   SET project_id = ?,
 		       short_id   = ?,
-		       revision   = ?,
+		       location_generation = location_generation + 1,
+       revision   = ?,
 		       updated_at = ?
 		 WHERE id = ?`,
 		in.ToProjectID, newShortID, newRev, ts, in.IssueID,
@@ -150,15 +175,16 @@ func (d *Store) moveIssueProject(ctx context.Context, in db.MoveIssueProjectIn) 
 		return out, fmt.Errorf("rehome pending claim requests: %w", err)
 	}
 
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE import_mappings
-		   SET project_id = ?,
-		       observed_status = NULL, observed_status_at = NULL,
-		       pending_event_uid = NULL, remote_locator = NULL
-		 WHERE issue_id = ? AND project_id = ?`,
-		in.ToProjectID, in.IssueID, in.FromProjectID,
-	); err != nil {
-		return out, fmt.Errorf("rehome import_mappings: %w", err)
+	// Tree moves retain the pending event and provider checkpoint. The legacy
+	// single-issue operation keeps its original reset behavior.
+	if preserveProviderIntent {
+		if err := db.RehomeLocalMoveMappings(ctx, tx, in.IssueID, in.FromProjectID, in.ToProjectID, in.ProviderDisposition); err != nil {
+			return out, err
+		}
+	} else {
+		if _, err := tx.ExecContext(ctx, `UPDATE import_mappings SET project_id=?, observed_status=NULL,observed_status_at=NULL,pending_event_uid=NULL,remote_locator=NULL WHERE issue_id=? AND project_id=?`, in.ToProjectID, in.IssueID, in.FromProjectID); err != nil {
+			return out, fmt.Errorf("rehome import_mappings: %w", err)
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE external_root_bindings
@@ -169,14 +195,36 @@ func (d *Store) moveIssueProject(ctx context.Context, in db.MoveIssueProjectIn) 
 		return out, fmt.Errorf("rehome external root bindings: %w", err)
 	}
 
-	payload, _ := json.Marshal(map[string]string{
+	if preserveProviderIntent && in.ProviderDisposition == "detach" {
+		if _, err := tx.ExecContext(ctx, `UPDATE external_root_bindings SET enabled=$1,paused_reason=$2 WHERE issue_id=$3`, false, "detached by issue move", in.IssueID); err != nil {
+			return out, err
+		}
+	}
+
+	facts := map[string]any{
 		"issue_uid":        issueUID,
 		"from_project_uid": fromProjectUID,
 		"from_short_id":    curShortID,
 		"to_project_uid":   toProjectUID,
 		"to_short_id":      newShortID,
 		"updated_at":       ts,
-	})
+	}
+	if in.RequestUID != "" {
+		facts["request_uid"] = in.RequestUID
+		facts["request_digest"] = in.RequestDigest
+		facts["actor_authority_uid"] = in.ActorAuthorityUID
+		facts["provider_disposition"] = in.ProviderDisposition
+		facts["from_authority_uid"] = d.instanceUID
+		facts["to_authority_uid"] = d.instanceUID
+		facts["revision"] = newRev
+		var generation int64
+		if err := tx.QueryRowContext(ctx, `SELECT location_generation FROM issues WHERE id=$1`, in.IssueID).Scan(&generation); err != nil {
+			return out, err
+		}
+		facts["location_generation"] = generation
+	}
+	payload, err := json.Marshal(facts)
+
 	ev, err := d.insertEventTx(ctx, tx, eventInsert{
 		ProjectID:   in.ToProjectID,
 		ProjectName: toProjectName,
@@ -202,12 +250,8 @@ func (d *Store) moveIssueProject(ctx context.Context, in db.MoveIssueProjectIn) 
 	if err != nil {
 		return out, err
 	}
-	if err := tx.Commit(); err != nil {
-		return out, err
-	}
-	committedEvent := ev
 	out.Issue = issue
-	out.Event = &committedEvent
+	out.Event = &ev
 	out.EventID = ev.ID
 	out.NewShortID = newShortID
 	out.NewRevision = newRev

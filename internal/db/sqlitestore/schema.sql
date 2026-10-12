@@ -19,16 +19,28 @@ CREATE TABLE projects (
 CREATE INDEX idx_projects_active ON projects(id) WHERE deleted_at IS NULL;
 
 CREATE TABLE project_aliases (
+  authority_uid TEXT CHECK (length(authority_uid) = 26),
+  project_uid TEXT CHECK (length(project_uid) = 26),
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  project_id      INTEGER NOT NULL REFERENCES projects(id),
-  alias_identity  TEXT UNIQUE NOT NULL,    -- normalized git remote, or 'local://<abs path>'
-  alias_kind      TEXT NOT NULL CHECK(alias_kind IN ('git','local')),
+  project_id      INTEGER REFERENCES projects(id),
+  alias_identity  TEXT NOT NULL,    -- normalized git remote, or 'local://<abs path>'
+  alias_kind      TEXT NOT NULL CHECK(alias_kind IN ('git','local','name')),
   created_at      DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-  CHECK (length(trim(alias_identity)) > 0)
+  CHECK (length(trim(alias_identity)) > 0),
+  CONSTRAINT project_aliases_identity_shape CHECK ((alias_kind IN ('git','local') AND project_id IS NOT NULL) OR (alias_kind='name' AND authority_uid IS NOT NULL AND project_uid IS NOT NULL))
 );
 CREATE INDEX idx_project_aliases_project ON project_aliases(project_id);
 
 CREATE TABLE issues (
+  moved_to_authority_uid TEXT CHECK (length(moved_to_authority_uid) = 26),
+  moved_to_project_uid TEXT CHECK (length(moved_to_project_uid) = 26),
+  moved_event_uid TEXT CHECK (length(moved_event_uid) = 26),
+  recurrence_uid TEXT CHECK (length(recurrence_uid) = 26),
+  recurrence_authority_uid TEXT CHECK (length(recurrence_authority_uid) = 26),
+  recurrence_project_uid TEXT CHECK (length(recurrence_project_uid) = 26),
+  owner_authority_uid TEXT CHECK (length(owner_authority_uid) = 26),
+  location_generation INTEGER NOT NULL DEFAULT 1 CHECK (location_generation > 0),
+  moved_to_short_id TEXT,
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   uid           TEXT NOT NULL UNIQUE,
   project_id    INTEGER NOT NULL REFERENCES projects(id),
@@ -60,7 +72,10 @@ CREATE TABLE issues (
   CHECK (priority IS NULL OR priority BETWEEN 0 AND 4),
   CHECK (length(short_id) BETWEEN 4 AND 26),
   CHECK (short_id NOT GLOB '*[^0-9abcdefghjkmnpqrstvwxyz]*'),
-  CHECK (short_id = lower(substr(uid, 27 - length(short_id), length(short_id))))
+  CHECK (short_id = lower(substr(uid, 27 - length(short_id), length(short_id)))),
+  CONSTRAINT issues_move_shape CHECK ((moved_to_authority_uid IS NULL AND moved_to_project_uid IS NULL AND moved_to_short_id IS NULL AND moved_event_uid IS NULL) OR (moved_to_authority_uid IS NOT NULL AND moved_to_project_uid IS NOT NULL AND moved_to_short_id IS NOT NULL AND moved_event_uid IS NOT NULL)),
+  FOREIGN KEY (moved_event_uid) REFERENCES events(uid) ON DELETE RESTRICT,
+  CONSTRAINT issues_recurrence_identity_shape CHECK ((recurrence_uid IS NULL AND recurrence_authority_uid IS NULL AND recurrence_project_uid IS NULL) OR (recurrence_uid IS NOT NULL AND recurrence_authority_uid IS NOT NULL AND recurrence_project_uid IS NOT NULL))
 );
 CREATE INDEX idx_issues_project_status_updated
   ON issues(project_id, status, updated_at DESC) WHERE deleted_at IS NULL;
@@ -94,23 +109,29 @@ CREATE TABLE comments (
 CREATE INDEX idx_comments_issue ON comments(issue_id, created_at);
 
 CREATE TABLE links (
+  from_authority_uid TEXT CHECK (length(from_authority_uid) = 26),
+  from_project_uid TEXT CHECK (length(from_project_uid) = 26),
+  to_authority_uid TEXT CHECK (length(to_authority_uid) = 26),
+  to_project_uid TEXT CHECK (length(to_project_uid) = 26),
+  from_comment_uid TEXT CHECK (length(from_comment_uid) = 26),
+  to_comment_uid TEXT CHECK (length(to_comment_uid) = 26),
+  reply_kind TEXT,
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  from_issue_id INTEGER NOT NULL REFERENCES issues(id),
-  to_issue_id   INTEGER NOT NULL REFERENCES issues(id),
-  from_issue_uid TEXT NOT NULL,
-  to_issue_uid   TEXT NOT NULL,
-  type          TEXT NOT NULL CHECK(type IN ('parent','blocks','related')),
+  from_issue_id INTEGER REFERENCES issues(id),
+  to_issue_id   INTEGER REFERENCES issues(id),
+  from_issue_uid TEXT,
+  to_issue_uid   TEXT,
+  type          TEXT NOT NULL CHECK(type IN ('parent','blocks','related','reply')),
   author        TEXT NOT NULL,
   created_at    DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-  UNIQUE(from_issue_id, to_issue_id, type),
-  CHECK (from_issue_id <> to_issue_id),
+  CHECK (type='reply' OR from_issue_id <> to_issue_id),
   CHECK (length(from_issue_uid) = 26),
   CHECK (length(to_issue_uid) = 26),
   CHECK (length(trim(author)) > 0),
-  CHECK (type <> 'related' OR from_issue_id < to_issue_id)
+  CONSTRAINT links_endpoint_shape CHECK ((type IN ('parent','blocks','related') AND from_issue_uid IS NOT NULL AND to_issue_uid IS NOT NULL AND from_comment_uid IS NULL AND to_comment_uid IS NULL) OR (type='reply' AND from_comment_uid IS NOT NULL AND to_comment_uid IS NOT NULL AND reply_kind IN ('reply','confirm','refute','supersede')))
 );
 CREATE UNIQUE INDEX uniq_one_parent_per_child
-  ON links(from_issue_id) WHERE type = 'parent';
+  ON links(from_issue_uid) WHERE type = 'parent' AND from_comment_uid IS NULL AND to_comment_uid IS NULL;
 CREATE INDEX idx_links_from    ON links(from_issue_id, type);
 CREATE INDEX idx_links_to      ON links(to_issue_id, type);
 CREATE INDEX idx_links_from_uid ON links(from_issue_uid);
@@ -120,17 +141,17 @@ CREATE TRIGGER trg_links_uid_consistency_insert
 BEFORE INSERT ON links
 FOR EACH ROW BEGIN
   SELECT RAISE(ABORT, 'from_issue_uid does not match from_issue_id')
-  WHERE NEW.from_issue_uid <> (SELECT uid FROM issues WHERE id = NEW.from_issue_id);
+  WHERE NEW.from_issue_id IS NOT NULL AND NEW.from_issue_uid <> (SELECT uid FROM issues WHERE id = NEW.from_issue_id);
   SELECT RAISE(ABORT, 'to_issue_uid does not match to_issue_id')
-  WHERE NEW.to_issue_uid <> (SELECT uid FROM issues WHERE id = NEW.to_issue_id);
+  WHERE NEW.to_issue_id IS NOT NULL AND NEW.to_issue_uid <> (SELECT uid FROM issues WHERE id = NEW.to_issue_id);
 END;
 CREATE TRIGGER trg_links_uid_consistency_update
 BEFORE UPDATE ON links
 FOR EACH ROW BEGIN
   SELECT RAISE(ABORT, 'from_issue_uid does not match from_issue_id')
-  WHERE NEW.from_issue_uid <> (SELECT uid FROM issues WHERE id = NEW.from_issue_id);
+  WHERE NEW.from_issue_id IS NOT NULL AND NEW.from_issue_uid <> (SELECT uid FROM issues WHERE id = NEW.from_issue_id);
   SELECT RAISE(ABORT, 'to_issue_uid does not match to_issue_id')
-  WHERE NEW.to_issue_uid <> (SELECT uid FROM issues WHERE id = NEW.to_issue_id);
+  WHERE NEW.to_issue_id IS NOT NULL AND NEW.to_issue_uid <> (SELECT uid FROM issues WHERE id = NEW.to_issue_id);
 END;
 
 CREATE TRIGGER trg_projects_uid_immutable
@@ -159,6 +180,10 @@ CREATE TABLE issue_labels (
 CREATE INDEX idx_issue_labels_label ON issue_labels(label);
 
 CREATE TABLE recurrences (
+  moved_to_authority_uid TEXT CHECK (length(moved_to_authority_uid) = 26),
+  moved_to_project_uid TEXT CHECK (length(moved_to_project_uid) = 26),
+  moved_event_uid TEXT CHECK (length(moved_event_uid) = 26),
+  location_generation INTEGER NOT NULL DEFAULT 1 CHECK (location_generation > 0),
   id                     INTEGER PRIMARY KEY,
   uid                    TEXT NOT NULL UNIQUE CHECK (length(uid) = 26),
   project_id             INTEGER NOT NULL
@@ -183,17 +208,21 @@ CREATE TABLE recurrences (
   revision               INTEGER NOT NULL DEFAULT 1,
   created_at             DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at             DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  deleted_at             DATETIME
+  deleted_at             DATETIME,
+  CONSTRAINT recurrences_move_shape CHECK ((moved_to_authority_uid IS NULL AND moved_to_project_uid IS NULL AND moved_event_uid IS NULL) OR (moved_to_authority_uid IS NOT NULL AND moved_to_project_uid IS NOT NULL AND moved_event_uid IS NOT NULL)),
+  FOREIGN KEY (moved_event_uid) REFERENCES events(uid) ON DELETE RESTRICT
 );
 
 CREATE INDEX recurrences_project ON recurrences(project_id)
   WHERE deleted_at IS NULL;
 
 CREATE TABLE events (
+  source_project_uid TEXT CHECK (length(source_project_uid) = 26),
+  source_event_bytes BLOB,
   id                  INTEGER PRIMARY KEY AUTOINCREMENT,
   uid                 TEXT NOT NULL UNIQUE,
   origin_instance_uid TEXT NOT NULL,
-  project_id          INTEGER NOT NULL REFERENCES projects(id),
+  project_id          INTEGER REFERENCES projects(id),
   project_name    TEXT NOT NULL,
   issue_id            INTEGER REFERENCES issues(id),
   issue_uid           TEXT,
@@ -253,6 +282,8 @@ CREATE TABLE api_tokens (
 );
 
 CREATE TABLE purge_log (
+  recurrence_uid TEXT CHECK (length(recurrence_uid) = 26),
+  occurrence_key TEXT,
   id                          INTEGER PRIMARY KEY AUTOINCREMENT,
   uid                         TEXT NOT NULL UNIQUE,
   origin_instance_uid         TEXT NOT NULL,
@@ -662,14 +693,17 @@ CREATE TRIGGER comments_ad_fts AFTER DELETE ON comments BEGIN
 END;
 
 CREATE TABLE import_mappings (
+  moved_issue_uid TEXT CHECK (length(moved_issue_uid) = 26),
+  moved_to_authority_uid TEXT CHECK (length(moved_to_authority_uid) = 26),
+  moved_to_project_uid TEXT CHECK (length(moved_to_project_uid) = 26),
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
   source            TEXT NOT NULL,
   external_id       TEXT NOT NULL,
   object_type       TEXT NOT NULL CHECK(object_type IN ('issue','comment','label','link')),
   project_id        INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  issue_id          INTEGER REFERENCES issues(id) ON DELETE CASCADE,
-  comment_id        INTEGER REFERENCES comments(id) ON DELETE CASCADE,
-  link_id           INTEGER REFERENCES links(id) ON DELETE CASCADE,
+  issue_id          INTEGER REFERENCES issues(id) ON DELETE SET NULL,
+  comment_id        INTEGER REFERENCES comments(id) ON DELETE SET NULL,
+  link_id           INTEGER REFERENCES links(id) ON DELETE SET NULL,
   label             TEXT,
   source_updated_at DATETIME,
   imported_at       DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
@@ -680,10 +714,11 @@ CREATE TABLE import_mappings (
   UNIQUE(source, external_id, object_type, project_id),
   CHECK (length(trim(source)) > 0),
   CHECK (length(trim(external_id)) > 0),
-  CHECK (object_type != 'issue' OR issue_id IS NOT NULL),
-  CHECK (object_type != 'comment' OR (issue_id IS NOT NULL AND comment_id IS NOT NULL)),
-  CHECK (object_type != 'label' OR (issue_id IS NOT NULL AND label IS NOT NULL)),
-  CHECK (object_type != 'link' OR (issue_id IS NOT NULL AND link_id IS NOT NULL))
+  CHECK (moved_issue_uid IS NOT NULL OR object_type != 'issue' OR issue_id IS NOT NULL),
+  CHECK (moved_issue_uid IS NOT NULL OR object_type != 'comment' OR (issue_id IS NOT NULL AND comment_id IS NOT NULL)),
+  CHECK (moved_issue_uid IS NOT NULL OR object_type != 'label' OR (issue_id IS NOT NULL AND label IS NOT NULL)),
+  CHECK (moved_issue_uid IS NOT NULL OR object_type != 'link' OR (issue_id IS NOT NULL AND link_id IS NOT NULL)),
+  CONSTRAINT import_mappings_move_shape CHECK ((moved_issue_uid IS NULL AND moved_to_authority_uid IS NULL AND moved_to_project_uid IS NULL) OR (moved_issue_uid IS NOT NULL AND moved_to_authority_uid IS NOT NULL AND moved_to_project_uid IS NOT NULL))
 );
 CREATE INDEX idx_import_mappings_issue ON import_mappings(issue_id);
 CREATE INDEX idx_import_mappings_comment ON import_mappings(comment_id);
@@ -849,7 +884,7 @@ INSERT INTO meta(key,value) VALUES('project_access_revision','1');
 
 -- Root public-key pins and proofs are portable. Private signing material is not.
 CREATE TABLE federation_root_keys (
- project_uid TEXT NOT NULL REFERENCES projects(uid) ON DELETE CASCADE,
+ project_uid TEXT NOT NULL,
  authority_uid TEXT NOT NULL,
  key_id TEXT NOT NULL,
  public_key TEXT NOT NULL,
@@ -867,7 +902,7 @@ CREATE TABLE federation_event_provenance (
  receipt TEXT NOT NULL,
  PRIMARY KEY(project_uid,event_uid),
  UNIQUE(project_uid,reset_epoch,sequence),
- FOREIGN KEY(project_uid,key_id) REFERENCES federation_root_keys(project_uid,key_id) ON DELETE CASCADE
+ FOREIGN KEY(project_uid,key_id) REFERENCES federation_root_keys(project_uid,key_id) ON DELETE RESTRICT
 );
 CREATE TABLE federation_entity_provenance (
  project_uid TEXT NOT NULL,
@@ -875,7 +910,7 @@ CREATE TABLE federation_entity_provenance (
  entity_uid TEXT NOT NULL,
  event_uid TEXT NOT NULL,
  PRIMARY KEY(project_uid,kind,entity_uid),
- FOREIGN KEY(project_uid,event_uid) REFERENCES federation_event_provenance(project_uid,event_uid) ON DELETE CASCADE
+ FOREIGN KEY(project_uid,event_uid) REFERENCES federation_event_provenance(project_uid,event_uid) ON DELETE RESTRICT
 );
 
 -- Per-hop source mappings retain retry identities independently of source history.
@@ -940,3 +975,22 @@ CREATE TABLE federation_embedding_artifacts (
 );
 CREATE INDEX idx_embedding_artifacts_input ON federation_embedding_artifacts(project_uid,issue_uid,input_hash,recipe_fingerprint);
 CREATE INDEX idx_embedding_artifacts_staging ON federation_embedding_artifacts(project_uid,staging_expires_at) WHERE staging_expires_at IS NOT NULL;
+
+-- Issue moves extend existing entity and audit owners; no move tables.
+CREATE INDEX idx_comments_reply_to ON comments(reply_to_uid) WHERE reply_to_uid IS NOT NULL;
+CREATE INDEX idx_issues_move_route ON issues(moved_to_authority_uid,moved_to_project_uid,uid) WHERE moved_event_uid IS NOT NULL;
+CREATE UNIQUE INDEX uniq_issues_series_key ON issues(recurrence_uid,occurrence_key) WHERE recurrence_uid IS NOT NULL AND occurrence_key IS NOT NULL;
+CREATE INDEX idx_recurrences_move_route ON recurrences(moved_to_project_uid,uid) WHERE moved_event_uid IS NOT NULL;
+CREATE UNIQUE INDEX uniq_purge_log_series_key ON purge_log(recurrence_uid,occurrence_key) WHERE recurrence_uid IS NOT NULL AND occurrence_key IS NOT NULL;
+CREATE INDEX idx_events_move_request ON events(project_id,type,json_extract(payload, '$.request_uid'),issue_uid);
+CREATE UNIQUE INDEX uniq_events_move_request ON events(project_id,type,json_extract(payload, '$.request_uid'),issue_uid) WHERE type IN ('issue.move_received','issue.moved') AND json_extract(payload, '$.request_uid') IS NOT NULL;
+CREATE INDEX idx_events_move_reference ON events(json_extract(payload, '$.from_authority_uid'),json_extract(payload, '$.from_project_uid'),json_extract(payload, '$.from_short_id'),issue_uid) WHERE type='issue.moved';
+CREATE INDEX idx_events_move_location ON events(issue_uid,type,id DESC) WHERE type IN ('issue.move_received','issue.moved');
+CREATE UNIQUE INDEX uniq_project_aliases_workspace_identity ON project_aliases(alias_identity) WHERE alias_kind IN ('git','local');
+CREATE UNIQUE INDEX uniq_project_aliases_name ON project_aliases(authority_uid,alias_identity) WHERE alias_kind='name';
+CREATE INDEX idx_project_aliases_namespace ON project_aliases(authority_uid,project_uid,alias_kind);
+CREATE UNIQUE INDEX uniq_links_issue_edge ON links(from_issue_uid,to_issue_uid,type) WHERE from_comment_uid IS NULL AND to_comment_uid IS NULL;
+CREATE UNIQUE INDEX uniq_links_comment_edge ON links(from_comment_uid,to_comment_uid,type) WHERE from_comment_uid IS NOT NULL AND to_comment_uid IS NOT NULL;
+CREATE INDEX idx_links_from_comment ON links(from_comment_uid) WHERE from_comment_uid IS NOT NULL;
+CREATE INDEX idx_links_to_comment ON links(to_comment_uid) WHERE to_comment_uid IS NOT NULL;
+CREATE INDEX idx_import_mappings_moved ON import_mappings(moved_issue_uid) WHERE moved_issue_uid IS NOT NULL;

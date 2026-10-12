@@ -7,8 +7,12 @@ export interface InitProjectRequestBody {
   actor?: string
   /** client-derived alias metadata; only honored when start_path is empty */
   alias?: AliasInput
+  /** expected daemon instance UID for atomic setup; requires project_uid */
+  authority_uid?: string
   /** project name; required when start_path is empty */
   name?: string
+  /** stable project UID for atomic setup; requires authority_uid */
+  project_uid?: string
   reassign?: boolean
   replace?: boolean
   /** absolute path on the daemon's filesystem; omit for path-free init */

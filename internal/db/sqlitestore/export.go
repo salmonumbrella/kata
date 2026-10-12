@@ -130,7 +130,7 @@ func (d *Store) ExportIssues(ctx context.Context, f db.ExportFilter) iter.Seq2[d
 	                 CAST(i.created_at AS TEXT), CAST(i.updated_at AS TEXT),
 	                 CAST(i.closed_at AS TEXT), CAST(i.deleted_at AS TEXT),
 	                 i.metadata, i.revision, i.content_revision,
-	                 i.recurrence_id, r.uid, i.occurrence_key
+	                 i.recurrence_id, COALESCE(i.recurrence_uid,r.uid), i.occurrence_key, i.location_generation, i.moved_to_authority_uid, i.moved_to_project_uid, i.moved_to_short_id, i.moved_event_uid, i.recurrence_authority_uid, i.recurrence_project_uid, i.owner_authority_uid
 	          FROM issues i
 	          LEFT JOIN recurrences r ON r.id = i.recurrence_id` +
 		exportWhere("i", f) + ` ORDER BY i.id ASC`
@@ -141,7 +141,7 @@ func (d *Store) ExportIssues(ctx context.Context, f db.ExportFilter) iter.Seq2[d
 			if err := rows.Scan(&rec.ID, &rec.UID, &rec.ProjectID, &rec.ShortID, &rec.Title, &rec.Body,
 				&rec.Status, &rec.ClosedReason, &rec.Owner, &rec.AssignmentExpiresOn, &rec.Priority, &rec.Author, &rec.CreatedAt,
 				&rec.UpdatedAt, &rec.ClosedAt, &rec.DeletedAt, &metadata, &rec.Revision, &rec.ContentRevision,
-				&rec.RecurrenceID, &rec.RecurrenceUID, &rec.OccurrenceKey); err != nil {
+				&rec.RecurrenceID, &rec.RecurrenceUID, &rec.OccurrenceKey, &rec.LocationGeneration, &rec.MovedToAuthorityUID, &rec.MovedToProjectUID, &rec.MovedToShortID, &rec.MovedEventUID, &rec.RecurrenceAuthorityUID, &rec.RecurrenceProjectUID, &rec.OwnerAuthorityUID); err != nil {
 				return db.IssueExport{}, scanError("issue", err)
 			}
 			if !jsontext.Value([]byte(metadata)).IsValid() {
@@ -162,7 +162,7 @@ func (d *Store) ExportRecurrences(ctx context.Context, f db.ExportFilter) iter.S
 	                 next_occurrence_key, last_materialized_uid,
 	                 author, revision,
 	                 CAST(created_at AS TEXT), CAST(updated_at AS TEXT),
-	                 CAST(deleted_at AS TEXT)
+	                 CAST(deleted_at AS TEXT), location_generation, moved_to_authority_uid, moved_to_project_uid, moved_event_uid
 	          FROM recurrences`
 	var clauses []string
 	var args []any
@@ -187,7 +187,7 @@ func (d *Store) ExportRecurrences(ctx context.Context, f db.ExportFilter) iter.S
 				&labels, &metadata,
 				&rec.NextOccurrenceKey, &rec.LastMaterializedUID,
 				&rec.Author, &rec.Revision,
-				&rec.CreatedAt, &rec.UpdatedAt, &rec.DeletedAt); err != nil {
+				&rec.CreatedAt, &rec.UpdatedAt, &rec.DeletedAt, &rec.LocationGeneration, &rec.MovedToAuthorityUID, &rec.MovedToProjectUID, &rec.MovedEventUID); err != nil {
 				return db.RecurrenceExport{}, scanError("recurrence", err)
 			}
 			if !jsontext.Value([]byte(labels)).IsValid() {
@@ -207,12 +207,12 @@ func (d *Store) ExportRecurrences(ctx context.Context, f db.ExportFilter) iter.S
 // touches the project on either endpoint. Soft-deleted endpoints (either side)
 // drop the link unless IncludeDeleted is true.
 func (d *Store) ExportLinks(ctx context.Context, f db.ExportFilter) iter.Seq2[db.LinkExport, error] {
-	query := `SELECT links.id, links.from_issue_id, links.from_issue_uid,
-	                 links.to_issue_id, links.to_issue_uid,
-	                 links.type, links.author, CAST(links.created_at AS TEXT)
+	query := `SELECT links.id, COALESCE(links.from_issue_id,0), COALESCE(links.from_issue_uid,''),
+	                 COALESCE(links.to_issue_id,0), COALESCE(links.to_issue_uid,''),
+	                 links.type, links.author, CAST(links.created_at AS TEXT), links.from_authority_uid, links.from_project_uid, links.to_authority_uid, links.to_project_uid, links.from_comment_uid, links.to_comment_uid, links.reply_kind
 	          FROM links
-	          JOIN issues AS from_issues ON from_issues.id = links.from_issue_id
-	          JOIN issues AS to_issues ON to_issues.id = links.to_issue_id`
+	          LEFT JOIN issues AS from_issues ON from_issues.id = links.from_issue_id
+	          LEFT JOIN issues AS to_issues ON to_issues.id = links.to_issue_id`
 	var clauses []string
 	var args []any
 	if f.ProjectID != nil {
@@ -227,7 +227,7 @@ func (d *Store) ExportLinks(ctx context.Context, f db.ExportFilter) iter.Seq2[db
 		func(rows *sql.Rows) (db.LinkExport, error) {
 			var rec db.LinkExport
 			if err := rows.Scan(&rec.ID, &rec.FromIssueID, &rec.FromIssueUID,
-				&rec.ToIssueID, &rec.ToIssueUID, &rec.Type, &rec.Author, &rec.CreatedAt); err != nil {
+				&rec.ToIssueID, &rec.ToIssueUID, &rec.Type, &rec.Author, &rec.CreatedAt, &rec.FromAuthorityUID, &rec.FromProjectUID, &rec.ToAuthorityUID, &rec.ToProjectUID, &rec.FromCommentUID, &rec.ToCommentUID, &rec.ReplyKind); err != nil {
 				return db.LinkExport{}, scanError("link", err)
 			}
 			return rec, nil
@@ -237,8 +237,8 @@ func (d *Store) ExportLinks(ctx context.Context, f db.ExportFilter) iter.Seq2[db
 // ExportProjectAliases streams aliases ordered by id, scoped to f.ProjectID
 // when set. There is no soft-delete clause.
 func (d *Store) ExportProjectAliases(ctx context.Context, f db.ExportFilter) iter.Seq2[db.AliasExport, error] {
-	query := `SELECT id, project_id, alias_identity, alias_kind,
-	                 CAST(created_at AS TEXT)
+	query := `SELECT id, COALESCE(project_id,0), alias_identity, alias_kind,
+	                 CAST(created_at AS TEXT), authority_uid, project_uid
 	          FROM project_aliases`
 	query, args := withProjectIDFilter(query, f, "project_id")
 	query += ` ORDER BY id ASC`
@@ -246,7 +246,7 @@ func (d *Store) ExportProjectAliases(ctx context.Context, f db.ExportFilter) ite
 		func(rows *sql.Rows) (db.AliasExport, error) {
 			var rec db.AliasExport
 			if err := rows.Scan(&rec.ID, &rec.ProjectID, &rec.AliasIdentity, &rec.AliasKind,
-				&rec.CreatedAt); err != nil {
+				&rec.CreatedAt, &rec.AuthorityUID, &rec.ProjectUID); err != nil {
 				return db.AliasExport{}, scanError("project_alias", err)
 			}
 			return rec, nil
@@ -345,7 +345,7 @@ func (d *Store) ExportIssueLabels(ctx context.Context, f db.ExportFilter) iter.S
 // drop unless IncludeDeleted is true.
 func (d *Store) ExportImportMappings(ctx context.Context, f db.ExportFilter) iter.Seq2[db.ImportMappingExport, error] {
 	query := `SELECT id, source, external_id, object_type, project_id, issue_id, comment_id, link_id, label,
-	                 CAST(source_updated_at AS TEXT), CAST(imported_at AS TEXT), observed_status, CAST(observed_status_at AS TEXT), pending_event_uid, remote_locator
+	                 CAST(source_updated_at AS TEXT), CAST(imported_at AS TEXT), observed_status, CAST(observed_status_at AS TEXT), pending_event_uid, remote_locator, moved_issue_uid, moved_to_authority_uid, moved_to_project_uid
 	          FROM import_mappings`
 	var clauses []string
 	var args []any
@@ -372,7 +372,7 @@ func (d *Store) ExportImportMappings(ctx context.Context, f db.ExportFilter) ite
 		func(rows *sql.Rows) (db.ImportMappingExport, error) {
 			var rec db.ImportMappingExport
 			if err := rows.Scan(&rec.ID, &rec.Source, &rec.ExternalID, &rec.ObjectType, &rec.ProjectID,
-				&rec.IssueID, &rec.CommentID, &rec.LinkID, &rec.Label, &rec.SourceUpdatedAt, &rec.ImportedAt, &rec.ObservedStatus, &rec.ObservedStatusAt, &rec.PendingEventUID, &rec.RemoteLocator); err != nil {
+				&rec.IssueID, &rec.CommentID, &rec.LinkID, &rec.Label, &rec.SourceUpdatedAt, &rec.ImportedAt, &rec.ObservedStatus, &rec.ObservedStatusAt, &rec.PendingEventUID, &rec.RemoteLocator, &rec.MovedIssueUID, &rec.MovedToAuthorityUID, &rec.MovedToProjectUID); err != nil {
 				return db.ImportMappingExport{}, scanError("import_mapping", err)
 			}
 			return db.NormalizeIssueStatusExport(rec)
@@ -717,7 +717,7 @@ func (d *Store) ExportPurgeLog(ctx context.Context, f db.ExportFilter) iter.Seq2
 	                 purge_log.project_name, short_id, issue_title,
 	                 issue_author, comment_count, link_count, label_count, event_count,
 	                 events_deleted_min_id, events_deleted_max_id, purge_reset_after_event_id,
-	                 actor, reason, CAST(purged_at AS TEXT)
+	                 actor, reason, CAST(purged_at AS TEXT), recurrence_uid, occurrence_key
 	          FROM purge_log`
 	query, args := withProjectIDFilter(query, f, "purge_log.project_id")
 	query += ` ORDER BY purge_log.id ASC`
@@ -728,7 +728,7 @@ func (d *Store) ExportPurgeLog(ctx context.Context, f db.ExportFilter) iter.Seq2
 				&rec.ProjectUID, &rec.ProjectName, &rec.ShortID, &rec.IssueTitle, &rec.IssueAuthor, &rec.CommentCount,
 				&rec.LinkCount, &rec.LabelCount, &rec.EventCount, &rec.EventsDeletedMinID,
 				&rec.EventsDeletedMaxID, &rec.PurgeResetAfterEventID, &rec.Actor, &rec.Reason,
-				&rec.PurgedAt); err != nil {
+				&rec.PurgedAt, &rec.RecurrenceUID, &rec.OccurrenceKey); err != nil {
 				return db.PurgeLogExport{}, scanError("purge_log", err)
 			}
 			return rec, nil
@@ -792,7 +792,7 @@ func (d *Store) ExportEvents(ctx context.Context, f db.ExportFilter) iter.Seq2[d
 	// value when a signed event's peer is omitted, while clearing its local FK.
 	relatedUIDScrub = `(` + relatedUIDScrub + `) AND NOT EXISTS (
 		SELECT 1 FROM federation_event_provenance signed_receipt
-		 WHERE signed_receipt.project_uid=export_project.uid
+		 WHERE signed_receipt.project_uid=COALESCE(events.source_project_uid,export_project.uid)
 		   AND signed_receipt.event_uid=events.uid
 		   AND signed_receipt.content_hash=events.content_hash)`
 	relatedUIDExpr := `CASE WHEN ` + relatedUIDScrub + ` THEN NULL ELSE events.related_issue_uid END`
@@ -821,12 +821,12 @@ func (d *Store) ExportEvents(ctx context.Context, f db.ExportFilter) iter.Seq2[d
 	if !f.IncludeDeleted {
 		subjectLiveClause = `((events.issue_id IS NULL AND subject_issue.id IS NULL) OR (subject_issue.id IS NOT NULL AND subject_issue.deleted_at IS NULL))`
 	}
-	query := `SELECT events.id, events.uid, events.origin_instance_uid, events.project_id, export_project.uid, events.project_name, ` + issueIDExpr + `, events.issue_uid,
+	query := `SELECT events.id, events.uid, events.origin_instance_uid, COALESCE(events.project_id,0), COALESCE(events.source_project_uid,export_project.uid), events.project_name, ` + issueIDExpr + `, events.issue_uid,
 	                 ` + relatedIDExpr + `, ` + relatedUIDExpr + `,
 	                 events.type, events.actor, events.payload, events.hlc_physical_ms, events.hlc_counter, events.content_hash,
-	                 CAST(events.created_at AS TEXT)
+	                 CAST(events.created_at AS TEXT), events.source_project_uid, events.source_event_bytes, (SELECT receipt.content_hash FROM federation_event_provenance receipt WHERE receipt.project_uid=COALESCE(events.source_project_uid,export_project.uid) AND receipt.event_uid=events.uid)
 	          FROM events
-	          JOIN projects export_project ON export_project.id = events.project_id
+	          LEFT JOIN projects export_project ON export_project.id = events.project_id
 	          LEFT JOIN issues subject_issue ON subject_issue.id = events.issue_id
 	               OR (events.issue_id IS NULL AND events.issue_uid IS NOT NULL AND subject_issue.uid = events.issue_uid)
 	          LEFT JOIN issues peer ON peer.id = events.related_issue_id
@@ -837,10 +837,9 @@ func (d *Store) ExportEvents(ctx context.Context, f db.ExportFilter) iter.Seq2[d
 	// CASE) precedes the related scrubs — and all of them precede every
 	// WHERE-clause arg.
 	args := append(subjectArgs, scrubArgs...)
-	if f.ProjectID != nil {
-		clauses = append(clauses, `events.project_id = ?`)
-		args = append(args, *f.ProjectID)
-	}
+	ownerClause, ownerArgs := db.EventExportOwnerClause(ctx, f, args, false)
+	args = ownerArgs
+	clauses = append(clauses, ownerClause)
 	if !f.IncludeDeleted {
 		// Drop events whose related peer is soft-deleted, by id or by uid
 		// (the latter covers federation-inserted UID-only events).
@@ -860,9 +859,10 @@ func (d *Store) ExportEvents(ctx context.Context, f db.ExportFilter) iter.Seq2[d
 		func(rows *sql.Rows) (db.EventExport, error) {
 			var rec db.EventExport
 			var payload string
+			var receiptHash *string
 			if err := rows.Scan(&rec.ID, &rec.UID, &rec.OriginInstanceUID, &rec.ProjectID, &rec.ProjectUID, &rec.ProjectName, &rec.IssueID,
 				&rec.IssueUID, &rec.RelatedIssueID, &rec.RelatedIssueUID,
-				&rec.Type, &rec.Actor, &payload, &rec.HLCPhysicalMS, &rec.HLCCounter, &rec.ContentHash, &rec.CreatedAt); err != nil {
+				&rec.Type, &rec.Actor, &payload, &rec.HLCPhysicalMS, &rec.HLCCounter, &rec.ContentHash, &rec.CreatedAt, &rec.SourceProjectUID, &rec.SourceEventBytes, &receiptHash); err != nil {
 				return db.EventExport{}, scanError("event", err)
 			}
 			if !jsontext.Value([]byte(payload)).IsValid() {
@@ -886,7 +886,9 @@ func (d *Store) ExportEvents(ctx context.Context, f db.ExportFilter) iter.Seq2[d
 			if err != nil {
 				return db.EventExport{}, fmt.Errorf("event %d content hash: %w", rec.ID, err)
 			}
-			rec.ContentHash = contentHash
+			if err := db.ValidateExportedEventHash(&rec, contentHash, receiptHash); err != nil {
+				return db.EventExport{}, err
+			}
 			return rec, nil
 		})
 }

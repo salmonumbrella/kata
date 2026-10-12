@@ -67,6 +67,11 @@ func (s *Store) ImportBatch(
 			if event != nil {
 				events = append(events, *event)
 			}
+			if state == nil {
+				result.Unchanged++
+				result.Items = append(result.Items, db.ImportItemResult{ExternalID: item.ExternalID, Status: "unchanged", Reason: "moved"})
+				continue
+			}
 			states[item.ExternalID] = state
 			status := "unchanged"
 			switch {
@@ -275,6 +280,9 @@ func (s *Store) importIssue(
 			}
 		}
 		return &importIssueState{item: item, issue: issue, created: true, sourceNewer: true}, &event, nil
+	}
+	if mapping.MovedIssueUID != nil {
+		return nil, nil, nil
 	}
 	if mapping.IssueID == nil {
 		return nil, nil, fmt.Errorf("%w: issue mapping missing issue_id", db.ErrNotFound)

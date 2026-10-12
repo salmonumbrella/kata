@@ -279,7 +279,7 @@ func (d *Store) applyLinksDeltaTx(ctx context.Context, tx *sql.Tx, issue db.Issu
 				if lerr != nil {
 					return changed, lerr
 				}
-				res, err := tx.ExecContext(ctx, `DELETE FROM links WHERE id = ?`, existing.ID)
+				res, err := db.DeleteLinkWithMappings(ctx, tx, existing.ID)
 				if err != nil {
 					return changed, fmt.Errorf("delete existing parent: %w", err)
 				}
@@ -345,7 +345,7 @@ func (d *Store) applyLinksDeltaTx(ctx context.Context, tx *sql.Tx, issue db.Issu
 		if err := checkLinkEndpointsProjectAccessTx(ctx, tx, issue.ID, parentIssue.ID); err != nil {
 			return changed, err
 		}
-		res, err := tx.ExecContext(ctx, `DELETE FROM links WHERE id = ?`, existing.ID)
+		res, err := db.DeleteLinkWithMappings(ctx, tx, existing.ID)
 		if err != nil {
 			return changed, fmt.Errorf("delete parent: %w", err)
 		}
@@ -563,7 +563,7 @@ func removeEdgeTx(ctx context.Context, tx *sql.Tx, urlIssue db.Issue, targetID i
 	if err != nil {
 		return false, db.PeerIdentity{}, err
 	}
-	res, err := tx.ExecContext(ctx, `DELETE FROM links WHERE id = ?`, link.ID)
+	res, err := db.DeleteLinkWithMappings(ctx, tx, link.ID)
 	if err != nil {
 		return false, db.PeerIdentity{}, fmt.Errorf("delete link: %w", err)
 	}

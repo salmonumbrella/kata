@@ -385,6 +385,9 @@ func registerProjectsHandlers(humaAPI huma.API, cfg ServerConfig) {
 		switch {
 		case errors.Is(err, db.ErrNotFound):
 			return nil, api.NewError(404, "project_not_found", "project not found", "", nil)
+		case errors.Is(err, db.ErrProjectNameRetained):
+			return nil, api.NewError(409, "project_name_retained", err.Error(),
+				"rename the conflicting project, then retry the purge", nil)
 		case errors.Is(err, db.ErrProjectNotArchived):
 			return nil, api.NewError(409, "project_not_archived",
 				"project is not archived",
@@ -841,6 +844,12 @@ func aliasWorkspaceRoot(disc config.DiscoveredPaths) string {
 func initProject(
 	ctx context.Context, store db.Storage, req *api.InitProjectRequest, actor string,
 ) (*api.ProjectResolveBody, projectInitMutation, bool, error) {
+	if (req.Body.ProjectUID == "") != (req.Body.AuthorityUID == "") {
+		return nil, projectInitMutation{}, false, api.NewError(400, "validation", "project_uid and authority_uid must be supplied together", "", nil)
+	}
+	if req.Body.ProjectUID != "" && req.Body.Reassign {
+		return nil, projectInitMutation{}, false, api.NewError(400, "validation", "stable UID setup cannot reassign another project alias", "", nil)
+	}
 	if req.Body.StartPath == "" {
 		if req.Body.Name == "" {
 			return nil, projectInitMutation{}, false, api.NewError(400, "validation",
@@ -877,6 +886,18 @@ func initProject(
 	aliasInfo, err := config.ComputeAliasIdentity(ctx, disc)
 	if err != nil {
 		return nil, projectInitMutation{}, false, api.NewError(400, "validation", err.Error(), "", nil)
+	}
+	if req.Body.ProjectUID != "" {
+		out, mutation, created, err := setupProject(ctx, store, req, name, aliasInfo, actor)
+		if err != nil {
+			return nil, mutation, false, err
+		}
+		dest := config.WriteDestination(disc, abs)
+		if tomlCfg == nil || tomlCfg.Project.Name != out.Project.Name {
+			mutation.writeConfig = func() error { return config.WriteProjectConfig(dest, out.Project.Name) }
+		}
+		out.WorkspaceRoot = dest
+		return out, mutation, created, nil
 	}
 	explicitName := strings.TrimSpace(req.Body.Name) != ""
 	existingAlias, err := store.AliasByIdentity(ctx, aliasInfo.Identity)
@@ -957,13 +978,23 @@ func initByName(
 		if err := config.ValidateAliasInfo(info); err != nil {
 			return nil, projectInitMutation{}, false, api.NewError(400, "validation", err.Error(), "", nil)
 		}
-		// Preflight before any project mutation, mirroring path-based
-		// init: avoids creating an orphan project row when the alias
-		// would conflict.
-		if err := preflightAliasConflict(ctx, store, info, name, req.Body.Reassign); err != nil {
-			return nil, projectInitMutation{}, false, err
+		if req.Body.ProjectUID == "" {
+			// Preflight before any project mutation, mirroring path-based
+			// init: avoids creating an orphan project row when the alias
+			// would conflict.
+			if err := preflightAliasConflict(ctx, store, info, name, req.Body.Reassign); err != nil {
+				return nil, projectInitMutation{}, false, err
+			}
 		}
 		aliasInfo = &info
+	}
+
+	if req.Body.ProjectUID != "" {
+		info := config.AliasInfo{}
+		if aliasInfo != nil {
+			info = *aliasInfo
+		}
+		return setupProject(ctx, store, req, name, info, actor)
 	}
 
 	project, event, created, err := upsertProject(ctx, store, name, actor)

@@ -131,6 +131,9 @@ func (d *Store) importReplay(ctx context.Context, recs []db.ImportRecord, opts d
 			"note: skipped %d link record(s) whose peer issue is not in this envelope or database\n",
 			skippedMissingPeer)
 	}
+	if err := db.ReplayMoveOwners(ctx, tx, recs); err != nil {
+		return err
+	}
 	if skippedDup > 0 {
 		fmt.Fprintf(os.Stderr,
 			"note: skipped %d duplicate link record(s) (edge already present)\n",
@@ -609,10 +612,18 @@ func importProject(ctx context.Context, tx *sql.Tx, p *db.ProjectExport) error {
 
 func importAlias(ctx context.Context, tx *sql.Tx, a *db.AliasExport) error {
 	_, err := tx.ExecContext(ctx,
-		`INSERT INTO project_aliases(id, project_id, alias_identity, alias_kind, created_at)
-		 VALUES(?, ?, ?, ?, ?)`,
-		a.ID, a.ProjectID, a.AliasIdentity, a.AliasKind, a.CreatedAt)
+		`INSERT INTO project_aliases(id, project_id, alias_identity, alias_kind, created_at, authority_uid, project_uid)
+		 VALUES(?, ?, ?, ?, ?, ?, ?)`,
+		a.ID, nullableAliasProjectID(a), a.AliasIdentity, a.AliasKind, a.CreatedAt, a.AuthorityUID, a.ProjectUID)
 	return wrapImportErr(db.ImportKindProjectAlias, err)
+}
+
+// Retained names can outlive their physical project pointer.
+func nullableAliasProjectID(alias *db.AliasExport) any {
+	if alias.AliasKind == "name" && alias.ProjectID == 0 {
+		return nil
+	}
+	return alias.ProjectID
 }
 
 func importIssueSyncBinding(ctx context.Context, tx *sql.Tx, b *db.IssueSyncBindingExport, preserveEnabled bool) error {
@@ -667,19 +678,23 @@ func importRecurrence(ctx context.Context, tx *sql.Tx, rc *db.RecurrenceExport) 
 	if len(metadata) == 0 {
 		metadata = jsontext.Value(`{}`)
 	}
+	generation := rc.LocationGeneration
+	if generation == 0 {
+		generation = 1
+	}
 	_, err := tx.ExecContext(ctx,
 		`INSERT INTO recurrences
 		   (id, uid, project_id, rrule, dtstart, timezone,
 		    template_title, template_body, template_owner, template_priority,
 		    template_labels, template_metadata,
 		    next_occurrence_key, last_materialized_uid,
-		    author, revision, created_at, updated_at, deleted_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		    author, revision, created_at, updated_at, deleted_at, location_generation)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		rc.ID, rc.UID, rc.ProjectID, rc.RRule, rc.DTStart, rc.Timezone,
 		rc.TemplateTitle, rc.TemplateBody, rc.TemplateOwner, rc.TemplatePriority,
 		string(labels), string(metadata),
 		rc.NextOccurrenceKey, rc.LastMaterializedUID,
-		rc.Author, rc.Revision, rc.CreatedAt, rc.UpdatedAt, rc.DeletedAt)
+		rc.Author, rc.Revision, rc.CreatedAt, rc.UpdatedAt, rc.DeletedAt, generation)
 	return wrapImportErr(db.ImportKindRecurrence, err)
 }
 
@@ -699,7 +714,7 @@ func importIssue(ctx context.Context, tx *sql.Tx, i *db.IssueExport) error {
 		return fmt.Errorf("import issue %d (uid=%s): occurrence_key set without recurrence_uid", i.ID, i.UID)
 	}
 	recurrenceID := i.RecurrenceID
-	if i.RecurrenceUID != nil {
+	if i.RecurrenceUID != nil && (i.RecurrenceAuthorityUID == nil || i.RecurrenceID != nil) {
 		var resolvedID int64
 		if qErr := tx.QueryRowContext(ctx,
 			`SELECT id FROM recurrences WHERE uid = ?`, *i.RecurrenceUID,
@@ -712,14 +727,18 @@ func importIssue(ctx context.Context, tx *sql.Tx, i *db.IssueExport) error {
 		}
 		recurrenceID = &resolvedID
 	}
+	generation := i.LocationGeneration
+	if generation == 0 {
+		generation = 1
+	}
 	_, err := tx.ExecContext(ctx,
 		`INSERT INTO issues(id, uid, project_id, short_id, title, body, status, closed_reason, owner, assignment_expires_on, priority, author,
 		                    created_at, updated_at, closed_at, deleted_at, metadata, revision, content_revision,
-		                    recurrence_id, occurrence_key)
-		 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		                    recurrence_id, occurrence_key, location_generation, moved_to_authority_uid, moved_to_project_uid, moved_to_short_id, moved_event_uid)
+		 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		i.ID, i.UID, i.ProjectID, i.ShortID, i.Title, i.Body, i.Status, i.ClosedReason,
 		i.Owner, i.AssignmentExpiresOn, i.Priority, i.Author, i.CreatedAt, i.UpdatedAt, i.ClosedAt, i.DeletedAt,
-		string(metadata), revision, i.ContentRevision, recurrenceID, i.OccurrenceKey)
+		string(metadata), revision, i.ContentRevision, recurrenceID, i.OccurrenceKey, generation, i.MovedToAuthorityUID, i.MovedToProjectUID, i.MovedToShortID, i.MovedEventUID)
 	return wrapImportErr(db.ImportKindIssue, err)
 }
 
@@ -752,6 +771,18 @@ func importLabel(ctx context.Context, tx *sql.Tx, l *db.IssueLabelExport) error 
 // Both envelopes of one source DB agree on row ids, so equal natural key
 // implies equal id and the id-preserving INSERT can never collide.
 func importLink(ctx context.Context, tx *sql.Tx, lk *db.LinkExport) (linkSkip, error) {
+	if lk.FromIssueID == 0 || lk.ToIssueID == 0 || lk.Type == "reply" {
+		var fromID, toID any
+		if lk.FromIssueID != 0 {
+			fromID = lk.FromIssueID
+		}
+		if lk.ToIssueID != 0 {
+			toID = lk.ToIssueID
+		}
+		_, err := tx.ExecContext(ctx, `INSERT INTO links(id,from_issue_id,to_issue_id,from_issue_uid,to_issue_uid,type,author,created_at,from_authority_uid,from_project_uid,to_authority_uid,to_project_uid,from_comment_uid,to_comment_uid,reply_kind) VALUES(?,?,?,NULLIF(?,''),NULLIF(?,''),?,?,?,?,?,?,?,?,?,?)`,
+			lk.ID, fromID, toID, lk.FromIssueUID, lk.ToIssueUID, lk.Type, lk.Author, lk.CreatedAt, lk.FromAuthorityUID, lk.FromProjectUID, lk.ToAuthorityUID, lk.ToProjectUID, lk.FromCommentUID, lk.ToCommentUID, lk.ReplyKind)
+		return linkSkipNone, wrapImportErr(db.ImportKindLink, err)
+	}
 	var present int
 	if err := tx.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM issues WHERE id IN (?, ?)`,
@@ -775,16 +806,16 @@ func importLink(ctx context.Context, tx *sql.Tx, lk *db.LinkExport) (linkSkip, e
 		return linkSkipDuplicate, nil
 	}
 	_, err := tx.ExecContext(ctx,
-		`INSERT INTO links(id, from_issue_id, from_issue_uid, to_issue_id, to_issue_uid, type, author, created_at)
+		`INSERT INTO links(id, from_issue_id, from_issue_uid, to_issue_id, to_issue_uid, type, author, created_at, from_authority_uid, from_project_uid, to_authority_uid, to_project_uid)
 		 VALUES(
 		   ?, ?,
 		   COALESCE(NULLIF(?, ''), (SELECT uid FROM issues WHERE id = ?)),
 		   ?,
 		   COALESCE(NULLIF(?, ''), (SELECT uid FROM issues WHERE id = ?)),
-		   ?, ?, ?
+		   ?, ?, ?, ?, ?, ?, ?
 		 )`,
 		lk.ID, lk.FromIssueID, lk.FromIssueUID, lk.FromIssueID,
-		lk.ToIssueID, lk.ToIssueUID, lk.ToIssueID, lk.Type, lk.Author, lk.CreatedAt)
+		lk.ToIssueID, lk.ToIssueUID, lk.ToIssueID, lk.Type, lk.Author, lk.CreatedAt, lk.FromAuthorityUID, lk.FromProjectUID, lk.ToAuthorityUID, lk.ToProjectUID)
 	return linkSkipNone, wrapImportErr(db.ImportKindLink, err)
 }
 
@@ -815,10 +846,10 @@ func importMapping(ctx context.Context, tx *sql.Tx, m *db.ImportMappingExport, s
 		raw, at, pending, locator = normalized.ObservedStatus, normalized.ObservedStatusAt, normalized.PendingEventUID, normalized.RemoteLocator
 	}
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO import_mappings(id, source, external_id, object_type, project_id, issue_id, comment_id, link_id, label, source_updated_at, imported_at, observed_status,observed_status_at,pending_event_uid,remote_locator)
-		 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO import_mappings(id, source, external_id, object_type, project_id, issue_id, comment_id, link_id, label, source_updated_at, imported_at, observed_status,observed_status_at,pending_event_uid,remote_locator,moved_issue_uid,moved_to_authority_uid,moved_to_project_uid)
+		 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		m.ID, m.Source, m.ExternalID, m.ObjectType, m.ProjectID, m.IssueID, m.CommentID,
-		m.LinkID, m.Label, m.SourceUpdatedAt, m.ImportedAt, raw, at, pending, locator)
+		m.LinkID, m.Label, m.SourceUpdatedAt, m.ImportedAt, raw, at, pending, locator, m.MovedIssueUID, m.MovedToAuthorityUID, m.MovedToProjectUID)
 	return linkSkipNone, wrapImportErr(db.ImportKindImportMapping, err)
 }
 
@@ -1250,21 +1281,21 @@ func importEvent(ctx context.Context, tx *sql.Tx, e *db.EventExport, opts db.Imp
 	}
 	_, err = tx.ExecContext(ctx,
 		`INSERT INTO events(id, uid, origin_instance_uid, project_id, project_name, issue_id, issue_uid, related_issue_id, related_issue_uid,
-		                    type, actor, payload, hlc_physical_ms, hlc_counter, content_hash, created_at)
+		                    type, actor, payload, hlc_physical_ms, hlc_counter, content_hash, created_at, source_project_uid, source_event_bytes)
 		 VALUES(
 		   ?, ?, ?, ?, ?, ?,
 		   COALESCE(?, (SELECT uid FROM issues WHERE id = ?)),
 		   ?,
 		   COALESCE(?, (SELECT uid FROM issues WHERE id = ?)),
-		   ?, ?, ?, ?, ?, ?, ?
+		   ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)`,
 		e.ID, e.UID, e.OriginInstanceUID,
-		e.ProjectID, projectName, e.IssueID,
+		nullableEventProjectID(e), projectName, e.IssueID,
 		stringPtrValue(e.IssueUID), e.IssueID,
 		e.RelatedIssueID,
 		stringPtrValue(e.RelatedIssueUID), e.RelatedIssueID,
 		e.Type, e.Actor, string(e.Payload),
-		e.HLCPhysicalMS, e.HLCCounter, e.ContentHash, e.CreatedAt)
+		e.HLCPhysicalMS, e.HLCCounter, e.ContentHash, e.CreatedAt, e.SourceProjectUID, e.SourceEventBytes)
 	return wrapImportErr(db.ImportKindEvent, err)
 }
 
@@ -1277,12 +1308,12 @@ func importPurgeLog(ctx context.Context, tx *sql.Tx, pl *db.PurgeLogExport) erro
 		`INSERT INTO purge_log(id, uid, origin_instance_uid, project_id, purged_issue_id, issue_uid, project_uid, project_name, short_id, issue_title,
 		                       issue_author, comment_count, link_count, label_count, event_count,
 		                       events_deleted_min_id, events_deleted_max_id, purge_reset_after_event_id,
-		                       actor, reason, purged_at)
+		                       actor, reason, purged_at, recurrence_uid, occurrence_key)
 		 VALUES(
 		   ?, ?, ?, ?, ?,
 		   COALESCE(?, (SELECT uid FROM issues WHERE id = ?)),
 		   COALESCE(?, (SELECT uid FROM projects WHERE id = ?)),
-		   ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+		   ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		 )`,
 		pl.ID, pl.UID, pl.OriginInstanceUID,
 		pl.ProjectID, pl.PurgedIssueID,
@@ -1291,7 +1322,7 @@ func importPurgeLog(ctx context.Context, tx *sql.Tx, pl *db.PurgeLogExport) erro
 		projectName, stringPtrValue(pl.ShortID),
 		pl.IssueTitle, pl.IssueAuthor, pl.CommentCount, pl.LinkCount, pl.LabelCount,
 		pl.EventCount, pl.EventsDeletedMinID, pl.EventsDeletedMaxID, pl.PurgeResetAfterEventID,
-		pl.Actor, pl.Reason, pl.PurgedAt)
+		pl.Actor, pl.Reason, pl.PurgedAt, pl.RecurrenceUID, pl.OccurrenceKey)
 	return wrapImportErr(db.ImportKindPurgeLog, err)
 }
 
@@ -1466,6 +1497,10 @@ func lookupIssueUID(ctx context.Context, tx *sql.Tx, issueID int64) (string, err
 }
 
 func importedEventProjectIdentity(ctx context.Context, tx *sql.Tx, rec *db.EventExport) (name string, uid string, err error) {
+	if rec.SourceProjectUID != nil {
+		return rec.ProjectName, *rec.SourceProjectUID, nil
+	}
+
 	err = tx.QueryRowContext(ctx,
 		`SELECT name, uid FROM projects WHERE id = ?`,
 		rec.ProjectID).Scan(&name, &uid)
@@ -1646,4 +1681,11 @@ func relayExportEpoch(epoch int64) int64 {
 		return 1
 	}
 	return epoch
+}
+
+func nullableEventProjectID(e *db.EventExport) any {
+	if e.ProjectID == 0 && e.SourceProjectUID != nil {
+		return nil
+	}
+	return e.ProjectID
 }

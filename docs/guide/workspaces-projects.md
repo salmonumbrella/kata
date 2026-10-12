@@ -1,7 +1,7 @@
 ---
 title: Workspaces and projects
 description: Understand how workspaces resolve Kata projects and configure local or remote daemon targets.
-last_edited: 2026-09-15
+last_edited: 2026-10-12
 ---
 
 # Workspaces and projects
@@ -31,6 +31,57 @@ nearest Git root, including when the workspace was entered through a symlink.
 A `.kata.toml` above that boundary cannot bind a nested repository or redirect
 `kata init` output outside it. Non-Git workspaces retain normal ancestor
 discovery.
+
+## Resume project setup after a timeout
+
+Use `--setup` to save the project identity before creating or resolving it:
+
+```sh
+kata init --setup --project example-project
+```
+
+Kata reuses an existing dedicated project. Otherwise it generates a stable
+project UID, then creates that project and attaches the workspace alias in
+one database transaction. An alias conflict leaves no new project behind.
+Existing name reservations and daemon authorization still apply.
+
+The ignored `.kata.setup-progress.json` stores the destination UID, daemon
+authority and route, workspace alias, actor, and request UID. It contains no
+credentials. Keep it after an interrupted request. Repeating `kata init`
+resumes those inputs and verifies the destination before binding it. A changed
+daemon authority, project UID, or workspace alias stops setup with a conflict.
+For a named destination, repeat the original `--daemon` selection when its
+catalog credential is needed. Setup uses the existing local-profile selector
+or remote URL in `.kata.local.toml`; it does not save bearer tokens.
+
+To change an existing project binding, pass `--replace`. If its workspace
+alias also needs reassignment, pass `--reassign` explicitly. Setup only detaches
+an alias belonging to the saved original project. You can add `--reassign`
+on a retry after inspecting an alias conflict without generating another UID.
+
+`--kickoff <ref>` also enables setup and captures the initiating issue's UID
+and source authority before changing the workspace binding. Use
+`--source-daemon <catalog-name>` when that issue is on another configured
+daemon. Source requests use that daemon's own credential.
+
+Kata binds the verified destination, previews the complete initiating issue
+tree, and executes the native move. Completed children belong to that tree.
+Add `--move-series` to include recurrence definitions and their full families.
+Provider ownership defaults to `preserve`; choose `--provider-disposition
+detach` explicitly when needed.
+
+The saved complete request survives a lost project-create acknowledgement.
+After preview, Kata also saves the preview digest and selected issue UIDs
+before execution. Repeating init submits those exact inputs. Success requires
+native committed event UID/hash evidence and finalization of every selected
+issue. A partial, unknown, or conflict result leaves the workspace routed to
+the verified destination, reports the remaining state, and exits nonzero.
+Keep the progress file and follow the retry or reconciliation hint; new work
+belongs in the destination project.
+
+If `KATA_SERVER` still selects the original source, unset it or point it at
+the destination before setup. Kata refuses that conflict before creating the
+project, so later workspace commands cannot silently return to the source.
 
 ## Bind many workspaces to one project
 

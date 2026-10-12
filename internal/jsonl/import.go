@@ -740,6 +740,9 @@ func fillEventV11ReplayFields(rec *db.EventExport, exportVersion int, projectUID
 		// the record, so the mismatch surfaces here as a refusal rather
 		// than letting subtly-divergent rows land in the events table.
 		projectUID, ok := projectUIDByID[rec.ProjectID]
+		if rec.SourceProjectUID != nil {
+			projectUID, ok = *rec.SourceProjectUID, true
+		}
 		if !ok {
 			return fmt.Errorf("verify event content_hash: project %d not found in import stream", rec.ProjectID)
 		}

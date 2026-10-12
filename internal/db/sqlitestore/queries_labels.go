@@ -25,6 +25,9 @@ func (d *Store) addLabel(ctx context.Context, issueID int64, label, author strin
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if _, _, err := lookupIssueIncludingDeleted(ctx, tx, issueID); err != nil {
+		return db.IssueLabel{}, err
+	}
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO issue_labels(issue_id, label, author) VALUES(?, ?, ?)`,
 		issueID, label, author); err != nil {

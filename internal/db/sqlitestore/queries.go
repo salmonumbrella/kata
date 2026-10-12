@@ -1054,7 +1054,7 @@ func buildListIssuesQuery(ctx context.Context, p db.ListIssuesParams, count bool
 	if count {
 		selection = `SELECT COUNT(*) FROM issues i JOIN projects p ON p.id = i.project_id`
 	}
-	q.WriteString(selection + ` WHERE i.project_id = ? AND i.deleted_at IS NULL`)
+	q.WriteString(selection + ` WHERE i.project_id = ? AND i.deleted_at IS NULL AND i.moved_to_authority_uid IS NULL`)
 	args := []any{p.ProjectID}
 	appendAllowedIssueIDsSQLite(&q, &args, p.AllowedIssueIDs)
 	q.WriteString(" AND " + authorizedIssuePredicate(ctx, "i.project_id", &args))
@@ -1168,7 +1168,7 @@ func buildListAllIssuesQuery(ctx context.Context, p db.ListAllIssuesParams, coun
 	if count {
 		selection = `SELECT COUNT(*) FROM issues i JOIN projects p ON p.id = i.project_id`
 	}
-	q.WriteString(selection + ` WHERE i.deleted_at IS NULL AND p.deleted_at IS NULL`)
+	q.WriteString(selection + ` WHERE i.moved_to_authority_uid IS NULL AND i.deleted_at IS NULL AND p.deleted_at IS NULL`)
 	var args []any
 	appendAllowedIssueIDsSQLite(&q, &args, p.AllowedIssueIDs)
 	q.WriteString(" AND " + authorizedIssuePredicate(ctx, "i.project_id", &args))
@@ -2120,7 +2120,7 @@ func joinComma(parts []string) string {
 func lookupIssueForEvent(ctx context.Context, tx *sql.Tx, issueID int64) (db.Issue, string, error) {
 	const q = `SELECT ` + issueColumns + `, p.name
 		FROM issues i
-		JOIN projects p ON p.id = i.project_id
+		JOIN projects p ON p.id = i.project_id AND i.moved_to_authority_uid IS NULL
 		WHERE i.id = ? AND i.deleted_at IS NULL AND p.deleted_at IS NULL`
 	var i db.Issue
 	var projectName string
@@ -2145,11 +2145,11 @@ func lookupIssueForEvent(ctx context.Context, tx *sql.Tx, issueID int64) (db.Iss
 
 const issueColumns = `i.id, i.uid, i.project_id, p.uid, i.short_id, i.title, i.body, i.status, i.closed_reason, i.owner, i.assignment_expires_on, i.priority, i.author, i.metadata, i.revision, i.recurrence_id, i.occurrence_key, i.created_at, i.updated_at, i.closed_at, i.deleted_at, ` + issueAttributionColumn
 
-const issueSelect = `SELECT ` + issueColumns + ` FROM issues i JOIN projects p ON p.id = i.project_id`
+const issueSelect = `SELECT ` + issueColumns + ` FROM issues i JOIN projects p ON p.id = i.project_id AND i.moved_to_authority_uid IS NULL`
 
 const scheduledIssueSelect = `SELECT ` + issueColumns + `, schedule_recurrence.timezone
 	FROM issues i
-	JOIN projects p ON p.id = i.project_id
+	JOIN projects p ON p.id = i.project_id AND i.moved_to_authority_uid IS NULL
 	LEFT JOIN recurrences schedule_recurrence ON schedule_recurrence.id = i.recurrence_id`
 
 func scanIssue(r rowScanner) (db.Issue, error) {
@@ -2472,7 +2472,7 @@ func (d *Store) ReadyIssues(ctx context.Context, projectID int64, limit int, fil
 		    JOIN issues blocker ON blocker.id = l.from_issue_id
 		    JOIN projects bp ON bp.id = blocker.project_id
 		    WHERE l.type = 'blocks' AND l.to_issue_id = i.id
-		      AND blocker.status = 'open' AND blocker.deleted_at IS NULL
+		      AND blocker.status = 'open' AND blocker.moved_to_authority_uid IS NULL AND blocker.deleted_at IS NULL
 		      AND bp.deleted_at IS NULL
 		  )`)
 	args := []any{projectID}
@@ -2554,7 +2554,7 @@ func (d *Store) ReadyIssuesGlobal(ctx context.Context, limit int, filter db.Read
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
 		LEFT JOIN recurrences schedule_recurrence ON schedule_recurrence.id = i.recurrence_id
-		WHERE i.status = 'open' AND i.deleted_at IS NULL
+		WHERE i.status = 'open' AND i.moved_to_authority_uid IS NULL AND i.deleted_at IS NULL
 		  AND p.deleted_at IS NULL
 		  AND COALESCE(json_extract(i.metadata, '$.someday'), 0) != 1
 		  AND NOT EXISTS (
@@ -2562,7 +2562,7 @@ func (d *Store) ReadyIssuesGlobal(ctx context.Context, limit int, filter db.Read
 		    JOIN issues blocker ON blocker.id = l.from_issue_id
 		    JOIN projects bp ON bp.id = blocker.project_id
 		    WHERE l.type = 'blocks' AND l.to_issue_id = i.id
-		      AND blocker.status = 'open' AND blocker.deleted_at IS NULL
+		      AND blocker.status = 'open' AND blocker.moved_to_authority_uid IS NULL AND blocker.deleted_at IS NULL
 		      AND bp.deleted_at IS NULL
 		  )`)
 	args := []any{}
@@ -2815,11 +2815,11 @@ func eventIssueUIDTx(ctx context.Context, tx *sql.Tx, issueID *int64, issueUID *
 const eventSelectByID = eventSelect + `
  WHERE e.id = ?`
 
-const eventSelect = `SELECT e.id, e.uid, e.origin_instance_uid, e.project_id, p.uid, e.project_name,
+const eventSelect = `SELECT e.id, e.uid, e.origin_instance_uid, COALESCE(e.project_id,0), COALESCE(e.source_project_uid,p.uid), e.project_name,
        e.issue_id, e.issue_uid, i.short_id, e.related_issue_id, e.related_issue_uid, ri.short_id,
        e.type, e.actor, e.payload, e.hlc_physical_ms, e.hlc_counter, e.content_hash, e.created_at
   FROM events e
-  JOIN projects p ON p.id = e.project_id
+  LEFT JOIN projects p ON p.id = e.project_id
   LEFT JOIN issues i ON i.id = e.issue_id OR (e.issue_id IS NULL AND e.issue_uid IS NOT NULL AND i.uid = e.issue_uid)
   LEFT JOIN issues ri ON ri.id = e.related_issue_id OR (e.related_issue_id IS NULL AND e.related_issue_uid IS NOT NULL AND ri.uid = e.related_issue_uid)`
 

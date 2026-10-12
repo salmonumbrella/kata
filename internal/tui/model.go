@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"go.kenn.io/kata/pkg/client/generated"
 	"os"
 	"slices"
 	"sort"
@@ -98,7 +99,11 @@ type Model struct {
 	// centered form. inputNone means no input is open and global keys
 	// route normally. While an input is open, all non-Quit keys go to
 	// the input's bubbles model; canQuit() gates global keys.
-	input inputState
+	input       inputState
+	moveRequest *generated.MoveTreeRequest
+	movePreview *generated.MoveTreePreviewResponse
+	moveResult  *generated.MoveTreeResultResponse
+	moveInput   string
 	// modal is the active centered confirm/info overlay (quit confirm or
 	// dirty-draft discard confirm; future plans may add others).
 	// modalNone is the quiescent state. While a modal is open it
@@ -416,6 +421,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if reply, ok := msg.(treeMoveReply); ok {
+		return m.applyTreeMove(reply)
+	}
 	m = m.syncSearchDetailSnapshot(msg)
 	if next, cmd, ok := m.routeTopLevel(msg); ok {
 		return next, cmd
@@ -954,6 +962,8 @@ func (m Model) mutationForKey(msg tea.KeyPressMsg) (withinSubtree, mutation bool
 		return true, true
 	case !m.detailIsActive():
 		return false, false
+	case m.keymap.Move.matches(msg):
+		return false, true
 	case m.keymap.SetParent.matches(msg):
 		return false, true
 	default:
@@ -1047,6 +1057,12 @@ func (m Model) openInput(kind inputKind) (Model, tea.Cmd) {
 
 func (m Model) openInputFromMsg(msg openInputMsg) (Model, tea.Cmd) {
 	kind := msg.kind
+	if kind == inputMovePrompt {
+		m.moveRequest = nil
+		m.movePreview = nil
+		m.moveResult = nil
+		m.moveInput = ""
+	}
 	switch {
 	case kind == inputSearchBar:
 		s := newSearchBar(m.list.filter)
@@ -1822,6 +1838,9 @@ func (m Model) commitInput() (Model, tea.Cmd) {
 		return m.commitFormInput(kind)
 	}
 	trimmed := strings.TrimSpace(rawBuf)
+	if kind == inputMovePrompt {
+		return m.commitTreeMove(trimmed)
+	}
 	if kind.isPanelPrompt() && trimmed != "" {
 		var cmd tea.Cmd
 		m.detail, cmd = m.detail.dispatchPanelPromptCommit(m.api, kind, trimmed)

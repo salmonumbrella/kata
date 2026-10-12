@@ -13,6 +13,7 @@ import (
 
 // registerMoveHandlers installs POST /api/v1/projects/{project_id}/issues/{ref}/actions/move.
 func registerMoveHandlers(humaAPI huma.API, cfg ServerConfig) {
+	registerIssueTreeMoveHandlers(humaAPI, cfg)
 	huma.Register(humaAPI, huma.Operation{
 		OperationID: "moveIssue",
 		Method:      "POST",

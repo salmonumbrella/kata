@@ -43,6 +43,15 @@ const (
 // *sql.DB. Each method that lands a real query gets added here, and
 // the generator's output for that method disappears on the next regenerate.
 var alreadyImplemented = map[string]bool{
+	"AcceptIssueTree":              true, // native issue tree moves
+	"ExportIssueTree":              true, // native issue tree moves
+	"FinalizeIssueTree":            true, // native issue tree moves
+	"LookupIssueTreeAcceptance":    true, // native issue tree moves
+	"LookupIssueTreeSourceReceipt": true, // native issue tree moves
+	"MoveIssueTree":                true, // native issue tree moves
+	"MoveIssueTreeLocal":           true, // native issue tree moves
+	"PreviewIssueTree":             true, // native issue tree moves
+
 	"AcceptRelayDeliveries":    true, // native relay storage
 	"AckRelayDeliveries":       true, // native relay storage
 	"CreateRelayEnrollment":    true, // native relay storage
@@ -175,6 +184,7 @@ var alreadyImplemented = map[string]bool{
 	"CreateProjectAndEvent":                true, // projects.go
 	"CreateProjectWithUID":                 true, // projects.go
 	"CreateProjectWithUIDAndEvent":         true, // projects.go
+	"SetupProject":                         true, // project_setup.go
 	"CreateRecurrence":                     true, // recurrences.go
 	"CreateRecurrenceForIssue":             true, // recurrences.go
 	"DesignateInboxProject":                true, // metadata.go
