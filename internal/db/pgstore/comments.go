@@ -27,7 +27,10 @@ func (s *Store) CreateComment(ctx context.Context, params db.CreateCommentParams
 	}
 	var comment db.Comment
 	var event db.Event
+	var committedEvents []db.Event
+	db.RetainCommentEvents(ctx)
 	err := s.withSerializableTx(ctx, func(tx *sql.Tx) error {
+		comment, event, committedEvents = db.Comment{}, db.Event{}, nil
 		projectUID, err := issueProjectUIDTx(ctx, tx, params.IssueID)
 		if err != nil {
 			return err
@@ -49,6 +52,11 @@ func (s *Store) CreateComment(ctx context.Context, params db.CreateCommentParams
 		commentUID, err := katauid.New()
 		if err != nil {
 			return fmt.Errorf("generate comment uid: %w", err)
+		}
+		localParams := params
+		localParams.Author = effectiveActor
+		if err := validateLocalCommentReplyTx(ctx, tx, commentUID, localParams, issue); err != nil {
+			return err
 		}
 		createdAt := nowStoredTimestamp()
 		comment, err = scanComment(tx.QueryRowContext(ctx,
@@ -103,9 +111,30 @@ func (s *Store) CreateComment(ctx context.Context, params db.CreateCommentParams
 		if err != nil {
 			return err
 		}
+		committedEvents = []db.Event{event}
+		if hook := db.CommentMetadataPolicy(ctx); hook != nil {
+			updates, err := hook(ctx, tx, issue, comment)
+			if err != nil {
+				return err
+			}
+			for _, update := range db.CoalesceCommentMetadataUpdates(updates) {
+				result, err := s.patchIssueMetadataTx(ctx, tx, db.PatchIssueMetadataIn{
+					IssueID: update.IssueID, Actor: effectiveActor, Patch: update.Patch,
+				})
+				if err != nil {
+					return err
+				}
+				if result.Changed {
+					committedEvents = append(committedEvents, result.Event)
+				}
+			}
+		}
 		comment, err = scanComment(tx.QueryRowContext(ctx, commentSelect+` WHERE id=$1`, comment.ID))
 		return err
 	})
+	if err == nil {
+		db.RetainCommentEvents(ctx, committedEvents...)
+	}
 	return comment, event, err
 }
 
@@ -328,6 +357,31 @@ func (s *Store) CommentsByIssue(ctx context.Context, issueID int64) ([]db.Commen
 	}
 	sortCommentsByCreatedAt(comments)
 	return comments, nil
+}
+
+// CommentIssueIDsByUIDs maps existing comment UIDs to their owning issue IDs.
+func (s *Store) CommentIssueIDsByUIDs(ctx context.Context, uids []string) (map[string]int64, error) {
+	issueIDs := make(map[string]int64, len(uids))
+	if len(uids) == 0 {
+		return issueIDs, nil
+	}
+	rows, err := s.QueryContext(ctx, `SELECT uid, issue_id FROM comments WHERE uid = ANY($1::text[])`, uids)
+	if err != nil {
+		return nil, fmt.Errorf("comment issue ids by uids: %w", mapSQLError(err, nil))
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var commentUID string
+		var issueID int64
+		if err := rows.Scan(&commentUID, &issueID); err != nil {
+			return nil, fmt.Errorf("scan comment issue id: %w", mapSQLError(err, nil))
+		}
+		issueIDs[commentUID] = issueID
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate comment issue ids: %w", mapSQLError(err, nil))
+	}
+	return issueIDs, nil
 }
 
 func sortCommentsByCreatedAt(comments []db.Comment) {

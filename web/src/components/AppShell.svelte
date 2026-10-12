@@ -20,6 +20,7 @@
   import { normalizeKataUISnapshot } from '../lib/kata/projection'
   import type {
     KataTaskMutationResponse,
+    KataCommentReplyIntent,
     KataTaskCloseRequest,
     KataTaskEditPatch,
     KataTaskSearchFilters,
@@ -83,7 +84,11 @@
     searchReferences: (query: string) => Promise<UIIssueReference[]>
     onMoveIssue: (toProjectUID: string) => boolean | Promise<boolean>
     onPatchMetadata: (uid: string, patch: Record<string, unknown>) => boolean | Promise<boolean>
-    onAddComment: (uid: string, body: string) => boolean | Promise<boolean>
+    onAddComment: (
+      uid: string,
+      body: string,
+      reply?: KataCommentReplyIntent,
+    ) => boolean | Promise<boolean>
     onEditIssue: (uid: string, patch: KataTaskEditPatch) => boolean | Promise<boolean>
     onAssignOwner: (uid: string, owner: string) => boolean | Promise<boolean>
     onClaimAssignment?:
@@ -236,6 +241,8 @@
       ? projection.projects.find((project) => project.uid === scope.project_uid)
       : undefined
   })
+  let selectedCommentUID = $state<string | undefined>()
+  let returnComment = $state<{ issueUID: string; commentUID: string } | undefined>()
   let selectedIssueUID = $derived(route.issueUID ?? null)
   let scopedAuthority = $derived(snapshot.capabilities.scope !== undefined)
   let projectWideMutationAllowed = $derived(canMutate && !scopedAuthority)
@@ -720,6 +727,9 @@
         {onMoveIssue}
         {onPatchMetadata}
         {onAddComment}
+        commentError={mutationMessage}
+        {selectedCommentUID}
+        {returnComment}
         {onEditIssue}
         {onAssignOwner}
         {onClaimAssignment}
@@ -730,7 +740,11 @@
         {onCloseIssue}
         {onReopenIssue}
         {onDeleteIssue}
-        onSelectIssue={(target) => selectIssue(target.uid)}
+        onSelectIssue={(target) => {
+          returnComment = target.returnComment
+          selectedCommentUID = target.commentUID
+          selectIssue(target.uid)
+        }}
         onOpenGraph={(issue) => openGraph(issue.uid)}
         {onCreateRecurrence}
         {onPatchRecurrence}

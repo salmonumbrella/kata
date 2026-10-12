@@ -157,6 +157,10 @@ type ListAllIssuesParams struct {
 
 // CreateCommentParams carries inputs for CreateComment.
 type CreateCommentParams struct {
+	// ValidateReply enables local request validation. Replay/import writes may
+	// retain links whose targets have not arrived yet.
+	ValidateReply          bool
+	Force                  bool
 	ReplyToUID             string
 	ReplyKind              string
 	IssueID                int64
@@ -540,6 +544,7 @@ type MoveIssueProjectOut struct {
 	NewShortID            string
 	NewRevision           int64
 	ProjectAccessRevision int64
+	Event                 *Event `json:"-"`
 }
 
 // IfMatch wraps a revision for the optional IfMatchRev fields on the

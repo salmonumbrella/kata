@@ -288,7 +288,7 @@ func TestCutoverExportDependencyVersionBoundaries(t *testing.T) {
 			require.NoError(t, err)
 			issue, _, err := source.CreateIssue(ctx, db.CreateIssueParams{ProjectID: project.ID, Title: "Retained task", Author: "tester"})
 			require.NoError(t, err)
-			_, err = source.ExecContext(ctx, `ALTER TABLE comments DROP COLUMN reply_to_uid; ALTER TABLE comments DROP COLUMN reply_kind; ALTER TABLE comments DROP COLUMN edited_at`)
+			_, err = source.ExecContext(ctx, `DROP INDEX idx_comments_reply_to; ALTER TABLE comments DROP COLUMN reply_to_uid; ALTER TABLE comments DROP COLUMN reply_kind; ALTER TABLE comments DROP COLUMN edited_at`)
 			require.NoError(t, err)
 			if version < 35 {
 				_, err = source.ExecContext(ctx, `DROP TABLE federation_embedding_artifacts`)

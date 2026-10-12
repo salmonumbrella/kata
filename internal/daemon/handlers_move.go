@@ -104,6 +104,9 @@ func moveIssueHandler(cfg ServerConfig) func(context.Context, *api.MoveIssueRequ
 		if err != nil {
 			return nil, internalAPIError(err)
 		}
+		if res.Event != nil {
+			deliverProjectMutation(cfg, res.Event)
+		}
 		if !in.Body.DryRun {
 			recordProjectAccessMutationRevision(ctx, res.ProjectAccessRevision)
 		}

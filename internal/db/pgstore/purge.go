@@ -78,6 +78,12 @@ func (s *Store) PurgeIssue(ctx context.Context, issueID int64, actor string, rea
 WHERE related_issue_id = $1 AND type = 'issue.commented'`, issue.ID); err != nil {
 			return mapSQLError(err, nil)
 		}
+		// Retain the source reply's portable envelope/hash for replay and scoping.
+		// Its numeric target FK must be detached before deleting the target issue.
+		if _, err := tx.ExecContext(ctx, `UPDATE events SET related_issue_id = NULL
+WHERE related_issue_id = $1 AND type = 'issue.commented'`, issue.ID); err != nil {
+			return mapSQLError(err, nil)
+		}
 		for _, statement := range []string{
 			`DELETE FROM comments WHERE issue_id = $1`,
 			`DELETE FROM links WHERE from_issue_id = $1 OR to_issue_id = $1`,

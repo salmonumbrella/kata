@@ -17,7 +17,16 @@ func TestMCPAttributionSummaries(t *testing.T) {
 		t.Run(state, func(t *testing.T) {
 			accountable, source, authority, teammate := "member", "origin-agent", "01J00000000000000000000005", "helper-agent"
 			project := ProjectIdentity{Name: "shared-project"}
+			var readComment generated.CommentOut
+			wire, err := json.Marshal(map[string]any{
+				"author": "source-author", "accountable_actor": accountable,
+				"source_actor": source, "authority_uid": authority, "teammate": teammate,
+				"verification": state, "created_at": time.Now(),
+			})
+			require.NoError(t, err)
+			require.NoError(t, json.Unmarshal(wire, &readComment))
 			summaries := map[string]any{
+				"comment_read": commentReadSummary(readComment),
 				"mutation":     h.summaryFromIssue(project, generated.Issue{Author: "source-author", AccountableActor: &accountable, SourceActor: &source, AuthorityUID: &authority, Teammate: &teammate, Verification: new(generated.IssueVerification(state)), UpdatedAt: time.Now()}),
 				"project_list": h.summaryFromIssueOut(project, generated.IssueOut{Author: "source-author", AccountableActor: &accountable, SourceActor: &source, AuthorityUID: &authority, Teammate: &teammate, Verification: new(generated.IssueOutVerification(state)), UpdatedAt: time.Now()}),
 				"global_list":  summaryFromGlobalIssue(generated.ListGlobalIssueOut{Author: "source-author", AccountableActor: &accountable, SourceActor: &source, AuthorityUID: &authority, Teammate: &teammate, Verification: new(generated.ListGlobalIssueOutVerification(state)), UpdatedAt: time.Now()}),

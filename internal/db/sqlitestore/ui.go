@@ -106,6 +106,15 @@ func (d *Store) ReadUISnapshot(ctx context.Context, query db.UISnapshotQuery) (d
 			if err != nil {
 				return db.UISnapshotData{}, err
 			}
+			data.CommentGraph, err = db.ReadCommentGraphTx(ctx, tx,
+				db.CommentGraphQuery{ProjectID: selected.ProjectID, AllowedIssueIDs: query.AllowedIssueIDs},
+				func(int) string { return "?" },
+				func(value string) (time.Time, error) { return time.Parse(time.RFC3339Nano, value) },
+				`json_extract(e.payload,'$.reply_to_uid')`, strings.ReplaceAll(commentAttributionColumn, "comments.", "c."),
+			)
+			if err != nil {
+				return db.UISnapshotData{}, err
+			}
 			data.SelectedLabels, err = readUIIssueLabels(ctx, tx, selected.ID)
 			if err != nil {
 				return db.UISnapshotData{}, err

@@ -180,7 +180,8 @@ schema 35; rollback requires a pre-upgrade backup and the matching older binary.
 
 The 35→36 migration adds nullable `reply_to_uid`, `reply_kind`, and `edited_at`
 columns to `comments`. Existing comments keep their identities and receive
-NULL in all three columns. The migration adds no constraints or indexes. Kata
+NULL in all three columns. The partial `idx_comments_reply_to` index supports target lookups. The
+migration adds no constraints. Kata
 validates reply fields before it writes them: the fields are paired, the target
 is a 26-character comment UID, and the kind is `reply`, `confirm`, `refute`, or
 `supersede`. `reply` is a general response; `confirm` asserts verification or
@@ -194,6 +195,6 @@ A spoke that still runs a schema-35 binary stores pulled replies but shows
 them as plain comments. Stop the daemon and run `kata storage postgres migrate`
 with schema-owner credentials before starting the matching binary. Adding the
 columns takes a brief exclusive lock on `comments`. Existing table grants cover
-the new columns. Validation-only runtime credentials cannot migrate. Schema-31
+the new columns. Validation-only runtime credentials cannot migrate. Schema-35
 binaries cannot reopen schema 36; rollback requires the pre-upgrade backup and
 its matching older binary.

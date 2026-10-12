@@ -1267,6 +1267,7 @@ func (d *Store) CreateComment(ctx context.Context, p db.CreateCommentParams) (db
 }
 
 func (d *Store) createComment(ctx context.Context, p db.CreateCommentParams) (int64, db.Event, error) {
+	db.RetainCommentEvents(ctx)
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, db.Event{}, err
@@ -1295,6 +1296,9 @@ func (d *Store) createComment(ctx context.Context, p db.CreateCommentParams) (in
 	commentUID, err := katauid.New()
 	if err != nil {
 		return 0, db.Event{}, fmt.Errorf("generate comment uid: %w", err)
+	}
+	if err := validateLocalCommentReplyTx(ctx, tx, commentUID, p, issue); err != nil {
+		return 0, db.Event{}, err
 	}
 	commentAt := time.Now().UTC()
 	createdAt := commentAt.Format(sqliteCommentTimeFormat)
@@ -1362,10 +1366,37 @@ func (d *Store) createComment(ctx context.Context, p db.CreateCommentParams) (in
 	if err != nil {
 		return 0, db.Event{}, err
 	}
+	committedEvents := []db.Event{evt}
+	if hook := db.CommentMetadataPolicy(ctx); hook != nil {
+		createdComment := db.Comment{
+			ID: commentID, UID: commentUID, IssueID: p.IssueID, Author: p.Author,
+			Body: p.Body, CreatedAt: commentAt, Teammate: p.Teammate,
+			ReplyToUID: p.ReplyToUID, ReplyKind: p.ReplyKind,
+		}
+		updates, err := hook(ctx, tx, issue, createdComment)
+		if err != nil {
+			return 0, db.Event{}, err
+		}
+		for _, update := range db.CoalesceCommentMetadataUpdates(updates) {
+			result, err := d.patchIssueMetadataTx(ctx, tx, db.PatchIssueMetadataIn{
+				IssueID: update.IssueID, Actor: p.Author, Patch: update.Patch,
+			})
+			if err != nil {
+				return 0, db.Event{}, err
+			}
+			if result.Changed {
+				committedEvents = append(committedEvents, result.Event)
+			}
+		}
+	}
 
+	// Comment-create metadata seam: issue, p, commentUID and evt are all
+	// available here in the same transaction. Additional metadata events must
+	// be returned as a committed batch before callers publish any of them.
 	if err := tx.Commit(); err != nil {
 		return 0, db.Event{}, err
 	}
+	db.RetainCommentEvents(ctx, committedEvents...)
 	return commentID, evt, nil
 }
 
@@ -1496,6 +1527,42 @@ func (d *Store) CommentsByIssue(ctx context.Context, issueID int64) ([]db.Commen
 		}
 		return cmp.Compare(a.ID, b.ID)
 	})
+	return out, nil
+}
+
+// CommentIssueIDsByUIDs maps existing comment UIDs to their owning issue IDs.
+func (d *Store) CommentIssueIDsByUIDs(ctx context.Context, uids []string) (map[string]int64, error) {
+	out := make(map[string]int64, len(uids))
+	const chunk = 500
+	for i := 0; i < len(uids); i += chunk {
+		end := min(i+chunk, len(uids))
+		slice := uids[i:end]
+		placeholders := make([]string, len(slice))
+		args := make([]any, 0, len(slice))
+		for j, commentUID := range slice {
+			placeholders[j] = "?"
+			args = append(args, commentUID)
+		}
+		rows, err := d.QueryContext(ctx,
+			`SELECT uid, issue_id FROM comments WHERE uid IN (`+strings.Join(placeholders, ",")+")", args...)
+		if err != nil {
+			return nil, fmt.Errorf("comment issue ids by uids: %w", err)
+		}
+		for rows.Next() {
+			var commentUID string
+			var issueID int64
+			if err := rows.Scan(&commentUID, &issueID); err != nil {
+				_ = rows.Close()
+				return nil, fmt.Errorf("scan comment issue id: %w", err)
+			}
+			out[commentUID] = issueID
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return nil, fmt.Errorf("iterate comment issue ids: %w", err)
+		}
+		_ = rows.Close()
+	}
 	return out, nil
 }
 

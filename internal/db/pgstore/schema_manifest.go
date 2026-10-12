@@ -13,7 +13,7 @@ import (
 const (
 	canonicalColumnFingerprint     = "e39313e493aca5629098c150076ee7e1aa04a8d747d8704001e741401fe3df50"
 	canonicalConstraintFingerprint = "3d24c94a0242090c2a1ce423a1399d3f3d6d9d67bbb9063f08bc1112fb7c86ef"
-	canonicalIndexFingerprint      = "573f8ac2285e68c9eb61430b425f9f851811194be6b88e53567b54dbfefdb496"
+	canonicalIndexFingerprint      = "a58820c23d72461fc9197d28842ee01cd500d8f414ae8673138083c11c45f611"
 	vectorColumnFingerprint        = "b8c7cb5e43f3c17502fc3e1deba77a772c3e9a486be623a96729de8866381c31"
 	vectorConstraintFingerprint    = "3a39a82331175295586fb3399dff2221fe511171f21e31a88410dd091c3a3cf4"
 	vectorIndexFingerprint         = "7868c4a815ebee6451cef203509dcedcd21401c76f49fb666e9facaad2f7aef3"
@@ -80,7 +80,7 @@ idx_team_memberships_actor idx_project_access_teams_team
 idx_cron_jobs_project_name idx_cron_workflows_project_name idx_cron_runs_project_time idx_cron_runs_job_time idx_events_project_cron
 idx_projects_active idx_project_aliases_project recurrences_project
 idx_issues_project_status_updated idx_issues_project_updated idx_issues_owner idx_issues_assignment_expires_on
-uniq_issues_project_short_id issues_recurrence_occurrence_uniq idx_comments_issue
+uniq_issues_project_short_id issues_recurrence_occurrence_uniq idx_comments_issue idx_comments_reply_to
 uniq_one_parent_per_child idx_links_from idx_links_to idx_links_from_uid idx_links_to_uid
 idx_issue_labels_label idx_events_project idx_events_issue idx_events_related
 idx_events_issue_uid idx_events_related_issue_uid idx_events_origin_instance

@@ -51,6 +51,9 @@ func TestCommentReplyMigrationUpgradesVersion35(t *testing.T) {
 	version, err := upgraded.SchemaVersion(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 36, version)
+	var replyIndex string
+	require.NoError(t, admin.QueryRowContext(ctx, `SELECT indexdef FROM pg_indexes WHERE schemaname=$1 AND indexname='idx_comments_reply_to'`, schema).Scan(&replyIndex))
+	require.Contains(t, replyIndex, "WHERE (reply_to_uid IS NOT NULL)")
 	comments, err := upgraded.CommentsByIssue(ctx, issue.ID)
 	require.NoError(t, err)
 	require.Len(t, comments, 1)
