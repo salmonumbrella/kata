@@ -226,6 +226,10 @@ func registerFederationHandlers(humaAPI huma.API, cfg ServerConfig) {
 			return nil, federationFeatureError(err)
 		}
 		body := api.ProjectFederationBody{ProjectID: result.Project.ID, ProjectUID: result.Project.UID, ProjectName: result.Project.Name, ReplayHorizonEventID: result.Binding.ReplayHorizonEventID, BaselineThroughEventID: result.BaselineThroughEventID}
+		body.VectorGeneration, err = hubVectorGeneration(ctx, cfg)
+		if err != nil {
+			return nil, internalAPIError(err)
+		}
 		return &api.ProjectFederationResponse{Body: body, EventFeatures: db.CronEventFeature, RequiredEventFeatures: result.RequiredFeatures}, nil
 	})
 
@@ -852,6 +856,7 @@ func registerFederationHandlers(humaAPI huma.API, cfg ServerConfig) {
 			PushCursorEventID: result.PushCursorEventID,
 		}}, nil
 	})
+	registerFederationVectorHandlers(humaAPI, cfg)
 }
 
 func validateFederationIngestSchemaVersion(schemaVersion int) error {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -36,6 +37,9 @@ type ReconcilerConfig struct {
 	// The final argument requests artifact synchronization before authorization.
 	// Later documents in the same fill need only fresh authority checks.
 	FederationProducerAllowed func(context.Context, string, embedding.ArtifactIdentity, activity.Admission, bool) (bool, error)
+	// Upstream imports hub-computed vectors for federated replica projects.
+	// Nil disables import: every row is embedded locally, as before.
+	Upstream VectorUpstream
 }
 
 // ReconcilerHealth is the operator-visible state surfaced in /health.
@@ -51,6 +55,17 @@ type ReconcilerHealth struct {
 	ETASeconds      *int64     `json:"eta_seconds,omitempty"`
 	StartedAt       *time.Time `json:"started_at,omitempty"`
 	LastProgressAt  *time.Time `json:"last_progress_at,omitempty"`
+	// Source is "replica" when any federated replica project imports hub
+	// vectors, otherwise "provider".
+	Source string `json:"source"`
+	// SourceStatus is the most severe replica project status, or "disabled"
+	// when the daemon has no federated replica projects.
+	SourceStatus         string                 `json:"source_status"`
+	Replicated           int64                  `json:"replicated"`
+	AwaitingUpstream     int64                  `json:"awaiting_upstream"`
+	Rejected             int64                  `json:"rejected"`
+	LastReplicaSuccessAt *time.Time             `json:"last_replica_success_at,omitempty"`
+	ReplicaProjects      []ReplicaProjectHealth `json:"replica_projects,omitempty"`
 }
 
 // Reconciler keeps the vector sidecar's active generation fresh: it mirrors
@@ -68,6 +83,7 @@ type Reconciler struct {
 	mu       sync.Mutex
 	health   ReconcilerHealth
 	progress embeddingProgress
+	replica  replicaState
 }
 
 type embeddingProgress struct {
@@ -104,7 +120,7 @@ func NewReconciler(store db.Storage, idx *vector.Index, emb embedder, cfg Reconc
 		wake:   make(chan struct{}, 1),
 		retry:  make(chan struct{}, 1),
 		now:    cfg.Now,
-		health: ReconcilerHealth{Configured: true},
+		health: ReconcilerHealth{Configured: true, Source: "provider", SourceStatus: ReplicaStatusDisabled},
 	}
 }
 
@@ -147,6 +163,11 @@ func (r *Reconciler) Health() ReconcilerHealth {
 		t := *r.health.LastProgressAt
 		h.LastProgressAt = &t
 	}
+	if r.health.LastReplicaSuccessAt != nil {
+		t := *r.health.LastReplicaSuccessAt
+		h.LastReplicaSuccessAt = &t
+	}
+	h.ReplicaProjects = slices.Clone(r.health.ReplicaProjects)
 	return h
 }
 
@@ -223,7 +244,7 @@ func (r *Reconciler) runLeader(ctx context.Context) error {
 		if err == nil {
 			rejected = false
 			backoff = r.cfg.MinBackoff
-			timer.Reset(r.cfg.SweepEvery)
+			timer.Reset(r.successDelay())
 		} else {
 			if ctx.Err() != nil {
 				return ctx.Err()
@@ -319,6 +340,13 @@ func (r *Reconciler) reconcileOnce(ctx context.Context) error {
 			return err
 		}
 	}
+	// Import before either provider fill path. Missing compatible hub vectors
+	// stay pending, while private work retains canonical artifact capture.
+	excluded, err := r.importReplicaVectors(ctx, key, gen.Dimensions)
+	if err != nil {
+		r.markError(err)
+		return err
+	}
 	var portableRecipe *embedding.ArtifactIdentity
 	if portable, ok := r.emb.(interface {
 		ArtifactIdentity(string, string, string) (embedding.ArtifactIdentity, error)
@@ -349,7 +377,7 @@ func (r *Reconciler) reconcileOnce(ctx context.Context) error {
 		// connection defers its remaining documents until the next fill, while
 		// successful connections still revalidate live authority per document.
 		checked := make(map[string]bool)
-		_, eligibilityDeferred, fillErr = r.idx.FillWithArtifactsDetailed(ctx, key, r.store, *portableRecipe, r.emb.EncodeFunc(), r.cfg.BatchSize, r.cfg.BatchOptions, r.markDocumentFilled, func(ctx context.Context, projectUID string) (bool, error) {
+		_, eligibilityDeferred, fillErr = r.idx.FillWithArtifactsExcludingDetailed(ctx, key, r.store, *portableRecipe, r.emb.EncodeFunc(), r.cfg.BatchSize, r.cfg.BatchOptions, r.markDocumentFilled, excluded, func(ctx context.Context, projectUID string) (bool, error) {
 			previous, exists := checked[projectUID]
 			if exists && !previous {
 				return false, nil
@@ -361,7 +389,7 @@ func (r *Reconciler) reconcileOnce(ctx context.Context) error {
 			return allowed, err
 		})
 	} else {
-		_, fillErr = r.idx.Fill(ctx, key, r.emb.EncodeFunc(), r.cfg.BatchSize, r.cfg.BatchOptions, r.markDocumentFilled)
+		_, fillErr = r.idx.FillExcluding(ctx, key, r.emb.EncodeFunc(), r.cfg.BatchSize, r.cfg.BatchOptions, r.markDocumentFilled, excluded)
 	}
 	if err := fillErr; err != nil {
 		if embedded, skipped, backlog, coverageErr := r.idx.Coverage(ctx, key); coverageErr == nil {

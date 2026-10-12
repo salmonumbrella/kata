@@ -52,17 +52,29 @@ func registerHealthHandlers(humaAPI huma.API, cfg ServerConfig) {
 		if diagnostics && cfg.ReconcilerHealth != nil {
 			h := cfg.ReconcilerHealth()
 			out.Body.Embeddings = &api.EmbeddingsHealth{
-				Configured:      h.Configured,
-				ErrorPresent:    h.LastError != "",
-				LastSuccessAt:   h.LastSuccessAt,
-				LastErrorStatus: h.LastErrorStatus,
-				Embedded:        h.Embedded,
-				Skipped:         h.Skipped,
-				Backlog:         h.Backlog,
-				RatePerSecond:   h.RatePerSecond,
-				ETASeconds:      h.ETASeconds,
-				StartedAt:       h.StartedAt,
-				LastProgressAt:  h.LastProgressAt,
+				Configured:           h.Configured,
+				ErrorPresent:         h.LastError != "",
+				LastSuccessAt:        h.LastSuccessAt,
+				LastErrorStatus:      h.LastErrorStatus,
+				Embedded:             h.Embedded,
+				Skipped:              h.Skipped,
+				Backlog:              h.Backlog,
+				RatePerSecond:        h.RatePerSecond,
+				ETASeconds:           h.ETASeconds,
+				StartedAt:            h.StartedAt,
+				LastProgressAt:       h.LastProgressAt,
+				Source:               h.Source,
+				SourceStatus:         h.SourceStatus,
+				Replicated:           h.Replicated,
+				AwaitingUpstream:     h.AwaitingUpstream,
+				Rejected:             h.Rejected,
+				LastReplicaSuccessAt: h.LastReplicaSuccessAt,
+			}
+			for _, p := range h.ReplicaProjects {
+				out.Body.Embeddings.ReplicaProjects = append(out.Body.Embeddings.ReplicaProjects,
+					api.EmbeddingsReplicaProject{
+						ProjectUID: p.ProjectUID, Status: p.Status, UpstreamFingerprint: p.UpstreamFingerprint,
+					})
 			}
 			if cfg.Embedder != nil {
 				c := cfg.Embedder.CredentialHealth()

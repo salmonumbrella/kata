@@ -2055,8 +2055,9 @@ func (e EmbeddingArtifactResponse) Validate() error {
 }
 
 type EmbeddingsHealth struct {
-	Backlog    int64 `json:"backlog"`
-	Configured bool  `json:"configured"`
+	AwaitingUpstream int64 `json:"awaiting_upstream"`
+	Backlog          int64 `json:"backlog"`
+	Configured       bool  `json:"configured"`
 
 	// Credential Embedding credential state; an advisory warning that does not change health.ok.
 	Credential *EmbeddingsHealthCredential `json:"credential,omitempty"`
@@ -2074,15 +2075,21 @@ type EmbeddingsHealth struct {
 	LastError *string `json:"last_error,omitempty"`
 
 	// LastErrorAt Time of the credential rejection; cleared after the next successful embedding call.
-	LastErrorAt     *time.Time `json:"last_error_at,omitempty"`
-	LastErrorStatus *int64     `json:"last_error_status,omitempty"`
-	LastProgressAt  *time.Time `json:"last_progress_at,omitempty"`
+	LastErrorAt          *time.Time `json:"last_error_at,omitempty"`
+	LastErrorStatus      *int64     `json:"last_error_status,omitempty"`
+	LastProgressAt       *time.Time `json:"last_progress_at,omitempty"`
+	LastReplicaSuccessAt *time.Time `json:"last_replica_success_at,omitempty"`
 
 	// LastSuccessAt Time of the last successful reconciliation, including cycles with no pending issues; query requests do not update it.
-	LastSuccessAt *time.Time `json:"last_success_at,omitempty"`
-	RatePerSecond *float64   `json:"rate_per_second,omitempty"`
-	Skipped       int64      `json:"skipped"`
-	StartedAt     *time.Time `json:"started_at,omitempty"`
+	LastSuccessAt   *time.Time                 `json:"last_success_at,omitempty"`
+	RatePerSecond   *float64                   `json:"rate_per_second,omitempty"`
+	Rejected        int64                      `json:"rejected"`
+	ReplicaProjects []EmbeddingsReplicaProject `json:"replica_projects,omitempty"`
+	Replicated      int64                      `json:"replicated"`
+	Skipped         int64                      `json:"skipped"`
+	Source          string                     `json:"source" validate:"required"`
+	SourceStatus    string                     `json:"source_status" validate:"required"`
+	StartedAt       *time.Time                 `json:"started_at,omitempty"`
 }
 
 func (e EmbeddingsHealth) Validate() error {
@@ -2094,10 +2101,33 @@ func (e EmbeddingsHealth) Validate() error {
 			}
 		}
 	}
+	for i, item := range e.ReplicaProjects {
+		if v, ok := any(item).(runtime.Validator); ok {
+			if err := v.Validate(); err != nil {
+				errors = errors.Append(fmt.Sprintf("ReplicaProjects[%d]", i), err)
+			}
+		}
+	}
+	if err := typesValidator.Var(e.Source, "required"); err != nil {
+		errors = errors.Append("Source", err)
+	}
+	if err := typesValidator.Var(e.SourceStatus, "required"); err != nil {
+		errors = errors.Append("SourceStatus", err)
+	}
 	if len(errors) == 0 {
 		return nil
 	}
 	return errors
+}
+
+type EmbeddingsReplicaProject struct {
+	ProjectUID          string  `json:"project_uid" validate:"required"`
+	Status              string  `json:"status" validate:"required"`
+	UpstreamFingerprint *string `json:"upstream_fingerprint,omitempty"`
+}
+
+func (e EmbeddingsReplicaProject) Validate() error {
+	return runtime.ConvertValidatorError(typesValidator.Struct(e))
 }
 
 type EnableIssueSyncRequestBody struct {
@@ -2807,6 +2837,114 @@ func (f FederationStatusBody) Validate() error {
 				errors = errors.Append(fmt.Sprintf("Statuses[%d]", i), err)
 			}
 		}
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+	return errors
+}
+
+type FederationVectorChunk struct {
+	Index  int64  `json:"index"`
+	Vector string `json:"vector" validate:"required"`
+}
+
+func (f FederationVectorChunk) Validate() error {
+	return runtime.ConvertValidatorError(typesValidator.Struct(f))
+}
+
+type FederationVectorGeneration struct {
+	Dims        int64             `json:"dims"`
+	Fingerprint string            `json:"fingerprint" validate:"required"`
+	Model       string            `json:"model" validate:"required"`
+	Params      map[string]string `json:"params"`
+	State       string            `json:"state" validate:"required"`
+}
+
+func (f FederationVectorGeneration) Validate() error {
+	return runtime.ConvertValidatorError(typesValidator.Struct(f))
+}
+
+type FederationVectorLookupBody struct {
+	Generation *FederationVectorGeneration `json:"generation,omitempty"`
+	Records    []FederationVectorRecord    `json:"records" validate:"required"`
+}
+
+func (f FederationVectorLookupBody) Validate() error {
+	var errors runtime.ValidationErrors
+	if f.Generation != nil {
+		if v, ok := any(f.Generation).(runtime.Validator); ok {
+			if err := v.Validate(); err != nil {
+				errors = errors.Append("Generation", err)
+			}
+		}
+	}
+	for i, item := range f.Records {
+		if v, ok := any(item).(runtime.Validator); ok {
+			if err := v.Validate(); err != nil {
+				errors = errors.Append(fmt.Sprintf("Records[%d]", i), err)
+			}
+		}
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+	return errors
+}
+
+type FederationVectorLookupDoc struct {
+	ContentSha256 string `json:"content_sha256" validate:"required"`
+	IssueUID      string `json:"issue_uid" validate:"required"`
+}
+
+func (f FederationVectorLookupDoc) Validate() error {
+	return runtime.ConvertValidatorError(typesValidator.Struct(f))
+}
+
+type FederationVectorLookupRequestBody struct {
+	Docs        []FederationVectorLookupDoc `json:"docs,omitempty"`
+	Fingerprint string                      `json:"fingerprint" validate:"required"`
+}
+
+func (f FederationVectorLookupRequestBody) Validate() error {
+	var errors runtime.ValidationErrors
+	for i, item := range f.Docs {
+		if v, ok := any(item).(runtime.Validator); ok {
+			if err := v.Validate(); err != nil {
+				errors = errors.Append(fmt.Sprintf("Docs[%d]", i), err)
+			}
+		}
+	}
+	if err := typesValidator.Var(f.Fingerprint, "required"); err != nil {
+		errors = errors.Append("Fingerprint", err)
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+	return errors
+}
+
+type FederationVectorRecord struct {
+	Chunks        []FederationVectorChunk `json:"chunks,omitempty"`
+	ContentSha256 *string                 `json:"content_sha256,omitempty"`
+	IssueUID      string                  `json:"issue_uid" validate:"required"`
+	Status        string                  `json:"status" validate:"required"`
+}
+
+func (f FederationVectorRecord) Validate() error {
+	var errors runtime.ValidationErrors
+	for i, item := range f.Chunks {
+		if v, ok := any(item).(runtime.Validator); ok {
+			if err := v.Validate(); err != nil {
+				errors = errors.Append(fmt.Sprintf("Chunks[%d]", i), err)
+			}
+		}
+	}
+	if err := typesValidator.Var(f.IssueUID, "required"); err != nil {
+		errors = errors.Append("IssueUID", err)
+	}
+	if err := typesValidator.Var(f.Status, "required"); err != nil {
+		errors = errors.Append("Status", err)
 	}
 	if len(errors) == 0 {
 		return nil
@@ -4725,12 +4863,13 @@ func (p ProjectEmbeddingProducer) Validate() error {
 }
 
 type ProjectFederationBody struct {
-	BaselineThroughEventID int64           `json:"baseline_through_event_id"`
-	ProjectID              int64           `json:"project_id"`
-	ProjectName            string          `json:"project_name" validate:"required"`
-	ProjectUID             string          `json:"project_uid" validate:"required"`
-	Relay                  *RelayHandshake `json:"relay,omitempty"`
-	ReplayHorizonEventID   int64           `json:"replay_horizon_event_id"`
+	BaselineThroughEventID int64                       `json:"baseline_through_event_id"`
+	ProjectID              int64                       `json:"project_id"`
+	ProjectName            string                      `json:"project_name" validate:"required"`
+	ProjectUID             string                      `json:"project_uid" validate:"required"`
+	Relay                  *RelayHandshake             `json:"relay,omitempty"`
+	ReplayHorizonEventID   int64                       `json:"replay_horizon_event_id"`
+	VectorGeneration       *FederationVectorGeneration `json:"vector_generation,omitempty"`
 }
 
 func (p ProjectFederationBody) Validate() error {
@@ -4745,6 +4884,13 @@ func (p ProjectFederationBody) Validate() error {
 		if v, ok := any(p.Relay).(runtime.Validator); ok {
 			if err := v.Validate(); err != nil {
 				errors = errors.Append("Relay", err)
+			}
+		}
+	}
+	if p.VectorGeneration != nil {
+		if v, ok := any(p.VectorGeneration).(runtime.Validator); ok {
+			if err := v.Validate(); err != nil {
+				errors = errors.Append("VectorGeneration", err)
 			}
 		}
 	}

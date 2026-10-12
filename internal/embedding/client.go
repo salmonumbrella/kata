@@ -98,11 +98,16 @@ func New(cfg Config) (*Client, error) {
 	if cfg.RequestDimensions {
 		params["request_dimensions"] = "true"
 	}
+	// Recognize the previous fingerprint for this exact model and role
+	// configuration while new generations advertise their fixed chunking.
+	legacyFingerprint := (kitvec.Generation{Model: cfg.Model, Dimensions: dims, Params: params}).Fingerprint()
+	params["chunk_max_runes"] = strconv.Itoa(RecipeSplitMaxRunes)
+	params["chunk_overlap_runes"] = strconv.Itoa(RecipeSplitOverlap)
 	generation := kitvec.Generation{Model: cfg.Model, Dimensions: dims, Params: params}
 	space := embedmodel.Descriptor{
 		Model: parts.Model, Roles: parts.Roles, Deployment: parts.Deployment,
 		Input:  embedconfig.InputLimits{Recipe: "kata.issue/v" + strconv.Itoa(RecipeVersion)},
-		Legacy: []string{generation.Fingerprint()},
+		Legacy: []string{legacyFingerprint, generation.Fingerprint()},
 	}
 	if err := space.Validate(); err != nil {
 		return nil, fmt.Errorf("embedding: configure identity: %w", err)
@@ -121,7 +126,7 @@ func (c *Client) BatchSize() int { return c.options.Batch.Items }
 // Space describes the embedding model and its existing generation fingerprints.
 func (c *Client) Space() embedmodel.Descriptor { return c.space }
 
-// Generation preserves Kata's recipe-aware fingerprint. The endpoint is
+// Generation identifies the recipe, roles and chunking. The endpoint is
 // excluded so moving a host or port never forces re-embedding.
 func (c *Client) Generation() kitvec.Generation { return c.generation }
 

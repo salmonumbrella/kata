@@ -64,6 +64,8 @@ type AckRelayDeliveriesBody = RelayAckRequestBody
 
 type DisconnectRelayEnrollmentBody = DisconnectRelayRequestBody
 
+type LookupFederationProjectVectorsBody = FederationVectorLookupRequestBody
+
 type ImportIssuesBody = ImportRequestBody
 
 type DisableIssueSyncBody = DisableIssueSyncRequestBody

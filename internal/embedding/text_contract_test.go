@@ -11,12 +11,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// These fixed goldens were captured from the pre-change client, not recomputed
-// from the implementation under test.
+// Space and legacy goldens predate text controls. Current generation goldens
+// use Kit's explicit recipe=2, chunk_max_runes=2000, chunk_overlap_runes=200
+// protocol inputs, computed independently of the client under test.
 func TestEmptyTextControlsPreserveIdentities(t *testing.T) {
-	for _, tc := range []struct{ salt, generation, space string }{
-		{"", "2c56e86b15bbb89a", "be5a5089846228fd"},
-		{"example-revision", "812a1c8e4cc04bb8", "347a80bfd779ff93"},
+	for _, tc := range []struct{ salt, generation, legacy, space string }{
+		{"", "ecca1e7a75e7e4ed", "2c56e86b15bbb89a", "be5a5089846228fd"},
+		{"example-revision", "778d41c7ac690225", "812a1c8e4cc04bb8", "347a80bfd779ff93"},
 	} {
 		c, err := New(Config{BaseURL: "http://127.0.0.1:9/v1", Model: "example-model", Dims: 768, Salt: tc.salt})
 		require.NoError(t, err)
@@ -24,9 +25,12 @@ func TestEmptyTextControlsPreserveIdentities(t *testing.T) {
 		g, err := c.Space().Generation()
 		require.NoError(t, err)
 		require.Equal(t, tc.space, g.Fingerprint())
-		matches, err := c.Space().Matches(tc.generation)
+		matches, err := c.Space().Matches(tc.legacy)
 		require.NoError(t, err)
-		require.True(t, matches, "existing generations must stay current")
+		require.True(t, matches, "known legacy generations must retain their model-space identity")
+		matches, err = c.Space().Matches(tc.generation)
+		require.NoError(t, err)
+		require.True(t, matches, "the chunk-aware generation must share the unchanged model space")
 	}
 }
 

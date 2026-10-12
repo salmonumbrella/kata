@@ -24,13 +24,24 @@ func (ix *Index) FillWithArtifacts(ctx context.Context, key string, source db.St
 // caller denied generation eligibility. They remain unstamped and retryable,
 // but do not block cutover once all eligible work is complete.
 func (ix *Index) FillWithArtifactsDetailed(ctx context.Context, key string, source db.Storage, recipe embedding.ArtifactIdentity, enc kitvec.EncodeFunc, scanBatch int, batchOptions []kitvec.BatchOption, onDocument func(bool), eligibility ...func(context.Context, string) (bool, error)) (kitvec.FillStats, int, error) {
+	return ix.FillWithArtifactsExcludingDetailed(ctx, key, source, recipe, enc, scanBatch, batchOptions, onDocument, nil, eligibility...)
+}
+
+// FillWithArtifactsExcludingDetailed leaves hub-owned projects outside the
+// provider scan. Their pending documents still block replacement cutover;
+// only documents denied generation authority count as eligibility deferrals.
+func (ix *Index) FillWithArtifactsExcludingDetailed(ctx context.Context, key string, source db.Storage, recipe embedding.ArtifactIdentity, enc kitvec.EncodeFunc, scanBatch int, batchOptions []kitvec.BatchOption, onDocument func(bool), excludeProjects []string, eligibility ...func(context.Context, string) (bool, error)) (kitvec.FillStats, int, error) {
 	artifacts, ok := source.(db.EmbeddingArtifactStorage)
 	if !ok {
-		stats, err := ix.Fill(ctx, key, enc, scanBatch, batchOptions, onDocument)
+		stats, err := ix.FillExcluding(ctx, key, enc, scanBatch, batchOptions, onDocument, excludeProjects)
 		return stats, 0, err
 	}
 	exporter, _ := source.(db.EmbeddingArtifactExporter)
-	backing := &artifactCaptureStore{Store: ix.flowStore, index: ix, source: source, artifacts: artifacts, exporter: exporter, recipe: recipe, generation: key, pending: map[string]artifactPending{}, ineligible: map[string]struct{}{}}
+	base := ix.flowStore
+	if len(excludeProjects) > 0 {
+		base = scopedStore{Store: base, ix: ix, scope: PendingScope{Projects: excludeProjects}}
+	}
+	backing := &artifactCaptureStore{Store: base, index: ix, source: source, artifacts: artifacts, exporter: exporter, recipe: recipe, generation: key, pending: map[string]artifactPending{}, ineligible: map[string]struct{}{}}
 	if len(eligibility) > 0 {
 		backing.eligible = eligibility[0]
 	}

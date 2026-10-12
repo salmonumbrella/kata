@@ -283,6 +283,10 @@ type GetProjectFederationStatusResponse = FederationStatusBody
 
 type GetProjectFederationStatusErrorResponse = ErrorEnvelope
 
+type LookupFederationProjectVectorsResponse = FederationVectorLookupBody
+
+type LookupFederationProjectVectorsErrorResponse = ErrorEnvelope
+
 type ImportIssuesResponse = ImportBatchResult
 
 type ImportIssuesErrorResponse = ErrorEnvelope
@@ -1098,6 +1102,13 @@ type GetProjectFederationStatusResp struct {
 	Body         []byte
 	StatusCode   int
 	JSON200      *GetProjectFederationStatusResponse
+}
+
+type LookupFederationProjectVectorsResp struct {
+	HTTPResponse *http.Response
+	Body         []byte
+	StatusCode   int
+	JSON200      *LookupFederationProjectVectorsResponse
 }
 
 type ImportIssuesResp struct {
