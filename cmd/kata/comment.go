@@ -21,7 +21,11 @@ func newCommentCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "comment <issue-ref>",
 		Short: "append a comment to an issue",
-		Args:  cobra.ExactArgs(1),
+		Long: `Append a comment. Body comes from -m/--body, --body-file, or --body-stdin.
+KATA_TEAMMATE (or --teammate) records which teammate wrote it.`,
+		Example: `  kata comment abc4 -m "Reproduced on Safari 18; fix in progress." --agent
+  kata comment abc4 --body-file notes.md --agent`,
+		Args: cobra.ExactArgs(1),
 	}
 	cmd.Flags().StringVar(&reply, "reply", "", "reply to a comment reference")
 	cmd.Flags().StringVar(&confirm, "confirm", "", "verify or reproduce a comment with at least 40 characters of evidence")
@@ -141,9 +145,11 @@ func newCommentCmd() *cobra.Command {
 func newCommentEditCmd() *cobra.Command {
 	var src BodySources
 	cmd := &cobra.Command{
-		Use:   "edit <issue-ref> <comment-uid>",
-		Short: "edit a comment body",
-		Args:  cobra.ExactArgs(2),
+		Use:     "edit <issue-ref> <comment-uid>",
+		Short:   "edit a comment body",
+		Long:    `Replace the body of one comment. Find its comment UID with kata show; use -m/--body, --body-file, or --body-stdin.`,
+		Example: `  kata comment edit abc4 <comment-uid> -m "corrected repro steps" --agent`,
+		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			src.BodySet = cmd.Flags().Changed("body")
 			src.FileSet = cmd.Flags().Changed("body-file")

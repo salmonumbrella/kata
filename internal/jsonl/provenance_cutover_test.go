@@ -13,17 +13,17 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-//go:embed testdata/schema_v31.sql
-var provenanceSchema31 string
+//go:embed testdata/schema_v33.sql
+var provenanceSchema33 string
 
-func TestProvenanceCutoverUpgradesFrozenVersion31(t *testing.T) {
-	require.Greater(t, db.CurrentSchemaVersion(), 31, "real next schema must exercise actual cutover")
+func TestProvenanceCutoverUpgradesFrozenVersion33(t *testing.T) {
+	require.Greater(t, db.CurrentSchemaVersion(), 33, "real next schema must exercise actual cutover")
 	t.Setenv("KATA_HOME", t.TempDir())
 	ctx := t.Context()
 	path := filepath.Join(t.TempDir(), "kata.db")
 	source, err := sql.Open("sqlite", path)
 	require.NoError(t, err)
-	_, err = source.ExecContext(ctx, provenanceSchema31+"\nINSERT INTO meta(key,value) VALUES('schema_version','31'),('instance_uid','00000000000000000000000009');\nUPDATE meta SET value='47' WHERE key='project_access_revision';\nINSERT INTO projects(uid,name) VALUES('00000000000000000000000001','shared-project'),('00000000000000000000000002','empty-teams-project');\nINSERT INTO teams(uid,name,revision) VALUES('00000000000000000000000003','members',3);\nINSERT INTO team_memberships(team_uid,actor) VALUES('00000000000000000000000003','member');\nINSERT INTO project_access_policies(project_uid,visibility,revision) VALUES('00000000000000000000000001','teams',7),('00000000000000000000000002','teams',9);\nINSERT INTO project_access_teams(project_uid,team_uid) VALUES('00000000000000000000000001','00000000000000000000000003');\nINSERT INTO issues(uid,project_id,short_id,title,author) SELECT '00000000000000000000000004',id,'0004','Existing source task','assistant' FROM projects WHERE uid='00000000000000000000000001';\n")
+	_, err = source.ExecContext(ctx, provenanceSchema33+"\nINSERT INTO meta(key,value) VALUES('schema_version','33'),('instance_uid','00000000000000000000000009');\nUPDATE meta SET value='47' WHERE key='project_access_revision';\nINSERT INTO projects(uid,name) VALUES('00000000000000000000000001','shared-project'),('00000000000000000000000002','empty-teams-project');\nINSERT INTO teams(uid,name,revision) VALUES('00000000000000000000000003','members',3);\nINSERT INTO team_memberships(team_uid,actor) VALUES('00000000000000000000000003','member');\nINSERT INTO project_access_policies(project_uid,visibility,revision) VALUES('00000000000000000000000001','teams',7),('00000000000000000000000002','teams',9);\nINSERT INTO project_access_teams(project_uid,team_uid) VALUES('00000000000000000000000001','00000000000000000000000003');\nINSERT INTO issues(uid,project_id,short_id,title,author) SELECT '00000000000000000000000004',id,'0004','Existing source task','assistant' FROM projects WHERE uid='00000000000000000000000001';\n")
 	require.NoError(t, err)
 	require.NoError(t, source.Close())
 	require.NoError(t, jsonl.AutoCutover(ctx, path))

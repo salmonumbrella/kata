@@ -17,23 +17,25 @@ import (
 	"go.kenn.io/kata/internal/federationsigning"
 )
 
-type revokeFederationProjectAccessOnEventsAfter struct {
+type revokeFederationProjectAccessOnRead struct {
 	db.Storage
 	beforeRead func() error
 }
 
-func (s *revokeFederationProjectAccessOnEventsAfter) EventsAfter(
+// ReadFederation is the poll's single consistent read, so membership revoked
+// here is revoked after admission and before the response is released.
+func (s *revokeFederationProjectAccessOnRead) ReadFederation(
 	ctx context.Context,
-	params db.EventsAfterParams,
-) ([]db.Event, error) {
+	params db.FederationReadParams,
+) (db.FederationReadResult, error) {
 	if s.beforeRead != nil {
 		beforeRead := s.beforeRead
 		s.beforeRead = nil
 		if err := beforeRead(); err != nil {
-			return nil, err
+			return db.FederationReadResult{}, err
 		}
 	}
-	return s.Storage.EventsAfter(ctx, params)
+	return s.Storage.ReadFederation(ctx, params)
 }
 
 func TestFederationPollDiscardsEventsReadAfterProjectMembershipRevocation(t *testing.T) {
@@ -66,7 +68,7 @@ func TestFederationPollDiscardsEventsReadAfterProjectMembershipRevocation(t *tes
 
 		const canary = "post-revocation-canary"
 		var revoked bool
-		raceStore := &revokeFederationProjectAccessOnEventsAfter{Storage: store}
+		raceStore := &revokeFederationProjectAccessOnRead{Storage: store}
 		raceStore.beforeRead = func() error {
 			_, err := store.SetTeamMembership(context.Background(), team.UID, "example-actor", false, "admin")
 			if err != nil {

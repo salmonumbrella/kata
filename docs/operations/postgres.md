@@ -98,9 +98,9 @@ Schema 28 adds issue-scoped token fields and expiration through the registered
 upgrade before creating scoped credentials; rollback requires the pre-upgrade
 backup and its matching binary.
 
-For schema 36 comment replies and edit times, upgrade hubs before spokes and
+For schema 32 comment replies and edit times, upgrade hubs before spokes and
 allow a brief offline window for the comment-table lock. See the
-[schema 36 migration requirements](../development/postgres-migrations.md#schema-36-comment-replies-and-edit-times)
+[schema 32 migration requirements](../development/postgres-migrations.md#schema-32-comment-replies-and-edit-times)
 for reply validation, grants, and rollback.
 
 After preparation, grant the runtime role DML access and set default privileges

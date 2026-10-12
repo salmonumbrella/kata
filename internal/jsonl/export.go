@@ -177,8 +177,8 @@ func exportSnapshot(ctx context.Context, d exportQuerier, w io.Writer, opts Expo
 	if err := exportSQLiteSequence(ctx, d, enc); err != nil {
 		return err
 	}
-	if sourceSchemaVersion >= 32 && opts.ProjectID == 0 {
-		// Schema32 introduced hub-local policy. Cutover opens a native SQLite
+	if sourceSchemaVersion >= 33 && opts.ProjectID == 0 {
+		// Schema 33 introduced hub-local policy. Cutover opens a native SQLite
 		// store even for older sources, so use its existing owner-backup exporter.
 		// Older versions have no policy tables and never enter this branch.
 		exporter, ok := d.(interface {
@@ -211,7 +211,7 @@ func exportSnapshot(ctx context.Context, d exportQuerier, w io.Writer, opts Expo
 			return err
 		}
 	}
-	if sourceSchemaVersion >= 34 && opts.ProjectID == 0 {
+	if sourceSchemaVersion >= 33 && opts.ProjectID == 0 {
 		exporter, ok := d.(interface {
 			ExportRelayState(context.Context) iter.Seq2[db.ImportRecord, error]
 		})
@@ -223,7 +223,7 @@ func exportSnapshot(ctx context.Context, d exportQuerier, w io.Writer, opts Expo
 		}
 	}
 
-	if sourceSchemaVersion >= 35 {
+	if sourceSchemaVersion >= 33 {
 		filter := db.ExportFilter{IncludeDeleted: opts.IncludeDeleted}
 		if opts.ProjectID > 0 {
 			filter.ProjectID = &opts.ProjectID
@@ -259,7 +259,7 @@ func exportMeta(ctx context.Context, d exportQuerier, enc *Encoder, opts ExportO
 		if err != nil {
 			return err
 		}
-		if number >= 32 {
+		if number >= 33 {
 			if err := d.QueryRowContext(ctx, `SELECT uid FROM projects WHERE id=?`, opts.ProjectID).Scan(&selectedProjectUID); err != nil {
 				return err
 			}
@@ -1031,7 +1031,7 @@ func exportComments(ctx context.Context, d exportQuerier, enc *Encoder, opts Exp
 		teammateColumn = "comments.teammate"
 	}
 	replyColumns := "NULL, NULL, NULL"
-	if sourceSchemaVersion >= 36 {
+	if sourceSchemaVersion >= 32 {
 		replyColumns = "comments.reply_to_uid, comments.reply_kind, CAST(comments.edited_at AS TEXT)"
 	}
 	query := `SELECT comments.id, comments.uid, comments.issue_id, comments.author, comments.body, CAST(comments.created_at AS TEXT), ` + teammateColumn + ", " + replyColumns + `
@@ -1388,7 +1388,7 @@ func exportFederationBindings(
 		allowInsecureSelect = `allow_insecure`
 	}
 	relayConfigSelect := `NULL`
-	if sourceSchemaVersion >= 34 && opts.ProjectID <= 0 {
+	if sourceSchemaVersion >= 33 && opts.ProjectID <= 0 {
 		relayConfigSelect = `relay_config`
 	}
 	query := `SELECT project_id, role, hub_url, hub_project_id, hub_project_uid,
@@ -1551,7 +1551,7 @@ func exportFederationEnrollments(
 		adoptionBaselineEndSourceEventIDSelect = `adoption_baseline_end_source_event_id`
 	}
 	relaySelect := `NULL,0,NULL,1,0`
-	if sourceSchemaVersion >= 34 {
+	if sourceSchemaVersion >= 33 {
 		relaySelect = `relay_binding_uid,relay_protocol_version,parent_token_id,relay_reset_epoch,relay_serve_downstream`
 	}
 	query := `SELECT id, token_hash, spoke_instance_uid, project_id, capabilities,
@@ -1563,7 +1563,7 @@ func exportFederationEnrollments(
 	args := []any{}
 	if opts.ProjectID > 0 {
 		query += ` WHERE project_id = ?`
-		if sourceSchemaVersion >= 34 {
+		if sourceSchemaVersion >= 33 {
 			query += ` AND relay_protocol_version = 0 AND parent_token_id IS NULL AND relay_binding_uid IS NULL`
 		}
 		args = append(args, opts.ProjectID)
@@ -1736,11 +1736,10 @@ func exportEvents(ctx context.Context, d exportQuerier, enc *Encoder, opts Expor
 		relatedUIDScrub += ` OR (peer.id IS NOT NULL AND peer.project_id <> ?)`
 		selectArgs = append(selectArgs, opts.ProjectID, opts.ProjectID, opts.ProjectID)
 	}
-	relatedUIDScrub = `(` + relatedUIDScrub + `)`
 	if sourceSchemaVersion >= 33 {
 		// Root receipts sign related_issue_uid. Preserve it when the omitted
 		// peer belongs to an event whose exact content hash is still attested.
-		relatedUIDScrub += ` AND NOT EXISTS (
+		relatedUIDScrub = `(` + relatedUIDScrub + `) AND NOT EXISTS (
 			SELECT 1 FROM federation_event_provenance signed_receipt
 			 WHERE signed_receipt.project_uid=export_project.uid
 			   AND signed_receipt.event_uid=events.uid

@@ -1,3 +1,62 @@
+-- Project hub relay: team access policies, signed root attribution, project
+-- relay transport state, and portable embedding artifacts.
+
+-- Teams are daemon-local actor groups; restricted empty policies stay restricted.
+CREATE TABLE teams (
+ uid TEXT PRIMARY KEY CHECK (length(uid)=26),
+ name TEXT NOT NULL UNIQUE CHECK (length(trim(name))>0),
+ revision BIGINT NOT NULL DEFAULT 1 CHECK (revision>0)
+);
+CREATE TABLE team_memberships (
+ team_uid TEXT NOT NULL REFERENCES teams(uid) ON DELETE CASCADE,
+ actor TEXT NOT NULL CHECK (length(trim(actor))>0),
+ PRIMARY KEY(team_uid,actor)
+);
+CREATE INDEX idx_team_memberships_actor ON team_memberships(actor,team_uid);
+CREATE TABLE project_access_policies (
+ project_uid TEXT PRIMARY KEY REFERENCES projects(uid) ON DELETE CASCADE,
+ visibility TEXT NOT NULL CHECK (visibility IN ('all','teams')),
+ revision BIGINT NOT NULL DEFAULT 1 CHECK (revision>0)
+);
+CREATE TABLE project_access_teams (
+ project_uid TEXT NOT NULL REFERENCES project_access_policies(project_uid) ON DELETE CASCADE,
+ team_uid TEXT NOT NULL REFERENCES teams(uid) ON DELETE CASCADE,
+ PRIMARY KEY(project_uid,team_uid)
+);
+CREATE INDEX idx_project_access_teams_team ON project_access_teams(team_uid,project_uid);
+INSERT INTO meta(key,value) VALUES('project_access_revision','1');
+
+-- Root public-key pins and proofs are portable. Private signing material is not.
+CREATE TABLE federation_root_keys (
+ project_uid TEXT NOT NULL REFERENCES projects(uid) ON DELETE CASCADE,
+ authority_uid TEXT NOT NULL,
+ key_id TEXT NOT NULL,
+ public_key TEXT NOT NULL,
+ active SMALLINT NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
+ PRIMARY KEY(project_uid,key_id)
+);
+CREATE UNIQUE INDEX uniq_federation_root_active ON federation_root_keys(project_uid) WHERE active=1;
+CREATE TABLE federation_event_provenance (
+ project_uid TEXT NOT NULL,
+ event_uid TEXT NOT NULL,
+ content_hash TEXT NOT NULL,
+ reset_epoch BIGINT NOT NULL CHECK(reset_epoch>0),
+ sequence BIGINT NOT NULL CHECK(sequence>0),
+ key_id TEXT NOT NULL,
+ receipt TEXT NOT NULL,
+ PRIMARY KEY(project_uid,event_uid),
+ UNIQUE(project_uid,reset_epoch,sequence),
+ FOREIGN KEY(project_uid,key_id) REFERENCES federation_root_keys(project_uid,key_id) ON DELETE CASCADE
+);
+CREATE TABLE federation_entity_provenance (
+ project_uid TEXT NOT NULL,
+ kind TEXT NOT NULL CHECK(kind IN ('issue','comment')),
+ entity_uid TEXT NOT NULL,
+ event_uid TEXT NOT NULL,
+ PRIMARY KEY(project_uid,kind,entity_uid),
+ FOREIGN KEY(project_uid,event_uid) REFERENCES federation_event_provenance(project_uid,event_uid) ON DELETE CASCADE
+);
+
 -- Project-scoped transport grants remain linked to their human API credential.
 ALTER TABLE api_tokens DROP CONSTRAINT api_tokens_scope_shape;
 ALTER TABLE api_tokens ADD CONSTRAINT api_tokens_scope_shape CHECK (
@@ -60,3 +119,21 @@ CREATE TABLE federation_relay_cursors (
  acknowledged_through BIGINT NOT NULL DEFAULT 0 CHECK(acknowledged_through>=0 AND acknowledged_through<=emitted_through),
  PRIMARY KEY(binding_uid,stream,reset_epoch)
 );
+
+-- Portable original float32 artifacts are separate from the local vector index.
+-- Non-null staging_expires_at never establishes durable relay acceptance.
+CREATE TABLE federation_embedding_artifacts (
+  project_uid TEXT NOT NULL REFERENCES projects(uid) ON DELETE CASCADE,
+  digest TEXT NOT NULL CHECK(length(digest)=64),
+  issue_uid TEXT NOT NULL CHECK(length(issue_uid)=26),
+  input_hash TEXT NOT NULL CHECK(length(input_hash)=64),
+  recipe_fingerprint TEXT NOT NULL CHECK(length(recipe_fingerprint)=64),
+  vector_byte_size BIGINT NOT NULL CHECK(vector_byte_size BETWEEN 1 AND 16777216),
+  manifest TEXT NOT NULL CHECK(length(manifest) BETWEEN 1 AND 2097152),
+  artifact TEXT NOT NULL CHECK(length(artifact) BETWEEN 1 AND 33554432),
+  staging_expires_at TEXT,
+  PRIMARY KEY(project_uid,digest)
+);
+CREATE INDEX idx_embedding_artifacts_input ON federation_embedding_artifacts(project_uid,issue_uid,input_hash,recipe_fingerprint);
+CREATE INDEX idx_embedding_artifacts_staging ON federation_embedding_artifacts(project_uid,staging_expires_at) WHERE staging_expires_at IS NOT NULL;
+

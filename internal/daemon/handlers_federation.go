@@ -787,6 +787,7 @@ func registerFederationHandlers(humaAPI huma.API, cfg ServerConfig) {
 		if _, err := activeProjectByID(ctx, cfg.DB, in.ProjectID); err != nil {
 			return nil, err
 		}
+		ctx = db.WithFederationEventStream(ctx)
 		if in.AfterID < 0 {
 			return nil, api.NewError(400, "validation", "after_id must be non-negative", "", nil)
 		}

@@ -9,6 +9,10 @@ All notable changes to kata, grouped by release. Versioned releases start with
 
 ## Unreleased
 
+- Walk `kata --help` to find the agent workflow, issue conventions, and command
+  examples. Related commands are grouped, and subcommands list global flags
+  compactly. `kata label remove` aliases `kata label rm`.
+
 - Read the daemon's next-step hint in human, agent, and JSON errors. Agent
   errors put it on a separate `Hint:` line. Hints name CLI flags, such as
   `--force-new` and `--force`, instead of HTTP request fields. Unknown flags

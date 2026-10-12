@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"reflect"
 	"slices"
 
@@ -125,8 +126,14 @@ func (d *Store) relayServingBindingTx(ctx context.Context, tx db.Transaction, pr
 		return binding, "", err
 	}
 	var projectUID string
-	if err := tx.QueryRowContext(ctx, `SELECT uid FROM projects WHERE id=? AND deleted_at IS NULL `, projectID).Scan(&projectUID); err != nil {
+	err = tx.QueryRowContext(ctx, `SELECT uid FROM projects WHERE id=? AND deleted_at IS NULL `, projectID).Scan(&projectUID)
+	if errors.Is(err, sql.ErrNoRows) {
 		return binding, "", db.ErrNotFound
+	}
+	if err != nil {
+		// A serialization failure or lock conflict must stay retryable; only a
+		// missing project is a denial.
+		return binding, "", fmt.Errorf("relay serving project: %w", err)
 	}
 	if !binding.Enabled {
 		return binding, "", db.ErrNotFound

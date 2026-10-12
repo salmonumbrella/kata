@@ -1,4 +1,4 @@
-import type { KataCommentLink, KataReplyKind } from '@kenn-io/kata-ui'
+import type { KataCommentLink, KataReplyKind, KataCreationAttributionWire } from '@kenn-io/kata-ui'
 export type KataTaskViewName = 'inbox' | 'today' | 'delegated' | 'scheduled' | 'all' | 'logbook'
 
 export interface KataTaskChecklistItem {
@@ -138,7 +138,7 @@ export interface KataCommentReplyIntent {
   force: boolean
 }
 
-export interface KataComment {
+export interface KataComment extends KataCreationAttributionWire {
   uid?: string
   handle?: string
   reply?: KataCommentLink

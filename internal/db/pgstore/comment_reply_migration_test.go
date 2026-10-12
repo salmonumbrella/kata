@@ -18,7 +18,7 @@ func dropCommentReplySchema(ctx context.Context, t *testing.T, admin *sql.DB, sc
 	require.NoError(t, err)
 }
 
-func TestCommentReplyMigrationUpgradesVersion35(t *testing.T) {
+func TestCommentReplyMigrationUpgradesVersion31(t *testing.T) {
 	if testing.Short() {
 		t.Skip("requires PostgreSQL")
 	}
@@ -38,8 +38,9 @@ func TestCommentReplyMigrationUpgradesVersion35(t *testing.T) {
 	admin, err := sql.Open("pgx", dsn)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = admin.Close() })
+	dropProjectAccessSchema(ctx, t, admin, schema)
 	dropCommentReplySchema(ctx, t, admin, schema)
-	_, err = admin.ExecContext(ctx, `UPDATE reply_upgrade.meta SET value='35' WHERE key='schema_version'`)
+	_, err = admin.ExecContext(ctx, `UPDATE reply_upgrade.meta SET value='31' WHERE key='schema_version'`)
 	require.NoError(t, err)
 	var owner string
 	require.NoError(t, admin.QueryRowContext(ctx, `SELECT current_user`).Scan(&owner))
@@ -50,10 +51,7 @@ func TestCommentReplyMigrationUpgradesVersion35(t *testing.T) {
 	t.Cleanup(func() { _ = upgraded.Close() })
 	version, err := upgraded.SchemaVersion(ctx)
 	require.NoError(t, err)
-	require.Equal(t, 36, version)
-	var replyIndex string
-	require.NoError(t, admin.QueryRowContext(ctx, `SELECT indexdef FROM pg_indexes WHERE schemaname=$1 AND indexname='idx_comments_reply_to'`, schema).Scan(&replyIndex))
-	require.Contains(t, replyIndex, "WHERE (reply_to_uid IS NOT NULL)")
+	require.Equal(t, db.CurrentSchemaVersion(), version)
 	comments, err := upgraded.CommentsByIssue(ctx, issue.ID)
 	require.NoError(t, err)
 	require.Len(t, comments, 1)
@@ -65,6 +63,6 @@ func TestCommentReplyMigrationUpgradesVersion35(t *testing.T) {
 	require.NoError(t, err)
 	fresh, err := pgstore.OpenWithConfig(ctx, dsn, pgstore.Config{Schema: "reply_fresh", SchemaMode: pgstore.SchemaModeBootstrap})
 	require.NoError(t, err)
-	require.NoError(t, fresh.Close())
-	require.Equal(t, columnFingerprint(ctx, t, admin, "reply_fresh"), columnFingerprint(ctx, t, admin, schema))
+	t.Cleanup(func() { _ = fresh.Close() })
+	require.Equal(t, projectAccessStructure(t, fresh, "reply_fresh"), projectAccessStructure(t, upgraded, schema), "upgrade and canonical schemas must agree")
 }

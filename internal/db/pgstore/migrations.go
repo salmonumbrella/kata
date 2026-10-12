@@ -29,20 +29,11 @@ var issueStatusSyncMigrationSQL string
 //go:embed migrations/000031_native_cron.up.sql
 var nativeCronMigrationSQL string
 
-//go:embed migrations/000032_project_access.up.sql
-var projectAccessMigrationSQL string
-
-//go:embed migrations/000033_federation_provenance.up.sql
-var federationProvenanceMigrationSQL string
-
-//go:embed migrations/000034_project_relay.up.sql
-var projectRelayMigrationSQL string
-
-//go:embed migrations/000035_embedding_artifacts.up.sql
-var embeddingArtifactsMigrationSQL string
-
-//go:embed migrations/000036_comment_reply.up.sql
+//go:embed migrations/000032_comment_reply.up.sql
 var commentReplyMigrationSQL string
+
+//go:embed migrations/000033_project_hub_relay.up.sql
+var projectHubRelayMigrationSQL string
 
 // Migration is one immutable Postgres schema transition. Assets form an exact
 // version chain; callers applying them externally must stamp ToVersion only
@@ -89,11 +80,8 @@ var migrationAssets = []Migration{
 		SQL:         issueStatusSyncMigrationSQL,
 	},
 	{FromVersion: 30, ToVersion: 31, Name: "000031_native_cron.up.sql", SQL: nativeCronMigrationSQL},
-	{FromVersion: 31, ToVersion: 32, Name: "000032_project_access.up.sql", SQL: projectAccessMigrationSQL},
-	{FromVersion: 32, ToVersion: 33, Name: "000033_federation_provenance.up.sql", SQL: federationProvenanceMigrationSQL},
-	{FromVersion: 33, ToVersion: 34, Name: "000034_project_relay.up.sql", SQL: projectRelayMigrationSQL},
-	{FromVersion: 34, ToVersion: 35, Name: "000035_embedding_artifacts.up.sql", SQL: embeddingArtifactsMigrationSQL},
-	{FromVersion: 35, ToVersion: 36, Name: "000036_comment_reply.up.sql", SQL: commentReplyMigrationSQL},
+	{FromVersion: 31, ToVersion: 32, Name: "000032_comment_reply.up.sql", SQL: commentReplyMigrationSQL},
+	{FromVersion: 32, ToVersion: 33, Name: "000033_project_hub_relay.up.sql", SQL: projectHubRelayMigrationSQL},
 }
 
 // Migrations returns forward migrations from previously released Postgres

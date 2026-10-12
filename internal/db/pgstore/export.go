@@ -802,7 +802,7 @@ func (s *Store) ExportPendingClaimRequests(ctx context.Context, filter db.Export
 func (s *Store) ExportEvents(ctx context.Context, filter db.ExportFilter) iter.Seq2[db.EventExport, error] {
 	issueIDExpression := `events.issue_id`
 	relatedIDScrub := `(peer.id IS NULL AND (events.related_issue_id IS NOT NULL OR events.related_issue_uid IS NOT NULL))`
-	relatedUIDScrub := `(peer.id IS NULL AND (events.related_issue_id IS NOT NULL OR events.related_issue_uid IS NOT NULL) AND events.type <> 'issue.commented')`
+	relatedUIDScrub := `(peer.id IS NULL AND (events.related_issue_id IS NOT NULL OR events.related_issue_uid IS NOT NULL) AND events.type NOT IN ('issue.commented', 'issue.links_changed'))`
 	var args []any
 	if filter.ProjectID != nil {
 		issueIDExpression = `CASE WHEN subject_issue.id IS NOT NULL AND subject_issue.project_id <> $1 THEN NULL ELSE events.issue_id END`
@@ -815,11 +815,13 @@ func (s *Store) ExportEvents(ctx context.Context, filter db.ExportFilter) iter.S
 		relatedUIDScrub += ` OR (events.type = 'issue.links_changed' AND peer.deleted_at IS NOT NULL)`
 	}
 	relatedIDExpression := `CASE WHEN ` + relatedIDScrub + ` THEN NULL ELSE events.related_issue_id END`
+	// Root receipts sign related_issue_uid as part of the event hash. Keep that
+	// value when a signed event's peer is omitted, while clearing its local FK.
 	relatedUIDScrub = `(` + relatedUIDScrub + `) AND NOT EXISTS (
- SELECT 1 FROM federation_event_provenance signed_receipt
- WHERE signed_receipt.project_uid=export_project.uid
- AND signed_receipt.event_uid=events.uid
- AND signed_receipt.content_hash=events.content_hash)`
+		SELECT 1 FROM federation_event_provenance signed_receipt
+		 WHERE signed_receipt.project_uid=export_project.uid
+		   AND signed_receipt.event_uid=events.uid
+		   AND signed_receipt.content_hash=events.content_hash)`
 	relatedUIDExpression := `CASE WHEN ` + relatedUIDScrub + ` THEN NULL ELSE events.related_issue_uid END`
 	subjectLive := `(events.issue_id IS NULL OR subject_issue.id IS NOT NULL)`
 	if !filter.IncludeDeleted {

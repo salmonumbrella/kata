@@ -436,7 +436,7 @@ func (s *Store) materializeFederatedProjectTx(
 	if len(validators) > 0 {
 		validator = validators[0]
 	}
-	return s.materializeFederatedProjectTxScoped(ctx, tx, projectID, reconcileLinks, acceptedEventUIDs, false, validator)
+	return s.materializeFederatedProjectTxScoped(ctx, tx, projectID, reconcileLinks, acceptedEventUIDs, validator, false)
 }
 
 func (s *Store) materializeFederatedProjectRelayTx(
@@ -446,7 +446,7 @@ func (s *Store) materializeFederatedProjectRelayTx(
 	reconcileLinks bool,
 	acceptedEventUIDs []string,
 ) error {
-	return s.materializeFederatedProjectTxScoped(ctx, tx, projectID, reconcileLinks, acceptedEventUIDs, true, nil)
+	return s.materializeFederatedProjectTxScoped(ctx, tx, projectID, reconcileLinks, acceptedEventUIDs, nil, true)
 }
 
 func (s *Store) materializeFederatedProjectTxScoped(
@@ -455,8 +455,8 @@ func (s *Store) materializeFederatedProjectTxScoped(
 	projectID int64,
 	reconcileLinks bool,
 	acceptedEventUIDs []string,
-	projectOnlyLinks bool,
 	validator *db.CronReplayValidator,
+	projectOnlyLinks bool,
 ) error {
 	if err := db.LockCronProject(ctx, tx, projectID); err != nil {
 		return err

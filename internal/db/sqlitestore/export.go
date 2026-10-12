@@ -769,10 +769,12 @@ func (d *Store) ExportProjectPurgeLog(ctx context.Context, f db.ExportFilter) it
 func (d *Store) ExportEvents(ctx context.Context, f db.ExportFilter) iter.Seq2[db.EventExport, error] {
 	// Missing peer rows require a numeric-FK scrub. Comment events retain their
 	// portable target UID when a target has been purged, so their content hash
-	// and removed-target evidence survive export and restore. A project-filtered
-	// export still strips references to a peer in an omitted project.
+	// and removed-target evidence survive export and restore. Link history keeps
+	// its peer UID when no local peer exists, because federation-inserted link
+	// events carry only that UID. A project-filtered export still strips
+	// references to a peer in an omitted project.
 	relatedIDScrub := `(peer.id IS NULL AND (events.related_issue_id IS NOT NULL OR events.related_issue_uid IS NOT NULL))`
-	relatedUIDScrub := `(peer.id IS NULL AND (events.related_issue_id IS NOT NULL OR events.related_issue_uid IS NOT NULL) AND events.type <> 'issue.commented')`
+	relatedUIDScrub := `(peer.id IS NULL AND (events.related_issue_id IS NOT NULL OR events.related_issue_uid IS NOT NULL) AND events.type NOT IN ('issue.commented', 'issue.links_changed'))`
 	// SELECT-list args precede every WHERE-clause arg. Each expression binds
 	// its own project filter when the peer is in an omitted project.
 	var scrubArgs []any
@@ -786,11 +788,13 @@ func (d *Store) ExportEvents(ctx context.Context, f db.ExportFilter) iter.Seq2[d
 		relatedUIDScrub += ` OR (events.type = 'issue.links_changed' AND peer.deleted_at IS NOT NULL)`
 	}
 	relatedIDExpr := `CASE WHEN ` + relatedIDScrub + ` THEN NULL ELSE events.related_issue_id END`
+	// Root receipts sign related_issue_uid as part of the event hash. Keep that
+	// value when a signed event's peer is omitted, while clearing its local FK.
 	relatedUIDScrub = `(` + relatedUIDScrub + `) AND NOT EXISTS (
- SELECT 1 FROM federation_event_provenance signed_receipt
- WHERE signed_receipt.project_uid=export_project.uid
- AND signed_receipt.event_uid=events.uid
- AND signed_receipt.content_hash=events.content_hash)`
+		SELECT 1 FROM federation_event_provenance signed_receipt
+		 WHERE signed_receipt.project_uid=export_project.uid
+		   AND signed_receipt.event_uid=events.uid
+		   AND signed_receipt.content_hash=events.content_hash)`
 	relatedUIDExpr := `CASE WHEN ` + relatedUIDScrub + ` THEN NULL ELSE events.related_issue_uid END`
 	issueIDExpr := `events.issue_id`
 	var subjectArgs []any

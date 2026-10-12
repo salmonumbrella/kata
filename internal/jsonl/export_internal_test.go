@@ -216,7 +216,7 @@ func TestExportSnapshotProjectIncludesActiveMappingBeforeStateExists(t *testing.
 	assert.Equal(t, "field-one", mappings[0].ExternalFieldID)
 }
 
-// Schema32 cutover exports must retain hub-local restrictions in owner backups
+// Schema33 cutover exports must retain hub-local restrictions in owner backups
 // and exclude those local objects and their epoch from project transfers.
 func TestProjectAccessLegacyCutoverPreservesPolicy(t *testing.T) {
 	ctx := t.Context()
@@ -276,9 +276,9 @@ func TestProjectAccessLegacyScopedExportHidesPolicyEpoch(t *testing.T) {
 }
 
 // Released31 owns cron, while pending dependencies introduce their own owners
-// at32–36. Cutover must not query an owner before that schema introduced it.
+// together at33. Cutover must not query an owner before that schema introduced it.
 func TestCutoverExportDependencyVersionBoundaries(t *testing.T) {
-	for _, version := range []int{31, 32, 33, 34, 35} {
+	for _, version := range []int{31, 32, 33} {
 		t.Run(fmt.Sprintf("schema_%d", version), func(t *testing.T) {
 			ctx := t.Context()
 			source, err := sqlitestore.Open(ctx, filepath.Join(t.TempDir(), "source.db"))
@@ -288,13 +288,17 @@ func TestCutoverExportDependencyVersionBoundaries(t *testing.T) {
 			require.NoError(t, err)
 			issue, _, err := source.CreateIssue(ctx, db.CreateIssueParams{ProjectID: project.ID, Title: "Retained task", Author: "tester"})
 			require.NoError(t, err)
-			_, err = source.ExecContext(ctx, `DROP INDEX idx_comments_reply_to; ALTER TABLE comments DROP COLUMN reply_to_uid; ALTER TABLE comments DROP COLUMN reply_kind; ALTER TABLE comments DROP COLUMN edited_at`)
+			_, err = source.ExecContext(ctx, `DROP INDEX IF EXISTS idx_comments_reply_to`)
 			require.NoError(t, err)
-			if version < 35 {
+			if version < 32 {
+				_, err = source.ExecContext(ctx, `ALTER TABLE comments DROP COLUMN reply_to_uid; ALTER TABLE comments DROP COLUMN reply_kind; ALTER TABLE comments DROP COLUMN edited_at`)
+				require.NoError(t, err)
+			}
+			if version < 33 {
 				_, err = source.ExecContext(ctx, `DROP TABLE federation_embedding_artifacts`)
 				require.NoError(t, err)
 			}
-			if version < 34 {
+			if version < 33 {
 				_, err = source.ExecContext(ctx, `DROP TABLE federation_relay_outbox; DROP TABLE federation_relay_inbox; DROP TABLE federation_relay_cursors; ALTER TABLE federation_bindings DROP COLUMN relay_config`)
 				require.NoError(t, err)
 			}
@@ -302,7 +306,7 @@ func TestCutoverExportDependencyVersionBoundaries(t *testing.T) {
 				_, err = source.ExecContext(ctx, `DROP TABLE federation_entity_provenance; DROP TABLE federation_event_provenance; DROP TABLE federation_root_keys`)
 				require.NoError(t, err)
 			}
-			if version < 32 {
+			if version < 33 {
 				_, err = source.ExecContext(ctx, `DROP TABLE project_access_teams; DROP TABLE project_access_policies; DROP TABLE team_memberships; DROP TABLE teams`)
 				require.NoError(t, err)
 			}

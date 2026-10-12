@@ -515,12 +515,7 @@ func TestExportProjectIDOmitsRelayEnrollmentsWithSystemParents(t *testing.T) {
 
 	version, err := d.SchemaVersion(ctx)
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, version, 34)
-	_, err = d.ExecContext(ctx, `UPDATE meta SET value = '34' WHERE key = 'schema_version'`)
-	require.NoError(t, err)
-	version, err = d.SchemaVersion(ctx)
-	require.NoError(t, err)
-	require.Equal(t, 34, version)
+	require.Equal(t, 33, version, "relay enrollments exist from schema 33 on")
 	records := exportAndDecode(ctx, t, d, jsonl.ExportOptions{ProjectID: project.ID, IncludeDeleted: true})
 	for _, rec := range records {
 		assert.NotEqual(t, "federation_enrollment", rec["kind"],
@@ -903,8 +898,8 @@ func TestExportNoIncludeDeletedPreservesLinksChangedReferencingDeleted(t *testin
 	assert.True(t, found, "expected an exported issue.links_changed event referencing the soft-deleted peer")
 }
 
-func TestExportV33AndV34LiveOnlyPreservesSignedSoftDeletedPeerOnRestore(t *testing.T) {
-	for _, sourceVersion := range []int{33, 34} {
+func TestExportV33LiveOnlyPreservesSignedSoftDeletedPeerOnRestore(t *testing.T) {
+	for _, sourceVersion := range []int{33} {
 		t.Run(fmt.Sprintf("schema_%d", sourceVersion), func(t *testing.T) {
 			ctx, source, project := newExportEnv(t)
 			subject := createTesterIssue(ctx, t, source, project.ID, "subject", "")

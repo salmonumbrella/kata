@@ -130,7 +130,7 @@ func TestAgentFriendlyHelpForProjectAccessAndRelayCommands(t *testing.T) {
 		t.Error("root command does not define the admin command group")
 	}
 	rootHelp := string(executeRoot(t, newRootCmd(), "--help"))
-	if !strings.Contains(rootHelp, "Administrative commands") {
+	if !strings.Contains(rootHelp, "Administer (rarely needed by agents):") {
 		t.Error("root help does not render the admin command group")
 	}
 }

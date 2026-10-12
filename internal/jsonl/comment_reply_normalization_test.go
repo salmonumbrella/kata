@@ -27,7 +27,7 @@ func FuzzCommentReplyRecordNormalization(f *testing.F) {
 		input := db.CommentExport{UID: "01AAAAAAAAAAAAAAAAAAAAAAAA", ReplyToUID: "01BBBBBBBBBBBBBBBBBBBBBBBB", ReplyKind: kind, EditedAt: timestamp.Format(time.RFC3339Nano), CreatedAt: "2026-10-07T11:00:00Z", Body: "Evidence", Author: "worker"}
 		data, err := json.Marshal(input)
 		require.NoError(t, err)
-		record, err := toImportRecord(Envelope{Kind: KindComment, Data: jsontext.Value(data)}, 36, "", nil)
+		record, err := toImportRecord(Envelope{Kind: KindComment, Data: jsontext.Value(data)}, 32, "", nil)
 		require.NoError(t, err)
 		got := record.(*db.CommentExport)
 		require.Equal(t, input.ReplyToUID, got.ReplyToUID)
@@ -39,7 +39,7 @@ func FuzzCommentReplyRecordNormalization(f *testing.F) {
 		malformed.EditedAt = "bad"
 		data, err = json.Marshal(malformed)
 		require.NoError(t, err)
-		_, err = toImportRecord(Envelope{Kind: KindComment, Data: jsontext.Value(data)}, 36, "", nil)
+		_, err = toImportRecord(Envelope{Kind: KindComment, Data: jsontext.Value(data)}, 32, "", nil)
 		require.Error(t, err)
 	})
 }
