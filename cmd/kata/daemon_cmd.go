@@ -1310,6 +1310,11 @@ func runDaemonProcess(
 	todoistSyncWake := startTodoistSyncRunner(
 		ctx, workers, waitableDrainAdmission, store, todoistSyncFetcher, publisher, daemonLog, todoistSyncProgress,
 	)
+	tickTickSyncFetcher := newConfiguredTickTickSyncFetcher(dcfg.TickTickSync)
+	tickTickSyncProgress := issuesync.NewProgressTracker()
+	tickTickSyncWake := startTickTickSyncRunner(
+		ctx, workers, waitableDrainAdmission, store, tickTickSyncFetcher, publisher, daemonLog, tickTickSyncProgress,
+	)
 
 	externalRootRegistry, err := rootbridge.NewRegistry(ctx, dcfg.Connectors, nil)
 	if err != nil {
@@ -1395,6 +1400,10 @@ func runDaemonProcess(
 		NotionSyncConfig:          dcfg.NotionSync,
 		NotionSyncWake:            notionSyncWake,
 		NotionSyncProgress:        notionSyncProgress,
+		TickTickSyncFetcher:       tickTickSyncFetcher,
+		TickTickSyncConfig:        dcfg.TickTickSync,
+		TickTickSyncWake:          tickTickSyncWake,
+		TickTickSyncProgress:      tickTickSyncProgress,
 		PlaneSyncFetcher:          planeSyncFetcher,
 		PlaneSyncConfig:           dcfg.PlaneSync,
 		PlaneSyncWake:             planeSyncWake,
