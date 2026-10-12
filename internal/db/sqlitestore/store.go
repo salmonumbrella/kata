@@ -54,6 +54,7 @@ type Store struct {
 	relayHistoryFullScanObserver func()
 	relayHistoryCache            *relayHistoryValidationCache
 	replaceTargetMetadata        bool
+	federationIngestPrepared     func()
 }
 
 // readQuerier is the read-only query surface shared between *sql.DB and *sql.Tx.
