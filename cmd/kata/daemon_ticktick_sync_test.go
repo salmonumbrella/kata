@@ -59,14 +59,14 @@ func runtimeTickTickBinding(t *testing.T, store db.Storage, id int64) db.IssueSy
 func readRuntimeTickTickStatus(t *testing.T, h http.Handler, id int64) runtimeNotionStatus {
 	t.Helper()
 	w := httptest.NewRecorder()
-	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/projects/%d/issue-sync/ticktick/status", id), nil))
+	h.ServeHTTP(w, newRuntimeNotionRequest(http.MethodGet, fmt.Sprintf("/api/v1/projects/%d/issue-sync/ticktick/status", id), nil))
 	require.Equal(t, 200, w.Code, w.Body.String())
 	var s runtimeNotionStatus
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &s))
 	return s
 }
 func ticktickRuntimePost(id int64, action string, body io.Reader) *http.Request {
-	r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/projects/%d/issue-sync/ticktick/%s", id, action), body)
+	r := newRuntimeNotionRequest(http.MethodPost, fmt.Sprintf("/api/v1/projects/%d/issue-sync/ticktick/%s", id, action), body)
 	r.Header.Set("Content-Type", "application/json")
 	return r
 }

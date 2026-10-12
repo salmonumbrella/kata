@@ -108,6 +108,12 @@ func TestPostgresMigrationRegistryIncludesIssueStatusColumns(t *testing.T) {
 	assert.Equal(t, 30, migrations[5].FromVersion)
 	assert.Equal(t, 31, migrations[5].ToVersion)
 	assert.Equal(t, "000031_native_cron.up.sql", migrations[5].Name)
+	assert.Equal(t, 31, migrations[6].FromVersion)
+	assert.Equal(t, 32, migrations[6].ToVersion)
+	assert.Equal(t, "000032_comment_reply.up.sql", migrations[6].Name)
+	assert.Equal(t, 32, migrations[7].FromVersion)
+	assert.Equal(t, 33, migrations[7].ToVersion)
+	assert.Equal(t, "000033_project_hub_relay.up.sql", migrations[7].Name)
 }
 
 func TestExternalRootMigrationUpgradesVersion25(t *testing.T) {
