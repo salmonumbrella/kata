@@ -776,10 +776,11 @@ func (l ListAllIssuesQueryStatus) Validate() error {
 	}
 }
 
-// ListAllIssuesQuerySort oldest = created_at ascending, then id ascending; empty preserves the route default
+// ListAllIssuesQuerySort oldest = creation ascending; created = creation descending; both use id as tie-breaker; empty preserves the route default
 type ListAllIssuesQuerySort string
 
 const (
+	Created                     ListAllIssuesQuerySort = "created"
 	ListAllIssuesQuerySortEmpty ListAllIssuesQuerySort = ""
 	Oldest                      ListAllIssuesQuerySort = "oldest"
 )
@@ -787,7 +788,7 @@ const (
 // Validate checks if the ListAllIssuesQuerySort value is valid
 func (l ListAllIssuesQuerySort) Validate() error {
 	switch l {
-	case ListAllIssuesQuerySortEmpty, Oldest:
+	case Created, ListAllIssuesQuerySortEmpty, Oldest:
 		return nil
 	default:
 		return runtime.NewValidationErrorsFromString("Enum", fmt.Sprintf("must be a valid ListAllIssuesQuerySort value, got: %v", l))
@@ -849,18 +850,19 @@ func (l ListIssuesQueryStatus) Validate() error {
 	}
 }
 
-// ListIssuesQuerySort oldest = created_at ascending, then id ascending; empty preserves the route default
+// ListIssuesQuerySort oldest = creation ascending; created = creation descending; both use id as tie-breaker; empty preserves the route default
 type ListIssuesQuerySort string
 
 const (
-	ListIssuesQuerySortEmpty  ListIssuesQuerySort = ""
-	ListIssuesQuerySortOldest ListIssuesQuerySort = "oldest"
+	ListIssuesQuerySortCreated ListIssuesQuerySort = "created"
+	ListIssuesQuerySortEmpty   ListIssuesQuerySort = ""
+	ListIssuesQuerySortOldest  ListIssuesQuerySort = "oldest"
 )
 
 // Validate checks if the ListIssuesQuerySort value is valid
 func (l ListIssuesQuerySort) Validate() error {
 	switch l {
-	case ListIssuesQuerySortEmpty, ListIssuesQuerySortOldest:
+	case ListIssuesQuerySortCreated, ListIssuesQuerySortEmpty, ListIssuesQuerySortOldest:
 		return nil
 	default:
 		return runtime.NewValidationErrorsFromString("Enum", fmt.Sprintf("must be a valid ListIssuesQuerySort value, got: %v", l))
@@ -902,6 +904,24 @@ func (i IssuePlanningDatesQueryKind) Validate() error {
 		return nil
 	default:
 		return runtime.NewValidationErrorsFromString("Enum", fmt.Sprintf("must be a valid IssuePlanningDatesQueryKind value, got: %v", i))
+	}
+}
+
+// SearchIssuesQuerySort oldest selects exhaustive creation-ordered lexical pages; omit for relevance ranking
+type SearchIssuesQuerySort string
+
+const (
+	SearchIssuesQuerySortEmpty  SearchIssuesQuerySort = ""
+	SearchIssuesQuerySortOldest SearchIssuesQuerySort = "oldest"
+)
+
+// Validate checks if the SearchIssuesQuerySort value is valid
+func (s SearchIssuesQuerySort) Validate() error {
+	switch s {
+	case SearchIssuesQuerySortEmpty, SearchIssuesQuerySortOldest:
+		return nil
+	default:
+		return runtime.NewValidationErrorsFromString("Enum", fmt.Sprintf("must be a valid SearchIssuesQuerySort value, got: %v", s))
 	}
 }
 

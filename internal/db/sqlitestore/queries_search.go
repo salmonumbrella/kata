@@ -55,7 +55,7 @@ func (d *Store) searchFTS(ctx context.Context, r searchFTSReq) ([]db.SearchCandi
 	// Cap unbounded callers — the per-column subqueries make a huge limit
 	// expensive, and the HTTP layer is the natural enforcer but defending
 	// here is cheap.
-	if limit > 200 {
+	if limit > 200 && !r.params.StableOrder {
 		limit = 200
 	}
 
@@ -106,6 +106,13 @@ func (d *Store) searchFTS(ctx context.Context, r searchFTSReq) ([]db.SearchCandi
 	}
 	scopeFilter.WriteString(" AND " + authorizedIssuePredicate(ctx, "i.project_id", &filterArgs))
 	rowFilter += scopeFilter.String()
+	if r.params.After != nil {
+		key := creationKeySQL("i")
+		rowFilter += fmt.Sprintf(" AND (%s > ? OR (%s = ? AND i.id > ?))", key, key)
+		stamp := r.params.After.CreatedAt.UTC().Format(creationCursorTimeFormat)
+		filterArgs = append(filterArgs, stamp, stamp, r.params.After.ID)
+	}
+
 	helper, err := sqlitefts.New(
 		sqlitefts.WithIndexTable("issues_fts"), sqlitefts.WithIndexKey("rowid"),
 		sqlitefts.WithSourceTable("issues"), sqlitefts.WithSourceKey("id"),
@@ -123,6 +130,13 @@ func (d *Store) searchFTS(ctx context.Context, r searchFTSReq) ([]db.SearchCandi
 	if err != nil {
 		return nil, fmt.Errorf("search fts: %w", err)
 	}
+	if r.params.StableOrder {
+		candidates.SQL = strings.Replace(candidates.SQL, "ORDER BY score DESC, doc_key ASC", "ORDER BY "+creationKeySQL("d")+" ASC, doc_key ASC", 1)
+	}
+	order := "candidates.score DESC, i.id ASC"
+	if r.params.StableOrder {
+		order = creationKeySQL("i") + " ASC, i.id ASC"
+	}
 	query := fmt.Sprintf(`WITH candidates AS (%s)
 		SELECT `+issueColumns+`,
 		       candidates.score,
@@ -132,7 +146,7 @@ func (d *Store) searchFTS(ctx context.Context, r searchFTSReq) ([]db.SearchCandi
 		FROM candidates
 		JOIN issues i ON i.id = candidates.doc_key
 		JOIN projects p ON p.id = i.project_id
-		ORDER BY candidates.score DESC, i.id ASC`, candidates.SQL)
+		ORDER BY %s`, candidates.SQL, order)
 	args := append(candidates.Args, colPhrase, colPhrase, colPhrase)
 
 	rows, err := d.QueryContext(ctx, query, args...)
