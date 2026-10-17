@@ -291,24 +291,16 @@ func TestKataDSN_EmptyStorageDSNFallsThroughToDefault(t *testing.T) {
 	assert.Equal(t, filepath.Join(home, "kata.db"), got)
 }
 
-// TestKataDSN_TolerantOfMalformedAuthSection is the scope-narrowing invariant:
-// a parse error in an unrelated section (auth, listen, close, ...) must not
-// block KataDSN from resolving its [storage].dsn. Legacy KATA_DB callers
-// were never gated on the daemon config; the new TOML branch must not
-// regress that.
-func TestKataDSN_TolerantOfMalformedAuthSection(t *testing.T) {
+// Syntax is global even though storage ignores unrelated semantic errors.
+func TestKataDSN_RejectsMalformedAuthSection(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("KATA_HOME", home)
 	t.Setenv("KATA_DSN", "")
 	t.Setenv("KATA_DB", "")
-	// A genuinely broken auth section that ReadDaemonConfig would reject.
 	body := "[storage]\ndsn = \"postgres://h/db\"\n[auth]\ntoken =\n"
-	require.NoError(t, os.WriteFile(filepath.Join(home, "config.toml"),
-		[]byte(body), 0o600))
-
-	got, err := config.KataDSN(context.Background())
-	require.NoError(t, err, "unrelated-section parse errors must not block KataDSN")
-	assert.Equal(t, "postgres://h/db", got)
+	require.NoError(t, os.WriteFile(filepath.Join(home, "config.toml"), []byte(body), 0600))
+	_, err := config.KataDSN(context.Background())
+	require.ErrorContains(t, err, "parse ")
 }
 
 func TestKataDSN_ReadsCommentedStorageHeadingAndStopsAtCommentedPeer(t *testing.T) {
@@ -316,7 +308,7 @@ func TestKataDSN_ReadsCommentedStorageHeadingAndStopsAtCommentedPeer(t *testing.
 	t.Setenv("KATA_HOME", home)
 	t.Setenv("KATA_DSN", "")
 	t.Setenv("KATA_DB", "")
-	body := "[storage] # primary database\ndsn = \"postgres://h/db\"\n[auth] # unrelated\ntoken =\n"
+	body := "[storage] # primary database\ndsn = \"postgres://h/db\"\n[auth] # unrelated\ntoken = \"\"\n"
 	require.NoError(t, os.WriteFile(filepath.Join(home, "config.toml"), []byte(body), 0o600))
 
 	got, err := config.KataDSN(context.Background())
@@ -337,7 +329,7 @@ func TestKataDSN_RejectsUnknownStorageKeys(t *testing.T) {
 		},
 		{
 			name:    "postgres",
-			body:    "[storage]\ndsn = \"postgres://h/db\"\n[storage.postgres]\nscheam = \"wrong\"\n[auth]\ntoken =\n",
+			body:    "[storage]\ndsn = \"postgres://h/db\"\n[storage.postgres]\nscheam = \"wrong\"\n[auth]\ntoken = \"\"\n",
 			wantKey: "storage.postgres.scheam",
 		},
 	} {
