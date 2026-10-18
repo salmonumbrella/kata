@@ -31,6 +31,10 @@ func (f *fixtureSource) Authorize(context.Context, Scope) error {
 	f.authCalls++
 	return f.authErr
 }
+
+func (f *fixtureSource) AuthorizeOccurrence(ctx context.Context, scope Scope, _ Payload) error {
+	return f.Authorize(ctx, scope)
+}
 func (f *fixtureSource) Head(context.Context, Scope) (Position, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

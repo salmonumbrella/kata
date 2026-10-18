@@ -24,6 +24,10 @@ func (wireEventSource) Resolve(_ context.Context, a mcpevents.Arguments) (mcpeve
 	return mcpevents.Scope{Arguments: a, Projects: []mcpevents.Project{{UID: wireProjectUID, ID: 42, Name: "spoke-project"}}}, nil
 }
 func (wireEventSource) Authorize(context.Context, mcpevents.Scope) error { return nil }
+
+func (wireEventSource) AuthorizeOccurrence(context.Context, mcpevents.Scope, mcpevents.Payload) error {
+	return nil
+}
 func (wireEventSource) Head(context.Context, mcpevents.Scope) (mcpevents.Position, error) {
 	return mcpevents.Position{wireProjectUID: 0}, nil
 }

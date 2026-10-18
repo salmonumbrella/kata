@@ -7,10 +7,11 @@ import (
 )
 
 var (
-	ErrRevoked       = errors.New("event source authority revoked")
-	ErrUnavailable   = errors.New("event source temporarily unavailable")
-	ErrScopeChanged  = errors.New("event source scope changed")
-	ErrResourceLimit = errors.New("event source exceeds project resource limit")
+	ErrRevoked          = errors.New("event source authority revoked")
+	ErrUnavailable      = errors.New("event source temporarily unavailable")
+	ErrScopeChanged     = errors.New("event source scope changed")
+	ErrResourceLimit    = errors.New("event source exceeds project resource limit")
+	ErrOccurrenceHidden = errors.New("event occurrence is outside current source visibility")
 )
 
 // Source exposes committed authorized daemon events without a database handle.
@@ -18,6 +19,9 @@ var (
 type Source interface {
 	Resolve(context.Context, Arguments) (Scope, error)
 	Authorize(context.Context, Scope) error
+	// AuthorizeOccurrence rechecks the issue/project behind a pending payload.
+	// Hidden occurrences are withheld without revoking the remaining scope.
+	AuthorizeOccurrence(context.Context, Scope, Payload) error
 	Head(context.Context, Scope) (Position, error)
 	Read(context.Context, Scope, Position, int) (SourcePage, error)
 }
