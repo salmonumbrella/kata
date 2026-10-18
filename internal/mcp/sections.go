@@ -34,6 +34,18 @@ func registerSectionLoaders(server *sdkmcp.Server, options Options) {
 		options.StorageAdmin != nil,
 		options.EnableTokenAdmin && options.Scope.Mode() == ScopeAll,
 	)
+	if options.Events != nil {
+		for i := range sections {
+			if sections[i].section == "coordination" {
+				sections[i].tools = []string{"kata.assign", "kata.event_delivery_retry", "kata.event_subscriptions", "kata.inbox", "kata.status", "kata.unassign"}
+				sections[i].description += " Includes scoped webhook delivery health and explicit retry for the configured native Events service."
+				sections[i].register = func(server *sdkmcp.Server, h toolHandlers) {
+					registerCoordinationTools(server, h)
+					registerEventDeliveryTools(server, h)
+				}
+			}
+		}
+	}
 	loaded := make(map[string]bool, len(sections))
 	var mutex sync.Mutex
 	for _, definition := range sections {

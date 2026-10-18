@@ -14,6 +14,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"go.kenn.io/kata/internal/commentref"
+	"go.kenn.io/kata/internal/mcpevents"
 	"go.kenn.io/kata/internal/notification"
 	"go.kenn.io/kata/internal/storageadmin"
 	"go.kenn.io/kata/internal/teammate"
@@ -30,6 +31,8 @@ const (
 
 // Options fixes the Kata daemon scope and actor for one MCP process.
 type Options struct {
+	// Events is an already-open durable service owned by the process, not an MCP session.
+	Events            *mcpevents.Service
 	Client            *kataclient.Client
 	LongRunningClient *kataclient.Client
 	Scope             *Scope
@@ -98,6 +101,11 @@ func New(options Options) (*sdkmcp.Server, error) {
 		options.ObserveToolCall,
 	))
 	server.AddReceivingMiddleware(cacheHintsMiddleware)
+	if options.Events != nil {
+		if err := registerNativeEvents(server, options.Events); err != nil {
+			return nil, err
+		}
+	}
 	registerSectionLoaders(server, options)
 	return server, nil
 }
