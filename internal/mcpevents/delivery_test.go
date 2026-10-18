@@ -175,3 +175,15 @@ func TestDeliveryBackoffAndElapsedBound(t *testing.T) {
 		t.Fatalf("elapsed exhaustion did not freeze pending: %+v %v received=%d", sub, err, received)
 	}
 }
+
+func TestDeliveryAuthorityGuardDoesNotConsumeCallbackAttempt(t *testing.T) {
+	state, _ := openTestState(t)
+	sub := deliverySubscription()
+	var received int
+	w, _ := fixtureWebhook(t, func(rw http.ResponseWriter, r *http.Request) { received++; rw.WriteHeader(204) })
+	ctx := withWebhookGuard(context.Background(), func(context.Context) error { return ErrUnavailable })
+	result, err := attemptDelivery(ctx, state.Identity(), sub, w, sub.Pending.CreatedAt, state.Save)
+	if err != nil || received != 0 || result.Pending == nil || result.Pending.Attempts != 0 || result.Status.Category != "source_unavailable" || !reflect.DeepEqual(result.Positions, sub.Positions) {
+		t.Fatalf("authority failure consumed callback authority or attempt: %+v %v received=%d", result, err, received)
+	}
+}

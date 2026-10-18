@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -92,6 +93,18 @@ func attemptDelivery(ctx context.Context, identity Identity, current Subscriptio
 		keys = append(keys, "whsec_"+base64.StdEncoding.EncodeToString(sub.PreviousSigningKey))
 	}
 	receipt, err := webhook.Send(ctx, sub.CallbackURL, pending.EventID, sub.ID, pending.Envelope, keys)
+	if errors.Is(err, ErrUnavailable) || errors.Is(err, ErrRevoked) {
+		pending.Attempts--
+		sub.Status.Attempts = pending.Attempts
+		sub.Status.Category = "source_unavailable"
+		if errors.Is(err, ErrRevoked) {
+			sub.Disabled = true
+			sub.Pending = nil
+			sub.Generation++
+			sub.Status.Category = "principal_revoked"
+		}
+		return sub, persist(sub)
+	}
 	category := ""
 	if err != nil {
 		category = safeWebhookError(err).Reason

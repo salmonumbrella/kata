@@ -30,9 +30,21 @@ const (
 
 // WebhookError deliberately retains no callback URL, secret, response body or
 // wrapped network error. Reasons are safe for persisted delivery diagnostics.
-type WebhookError struct{ Reason string }
+type WebhookError struct {
+	Reason string
+	cause  error
+}
 
 func (e *WebhookError) Error() string { return "webhook: " + e.Reason }
+func (e *WebhookError) Unwrap() error { return e.cause }
+
+type webhookGuardKey struct{}
+
+// An authority guard captures immutable scope, never a caller-owned record.
+// It is rechecked after DNS and bounded even when net/http detaches a dial.
+func withWebhookGuard(ctx context.Context, guard func(context.Context) error) context.Context {
+	return context.WithValue(ctx, webhookGuardKey{}, guard)
+}
 
 // WebhookReceipt reports receiver acceptance, not completion of an inbox task.
 // HTTP rejection policy and durable retries belong to the delivery service.
@@ -231,6 +243,11 @@ func (w *WebhookClient) dialPublic(ctx context.Context, network, address string)
 	}
 	var last error
 	for _, ip := range addresses {
+		if guard, ok := ctx.Value(webhookGuardKey{}).(func(context.Context) error); ok {
+			if err := guard(ctx); err != nil {
+				return nil, err
+			}
+		}
 		conn, err := w.dial(ctx, network, net.JoinHostPort(ip.Unmap().String(), port))
 		if err == nil {
 			return conn, nil
@@ -260,6 +277,12 @@ func safeWebhookError(err error) *WebhookError {
 	var safe *WebhookError
 	if errors.As(err, &safe) {
 		return safe
+	}
+	if errors.Is(err, ErrRevoked) {
+		return &WebhookError{Reason: "principal_revoked", cause: ErrRevoked}
+	}
+	if errors.Is(err, ErrUnavailable) || errors.Is(err, ErrScopeChanged) {
+		return &WebhookError{Reason: "source_unavailable", cause: ErrUnavailable}
 	}
 	var netError net.Error
 	if errors.Is(err, context.DeadlineExceeded) || errors.As(err, &netError) && netError.Timeout() {
@@ -312,6 +335,16 @@ func (w *WebhookClient) request(ctx context.Context, callback, eventID, subscrip
 			return nil, err
 		}
 		decoded = append(decoded, value)
+	}
+	if guard, ok := ctx.Value(webhookGuardKey{}).(func(context.Context) error); ok {
+		guardCtx, cancel := context.WithTimeout(ctx, webhookTimeout)
+		defer cancel()
+		ctx = withWebhookGuard(ctx, func(context.Context) error {
+			if err := guardCtx.Err(); err != nil {
+				return err
+			}
+			return guard(guardCtx)
+		})
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, callback, bytes.NewReader(body))
 	if err != nil {
