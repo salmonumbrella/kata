@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.kenn.io/kata/internal/mcpevents"
@@ -96,6 +97,24 @@ func TestMCPEventsHTTPStartupOpensDurableService(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result.Events, 1)
 	require.Equal(t, "kata.inbox.changed", result.Events[0].Name)
+	// A native2026 client must work through the real CLI listener too, while
+	// the legacy session above remains connected for tool-list notifications.
+	raw := []byte(`{"jsonrpc":"2.0","id":5,"method":"events/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}`)
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodPost, endpoint, bytes.NewReader(raw))
+	require.NoError(t, err)
+	request.Header.Set("Authorization", "Bearer test-mcp-token")
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "application/json, text/event-stream")
+	request.Header.Set("MCP-Protocol-Version", "2026-07-28")
+	request.Header.Set("Mcp-Method", "events/list")
+	response, err := http.DefaultClient.Do(request)
+	require.NoError(t, err)
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, response.StatusCode, "%s", body)
+	require.Contains(t, string(body), "kata.inbox.changed")
+
 	_, err = mcpevents.OpenState(stateDir, mcpevents.Binding{})
 	require.ErrorIs(t, err, mcpevents.ErrStateLocked, "the process must retain exclusive ownership beyond a tool call")
 	identity, err := os.ReadFile(filepath.Join(stateDir, "identity.json"))

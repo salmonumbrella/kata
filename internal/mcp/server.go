@@ -47,7 +47,7 @@ type Options struct {
 	ObserveToolCall func()
 }
 
-// New creates a tools-only MCP server for one startup project scope.
+// New creates a scoped MCP server with optional native webhook Events.
 func New(options Options) (*sdkmcp.Server, error) {
 	if options.Client == nil {
 		return nil, errors.New("kata API client is required")

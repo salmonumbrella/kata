@@ -491,13 +491,16 @@ available through MCP.
 Kata delegates protocol negotiation to the official Go MCP SDK. Stateless
 clients can use `server/discover`; session clients can use `initialize` and
 `notifications/initialized`. Stdio accepts both. The Streamable HTTP listener
-keeps sessions so section loaders can send tool-list changes, so it answers
-other calls that carry 2026-07-28 per-request metadata with an
-unsupported-version error listing the session versions it accepts. JSON-RPC
+keeps legacy sessions so section loaders can send tool-list changes. Requests
+with a `MCP-Protocol-Version` header of `2026-07-28` use the stateless core
+protocol on the same endpoint, with matching per-request metadata. Both paths
+share the configured bearer, Host, and cross-origin checks. JSON-RPC
 batches are rejected. Each compact JSON message is limited to 8 MiB.
 
-Kata advertises tools only, including tool-list changes. It does not advertise prompts, resources, roots,
-logging, sampling, subscriptions, or server-to-client requests. Discovery uses
+Kata advertises tools, including tool-list changes. Enabling native inbox
+events additionally advertises the webhook Events capability described below.
+It does not advertise prompts, resources, roots, logging, sampling, or
+server-to-client requests. Discovery uses
 a five-minute private cache hint. Tool execution allows 20 starts per second,
 a burst of 20, and at most eight concurrent daemon calls per server process.
 
@@ -522,5 +525,5 @@ pages and read the issue. A receipt does not claim, clear, or complete work.
 
 The [native events operator guide](../operations/mcp-events.md) covers callback
 verification, startup binding, expiry, refresh, replay, revocation, diagnostics,
-and recovery. `kata.events_status` and `kata.events_retry` are available through
+and recovery. `kata.event_subscriptions` and `kata.event_delivery_retry` are available through
 `kata.load_coordination` when events are enabled.

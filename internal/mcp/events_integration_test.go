@@ -26,7 +26,6 @@ import (
 	"testing"
 	"time"
 
-	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 	"go.kenn.io/kata/internal/daemon"
 	"go.kenn.io/kata/internal/db"
@@ -51,6 +50,7 @@ type eventsIntegrationFixture struct {
 	receiptsMu sync.Mutex
 	receipts   map[string][]byte
 	receiptDir string
+	dispatch   func(mcpevents.Envelope)
 }
 
 func newEventsIntegrationFixture(t *testing.T) *eventsIntegrationFixture {
@@ -97,7 +97,7 @@ func newEventsIntegrationFixture(t *testing.T) *eventsIntegrationFixture {
 	t.Cleanup(func() { require.NoError(t, f.service.Close()); require.NoError(t, <-serviceDone) })
 	server, err := New(Options{Client: client, Scope: scope, Actor: "example-agent", Teammate: "worker", Version: "test", Events: f.service})
 	require.NoError(t, err)
-	handler := sdkmcp.NewStreamableHTTPHandler(func(*http.Request) *sdkmcp.Server { return server }, &sdkmcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+	handler := NewHTTPHandler(server)
 	f.http = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer "+integrationBearer {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -162,6 +162,9 @@ func (f *eventsIntegrationFixture) receive(w http.ResponseWriter, r *http.Reques
 	f.receipts[event.EventID] = bytes.Clone(raw)
 	f.receiptsMu.Unlock()
 	if !duplicate {
+		if f.dispatch != nil {
+			f.dispatch(event)
+		}
 		f.received <- event
 	}
 
@@ -258,6 +261,8 @@ func TestReceiverDurableDeduplicationAndWorkerAvailability(t *testing.T) {
 	for _, availability := range []string{"idle", "busy", "unavailable"} {
 		t.Run(availability, func(t *testing.T) {
 			f := newEventsIntegrationFixture(t)
+			worker := &fixtureWorker{availability: availability}
+			f.dispatch = worker.accept
 			event := mcpevents.Envelope{EventID: "fixture-event", Name: "kata.inbox.changed", Timestamp: f.now().Format(time.RFC3339Nano), Data: mcpevents.Payload{Recipient: "example-agent/worker", Reason: "notification"}, Cursor: "opaque-cursor"}
 			raw, err := json.Marshal(event)
 			require.NoError(t, err)
@@ -278,18 +283,26 @@ func TestReceiverDurableDeduplicationAndWorkerAvailability(t *testing.T) {
 			}
 			post()
 			received := f.next(t, func(e mcpevents.Envelope) bool { return e.EventID == event.EventID })
-			// This fake dispatcher maps the receipt to an existing idle worker or a
-			// pending queue. Receipt acceptance never creates a worker or clears work.
-			started, queued := 0, 0
-			if availability == "idle" {
-				started++
-			} else {
-				queued++
-			}
 			require.Equal(t, event.EventID, received.EventID)
+			// Forget the in-memory receipt index: deduplication survives a
+			// receiver restart because the durable receipt is authoritative.
+			f.receiptsMu.Lock()
+			f.receipts = map[string][]byte{}
+			f.receiptsMu.Unlock()
 			post()
 			require.Empty(t, f.received, "a duplicate receipt must not dispatch a second wake")
-			require.Equal(t, 1, started+queued)
+			switch availability {
+			case "idle":
+				require.Equal(t, 1, worker.starts)
+				require.Empty(t, worker.pending)
+			case "busy":
+				require.Zero(t, worker.starts)
+				require.True(t, worker.pending["example-agent/worker"])
+			case "unavailable":
+				require.Zero(t, worker.starts)
+				require.True(t, worker.pending["example-agent"])
+			}
+
 			entries, err := os.ReadDir(f.receiptDir)
 			require.NoError(t, err)
 			require.Len(t, entries, 1)
@@ -297,5 +310,29 @@ func TestReceiverDurableDeduplicationAndWorkerAvailability(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, raw, receipt)
 		})
+	}
+}
+
+// fixtureWorker is a receiver-owned runtime map, not a production agent launcher.
+// Busy workers coalesce by inbox; unavailable workers retain actor attention.
+type fixtureWorker struct {
+	availability string
+	starts       int
+	pending      map[string]bool
+}
+
+func (w *fixtureWorker) accept(event mcpevents.Envelope) {
+	if w.pending == nil {
+		w.pending = map[string]bool{}
+	}
+	switch w.availability {
+	case "idle":
+		w.starts++
+		w.availability = "busy"
+	case "busy":
+		w.pending[event.Data.Recipient] = true
+	default:
+		actor, _, _ := strings.Cut(event.Data.Recipient, "/")
+		w.pending[actor] = true
 	}
 }

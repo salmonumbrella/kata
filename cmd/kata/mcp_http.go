@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"go.kenn.io/kata/internal/config"
+	mcpserver "go.kenn.io/kata/internal/mcp"
 	"go.kenn.io/kata/internal/mcpdiscovery"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -104,13 +105,7 @@ func serveMCPHTTP(
 	}
 	defer func() { _ = listener.Close() }()
 
-	var mcpHandler http.Handler = sdkmcp.NewStreamableHTTPHandler(
-		func(*http.Request) *sdkmcp.Server { return server },
-		&sdkmcp.StreamableHTTPOptions{
-			SessionTimeout:               30 * time.Minute,
-			PropagateRequestCancellation: true,
-		},
-	)
+	var mcpHandler http.Handler = mcpserver.NewHTTPHandler(server)
 	mcpHandler = http.NewCrossOriginProtection().Handler(mcpHandler)
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", requireMCPHTTPBearer(token, mcpHandler))

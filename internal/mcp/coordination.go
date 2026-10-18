@@ -51,7 +51,7 @@ type InboxOutput struct {
 	NextCursor *string        `json:"next_cursor,omitempty"`
 	Recipient  string         `json:"recipient"`
 	Requests   []InboxRequest `json:"requests"`
-	Truncated  bool           `json:"truncated" jsonschema:"More open issues carry requests than the limit allowed"`
+	Truncated  bool           `json:"truncated" jsonschema:"More candidate issues remain; follow next_cursor until absent, including empty filtered pages"`
 }
 
 // StatusInput selects one issue.
