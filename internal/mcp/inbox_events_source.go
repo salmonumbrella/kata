@@ -176,6 +176,58 @@ func (s *inboxEventsSource) Authorize(ctx context.Context, pinned mcpevents.Scop
 	return err
 }
 
+// AuthorizeOccurrence checks the pending issue's current visibility, including
+// subtree containment enforced by ShowIssueByUID. Historical and current
+// projects may differ only while both remain inside the configured scope.
+func (s *inboxEventsSource) AuthorizeOccurrence(ctx context.Context, pinned mcpevents.Scope, payload mcpevents.Payload) error {
+	scope, err := s.current(ctx, pinned)
+	if err != nil {
+		return err
+	}
+	if payload.Recipient != scope.Arguments.For {
+		return mcpevents.ErrOccurrenceHidden
+	}
+	if payload.ProjectUID != "" {
+		allowed := false
+		for _, p := range scope.Projects {
+			allowed = allowed || p.UID == payload.ProjectUID
+		}
+		if !allowed {
+			return mcpevents.ErrOccurrenceHidden
+		}
+	}
+	if payload.IssueUID == "" {
+		return nil
+	}
+	if scope.Arguments.IssueUID != "" && payload.IssueUID != scope.Arguments.IssueUID {
+		return mcpevents.ErrOccurrenceHidden
+	}
+	if _, err := ulid.ParseStrict(payload.IssueUID); err != nil {
+		return mcpevents.ErrOccurrenceHidden
+	}
+	shown, err := s.client.ShowIssueByUID(ctx, &generated.ShowIssueByUIDRequestOptions{PathParams: &generated.ShowIssueByUIDPath{UID: payload.IssueUID}})
+	if err != nil {
+		if !errors.Is(sourceFailure(err), mcpevents.ErrRevoked) {
+			return mcpevents.ErrUnavailable
+		}
+		// A denied child can be detached while the root principal remains valid.
+		// Check that authority once, without retrying the hidden issue lookup.
+		if _, recheckErr := s.current(ctx, scope); recheckErr != nil {
+			return recheckErr
+		}
+		return mcpevents.ErrOccurrenceHidden
+	}
+	if shown.Issue.UID != payload.IssueUID {
+		return mcpevents.ErrUnavailable
+	}
+	for _, p := range scope.Projects {
+		if shown.Issue.ProjectID == p.ID && (shown.Issue.ProjectUID == nil || *shown.Issue.ProjectUID == p.UID) {
+			return nil
+		}
+	}
+	return mcpevents.ErrOccurrenceHidden
+}
+
 func (s *inboxEventsSource) Head(ctx context.Context, pinned mcpevents.Scope) (mcpevents.Position, error) {
 	scope, err := s.current(ctx, pinned)
 	if err != nil {

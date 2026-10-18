@@ -410,6 +410,13 @@ func TestSourceMoveDeparturesConformance(t *testing.T) {
 					moved, err := store.MoveIssueProject(t.Context(), db.MoveIssueProjectIn{IssueID: issue.ID, FromProjectID: a.ID, ToProjectID: b.ID, IfMatchRev: issue.Revision, Actor: "example-user"})
 					require.NoError(t, err)
 					require.NotNil(t, moved.Event)
+					pending := mcpevents.Payload{Recipient: "example-user", Reason: "notification", ProjectUID: a.UID, IssueUID: issue.UID}
+					guardErr := source.(*inboxEventsSource).AuthorizeOccurrence(t.Context(), scope, pending)
+					if both {
+						require.NoError(t, guardErr)
+					} else {
+						require.ErrorIs(t, guardErr, mcpevents.ErrOccurrenceHidden)
+					}
 					page, err := source.Read(t.Context(), scope, head, 1)
 					require.NoError(t, err)
 					require.Len(t, page.Events, 1)
@@ -438,6 +445,86 @@ func TestSourceMoveDeparturesConformance(t *testing.T) {
 					require.Empty(t, again.Events)
 				})
 			}
+		})
+	}
+}
+
+func TestSourceOccurrenceRevalidatesIssueAccess(t *testing.T) {
+	for _, mode := range []string{"visible", "detached", "forbidden", "show-outage", "credential-revoked", "refresh-outage", "foreign-project", "generic-resync"} {
+		t.Run(mode, func(t *testing.T) {
+			var active, denied atomic.Bool
+			var catalogs, shows atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case "/api/v1/instance":
+					if denied.Load() && mode == "credential-revoked" {
+						w.WriteHeader(401)
+						return
+					}
+					_, _ = w.Write([]byte(`{"instance_uid":"` + sourceDaemon + `","auth":{"kind":"token","scope":{"kind":"issue_subtree","project_uid":"` + sourceProject + `","root_issue_uid":"01ARZ3NDEKTSV4RRFFQ69G5FAZ"}}}`))
+				case "/api/v1/projects":
+					catalogs.Add(1)
+					if denied.Load() && mode == "refresh-outage" {
+						w.WriteHeader(503)
+						return
+					}
+					sourceCatalog(w)
+				default:
+					shows.Add(1)
+					if active.Load() && mode == "show-outage" {
+						w.WriteHeader(503)
+						return
+					}
+					if active.Load() && (mode == "detached" || mode == "forbidden" || mode == "credential-revoked" || mode == "refresh-outage") {
+						denied.Store(true)
+						status := 404
+						if mode == "forbidden" {
+							status = 403
+						}
+						w.WriteHeader(status)
+						return
+					}
+					_, _ = w.Write([]byte(`{"issue":{"uid":"` + sourceIssue + `","project_id":1,"project_uid":"` + sourceProject + `"},"comments":[],"labels":[],"links":[]}`))
+				}
+			}))
+			t.Cleanup(server.Close)
+			client, err := kataclient.NewWithHTTPClient(server.URL, server.Client())
+			require.NoError(t, err)
+			startup, err := NewBoundScope(ProjectIdentity{ID: 1, UID: sourceProject, Name: "spoke-project"})
+			require.NoError(t, err)
+			source := NewEventsSource(client, startup, sourceDaemon).(*inboxEventsSource)
+			scope, err := source.Resolve(t.Context(), mcpevents.Arguments{For: "example-user"})
+			require.NoError(t, err)
+			payload := mcpevents.Payload{Recipient: "example-user", Reason: "notification", ProjectUID: sourceProject, IssueUID: sourceIssue}
+			if mode == "foreign-project" {
+				payload.ProjectUID = sourceOtherProject
+			}
+			if mode == "generic-resync" {
+				payload = mcpevents.Payload{Recipient: "example-user", Reason: "resync", ResyncRequired: true}
+			}
+			active.Store(true)
+			err = source.AuthorizeOccurrence(t.Context(), scope, payload)
+			switch mode {
+			case "visible", "generic-resync":
+				require.NoError(t, err)
+			case "credential-revoked":
+				require.ErrorIs(t, err, mcpevents.ErrRevoked)
+			case "show-outage", "refresh-outage":
+				require.ErrorIs(t, err, mcpevents.ErrUnavailable)
+			default:
+				require.ErrorIs(t, err, mcpevents.ErrOccurrenceHidden)
+			}
+			wantShows := int32(1)
+			if mode == "foreign-project" || mode == "generic-resync" {
+				wantShows = 0
+			}
+			require.Equal(t, wantShows, shows.Load(), "never retry the denied issue lookup")
+			wantCatalogs := int32(2)
+			if mode == "detached" || mode == "forbidden" || mode == "refresh-outage" {
+				wantCatalogs = 3
+			}
+			require.Equal(t, wantCatalogs, catalogs.Load(), "at most one refresh after the issue rejection")
 		})
 	}
 }
