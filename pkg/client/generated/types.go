@@ -4763,6 +4763,15 @@ func (p ProjectEmbeddingProducer) Validate() error {
 	return errors
 }
 
+type ProjectEventHeadBody struct {
+	AfterID     int64  `json:"after_id"`
+	InstanceUID string `json:"instance_uid" validate:"required"`
+}
+
+func (p ProjectEventHeadBody) Validate() error {
+	return runtime.ConvertValidatorError(typesValidator.Struct(p))
+}
+
 type ProjectFederationBody struct {
 	BaselineThroughEventID int64           `json:"baseline_through_event_id"`
 	ProjectID              int64           `json:"project_id"`

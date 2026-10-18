@@ -107,3 +107,18 @@ type PollEventsResponse struct {
 	RequiredEventFeatures string `header:"X-Kata-Required-Event-Features"`
 	Body                  PollEventsBody
 }
+
+// ProjectEventHeadRequest captures the committed durable log boundary used by
+// scoped consumers when bootstrapping without replaying historical events.
+type ProjectEventHeadRequest struct {
+	ProjectID int64 `path:"project_id"`
+}
+
+type ProjectEventHeadBody struct {
+	AfterID     int64  `json:"after_id"`
+	InstanceUID string `json:"instance_uid"`
+}
+
+type ProjectEventHeadResponse struct {
+	Body ProjectEventHeadBody
+}

@@ -59,6 +59,29 @@ func registerEventsHandlers(humaAPI huma.API, mux *http.ServeMux, cfg ServerConf
 		return doPollEvents(ctx, cfg, in.AfterID, in.Limit, in.ProjectID)
 	})
 
+	huma.Register(humaAPI, huma.Operation{
+		OperationID: "getProjectEventHead", Method: "GET", Path: "/api/v1/projects/{project_id}/events/head",
+	}, func(ctx context.Context, in *api.ProjectEventHeadRequest) (*api.ProjectEventHeadResponse, error) {
+		if in.ProjectID <= 0 {
+			return nil, api.NewError(400, "validation", "project_id must be a positive integer", "", nil)
+		}
+		if _, err := activeProjectByID(ctx, cfg.DB, in.ProjectID); err != nil {
+			return nil, err
+		}
+		if issueScopeFromContext(ctx) != nil {
+			if err := revalidateIssueScopedPrincipal(ctx, cfg.DB); err != nil {
+				return nil, err
+			}
+		}
+		// Use the existing global committed sequence. A project's most recent
+		// visible event may be smaller; fabricating a position can skip later commits.
+		head, err := cfg.DB.MaxEventID(ctx)
+		if err != nil {
+			return nil, internalAPIError(err)
+		}
+		return &api.ProjectEventHeadResponse{Body: api.ProjectEventHeadBody{AfterID: head, InstanceUID: cfg.DB.InstanceUID()}}, nil
+	})
+
 	registerEventsStream(humaAPI, cfg)
 	registerEventsStreamMethodGuards(mux)
 }

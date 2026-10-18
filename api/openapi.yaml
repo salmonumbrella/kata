@@ -4755,6 +4755,18 @@ components:
         - producer_instance_uid
         - recipe
       type: object
+    ProjectEventHeadBody:
+      additionalProperties: true
+      properties:
+        after_id:
+          format: int64
+          type: integer
+        instance_uid:
+          type: string
+      required:
+        - after_id
+        - instance_uid
+      type: object
     ProjectFederationBody:
       additionalProperties: true
       properties:
@@ -8837,6 +8849,29 @@ paths:
             X-Kata-Required-Event-Features:
               schema:
                 type: string
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+          description: Error
+  /api/v1/projects/{project_id}/events/head:
+    get:
+      operationId: getProjectEventHead
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectEventHeadBody"
+          description: OK
         default:
           content:
             application/json:

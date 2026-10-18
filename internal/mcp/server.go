@@ -769,6 +769,7 @@ type ProjectIdentity struct {
 
 // IssueSummary is the compact issue form used by list-like tools.
 type IssueSummary struct {
+	projectUID          string
 	Author              string    `json:"author,omitempty"`
 	AccountableActor    *string   `json:"accountable_actor,omitempty"`
 	SourceActor         *string   `json:"source_actor,omitempty"`

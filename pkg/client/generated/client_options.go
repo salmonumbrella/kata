@@ -2573,6 +2573,50 @@ func (o *PollProjectEventsRequestOptions) GetHeader() (map[string]string, error)
 	return nil, nil
 }
 
+// GetProjectEventHeadRequestOptions is the options needed to make a request to GetProjectEventHead.
+type GetProjectEventHeadRequestOptions struct {
+	PathParams *GetProjectEventHeadPath
+}
+
+// Validate validates all the fields in the options.
+// Use it if fields validation was not run.
+func (o *GetProjectEventHeadRequestOptions) Validate() error {
+	var errors runtime.ValidationErrors
+
+	if o.PathParams != nil {
+		if v, ok := any(o.PathParams).(runtime.Validator); ok {
+			if err := v.Validate(); err != nil {
+				errors = errors.Append("PathParams", err)
+			}
+		}
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+
+	return errors
+}
+
+// GetPathParams returns the path params as a map.
+func (o *GetProjectEventHeadRequestOptions) GetPathParams() (map[string]any, error) {
+	return runtime.AsMap[any](o.PathParams)
+}
+
+// GetQuery returns the query params as a map.
+func (o *GetProjectEventHeadRequestOptions) GetQuery() (map[string]any, error) {
+	return nil, nil
+}
+
+// GetBody returns the payload in any type that can be marshalled to JSON by the client.
+func (o *GetProjectEventHeadRequestOptions) GetBody() any {
+	return nil
+}
+
+// GetHeader returns the headers as a map.
+func (o *GetProjectEventHeadRequestOptions) GetHeader() (map[string]string, error) {
+	return nil, nil
+}
+
 // GetProjectFederationRequestOptions is the options needed to make a request to GetProjectFederation.
 type GetProjectFederationRequestOptions struct {
 	PathParams *GetProjectFederationPath

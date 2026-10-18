@@ -1,7 +1,7 @@
 ---
 title: Model Context Protocol server
 description: Configure Kata's MCP server and use its typed issue, administration, and event tools.
-last_edited: 2026-10-17
+last_edited: 2026-10-18
 ---
 
 # Model Context Protocol server
@@ -257,7 +257,13 @@ already-bound issues inside the startup project scope.
 
 `kata.inbox` lists open issues that carry a request for one recipient's
 attention, the same requests `kata inbox` shows, and never clears them. It
-reads up to `limit` issues and sets `truncated` when more carry requests.
+reads up to `limit` candidate issues per page (default 20, maximum 100).
+Pass the returned `next_cursor` as `cursor` with the same recipient and project
+until no cursor remains. A page can contain no valid requests and still have a
+continuation, because malformed notification metadata is filtered after paging.
+Page size may shrink to keep daemon responses below 8 MiB; an oversized single
+candidate returns an error. Requests include stable `issue_uid` and `project_uid`
+identifiers, alongside their display references. Reading never clears a request.
 `kata.status` reports an issue's owner, hold, and lease along with the actor
 the server writes as. `kata.unassign` accepts `expected_owner` so a handoff
 clears ownership only while that actor still holds the issue.

@@ -235,6 +235,10 @@ type PollProjectEventsResponse = PollEventsBody
 
 type PollProjectEventsErrorResponse = ErrorEnvelope
 
+type GetProjectEventHeadResponse = ProjectEventHeadBody
+
+type GetProjectEventHeadErrorResponse = ErrorEnvelope
+
 type GetProjectFederationResponse = ProjectFederationBody
 
 type GetProjectFederationErrorResponse = ErrorEnvelope
@@ -984,6 +988,13 @@ type PollProjectEventsResp struct {
 	StatusCode   int
 	JSON200      *PollProjectEventsResponse
 	Headers200   *PollProjectEventsResp200Headers
+}
+
+type GetProjectEventHeadResp struct {
+	HTTPResponse *http.Response
+	Body         []byte
+	StatusCode   int
+	JSON200      *GetProjectEventHeadResponse
 }
 
 type GetProjectFederationResp200Headers struct {
