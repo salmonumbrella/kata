@@ -14,6 +14,14 @@ import (
 // retry the same cursor without ever decoding an oversized daemon response.
 var ErrResponseTooLarge = errors.New("daemon response exceeds byte limit; retry a smaller page")
 
+// ResponseTooLargeError preserves HTTP authority and availability status even
+// when an oversized body cannot be decoded. Only successful pages may be
+// retried with a smaller page size or treated as an explicit source gap.
+type ResponseTooLargeError struct{ StatusCode int }
+
+func (e *ResponseTooLargeError) Error() string { return ErrResponseTooLarge.Error() }
+func (e *ResponseTooLargeError) Unwrap() error { return ErrResponseTooLarge }
+
 // WithResponseLimit returns a client sharing the selected daemon transport and
 // request editors, with a byte bound applied before generated JSON decoding.
 // It does not mutate the original client or redirect its credentials.
@@ -34,14 +42,14 @@ func (c boundedAPIClient) ExecuteRequest(ctx context.Context, req *http.Request,
 	}
 	defer response.Raw.Body.Close()
 	if c.maxBytes <= 0 {
-		return nil, ErrResponseTooLarge
+		return nil, &ResponseTooLargeError{StatusCode: response.StatusCode}
 	}
 	content, err := io.ReadAll(io.LimitReader(response.Raw.Body, c.maxBytes+1))
 	if err != nil {
 		return nil, err
 	}
 	if int64(len(content)) > c.maxBytes {
-		return nil, ErrResponseTooLarge
+		return nil, &ResponseTooLargeError{StatusCode: response.StatusCode}
 	}
 	response.Content = content
 	return response, nil
