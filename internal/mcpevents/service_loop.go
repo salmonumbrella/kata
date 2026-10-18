@@ -2,6 +2,7 @@ package mcpevents
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"time"
@@ -111,6 +112,28 @@ func (s *Service) process(ctx context.Context, entry *subscriptionEntry) error {
 		}
 		return s.pauseSource(ctx, entry, "source_unavailable")
 	}
+	var occurrence Envelope
+	if json.Unmarshal(sub.Pending.Envelope, &occurrence) != nil {
+		return s.fail(ErrState)
+	}
+	err = s.source.AuthorizeOccurrence(ctx, sub.Scope, occurrence.Data)
+	if !s.now().Before(sub.ExpiresAt) {
+		return nil
+	}
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrOccurrenceHidden):
+			return s.withholdOccurrence(ctx, entry, sub)
+		case errors.Is(err, ErrScopeChanged):
+			return s.reconcile(ctx, entry)
+		case errors.Is(err, ErrRevoked):
+			return s.sourceError(ctx, entry, err)
+		case errors.Is(err, ErrResourceLimit):
+			return s.pauseSource(ctx, entry, "resource_limit")
+		default:
+			return s.pauseSource(ctx, entry, "source_unavailable")
+		}
+	}
 	remaining := sub.ExpiresAt.Sub(s.now())
 	if remaining <= 0 {
 		return nil
@@ -132,7 +155,7 @@ func (s *Service) process(ctx context.Context, entry *subscriptionEntry) error {
 		return errSubscriptionExpired
 	}
 	guardedCtx := withWebhookGuard(deliveryCtx, func(guardCtx context.Context) error {
-		return s.webhookAuthorityBefore(guardCtx, sub.Scope, sub.ExpiresAt)
+		return s.webhookOccurrenceAuthorityBefore(guardCtx, sub.Scope, occurrence.Data, sub.ExpiresAt)
 	})
 	_, err = attemptDelivery(guardedCtx, s.identity, sub, s.webhook, s.now(), func(next Subscription) error {
 		if expired() {
@@ -149,6 +172,24 @@ func (s *Service) process(ctx context.Context, entry *subscriptionEntry) error {
 	if errors.Is(err, errSubscriptionExpired) {
 		return nil
 	}
+	if err != nil && expired() && !errors.Is(err, ErrState) {
+		if restoreErr := persistExpired(); !errors.Is(restoreErr, errSubscriptionExpired) {
+			return restoreErr
+		}
+		return nil
+	}
+	if errors.Is(err, ErrOccurrenceHidden) {
+		return s.withholdOccurrence(ctx, entry, sub)
+	}
+	if errors.Is(err, ErrScopeChanged) || errors.Is(err, ErrResourceLimit) {
+		if saveErr := s.save(ctx, entry, sub); saveErr != nil {
+			return saveErr
+		}
+		if errors.Is(err, ErrScopeChanged) {
+			return s.reconcile(ctx, entry)
+		}
+		return s.pauseSource(ctx, entry, "resource_limit")
+	}
 	if errors.Is(err, context.Canceled) {
 		return nil
 	}
@@ -160,6 +201,22 @@ func (s *Service) process(ctx context.Context, entry *subscriptionEntry) error {
 		entry.nextSourceAt = time.Time{}
 	}
 	return err
+}
+
+func (s *Service) withholdOccurrence(ctx context.Context, entry *subscriptionEntry, sub Subscription) error {
+	sub = cloneSubscription(sub)
+	sub.Positions = clonePosition(sub.Pending.NextPositions)
+	sub.Status.Category = "occurrence_hidden"
+	sub.Status.EventID = sub.Pending.EventID
+	sub.Status.Attempts = sub.Pending.Attempts
+	sub.Status.UpdatedAt = s.now()
+	sub.Pending = nil
+	sub.Generation++
+	next, err := prepareResync(s.identity, sub, s.now(), true)
+	if err != nil {
+		return err
+	}
+	return s.save(ctx, entry, next)
 }
 
 func equalPositions(a, b Position) bool {

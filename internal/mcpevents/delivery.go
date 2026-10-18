@@ -97,6 +97,11 @@ func attemptDelivery(ctx context.Context, identity Identity, current Subscriptio
 	ctx, cancel := context.WithTimeout(ctx, pending.CreatedAt.Add(maxDeliveryElapsed).Sub(now))
 	defer cancel()
 	receipt, err := webhook.Send(ctx, sub.CallbackURL, pending.EventID, sub.ID, pending.Envelope, keys)
+	if errors.Is(err, ErrOccurrenceHidden) || errors.Is(err, ErrScopeChanged) || errors.Is(err, ErrResourceLimit) {
+		// The service commits a scope-specific replacement rather than recording
+		// a callback failure for a request refused before its socket dial.
+		return current, err
+	}
 	if errors.Is(err, ErrUnavailable) || errors.Is(err, ErrRevoked) {
 		pending.Attempts--
 		sub.Status.Attempts = pending.Attempts

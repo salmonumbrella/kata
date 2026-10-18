@@ -706,3 +706,171 @@ func assertExpiryPreservesPending(t *testing.T, state *State) {
 		t.Fatal("normal expiry consumed an attempt, revoked authority, or advanced the safe watermark")
 	}
 }
+
+type occurrenceVisibilitySource struct {
+	Source
+	authorize func(Payload) error
+}
+
+func (s occurrenceVisibilitySource) AuthorizeOccurrence(ctx context.Context, scope Scope, payload Payload) error {
+	if err := s.Source.AuthorizeOccurrence(ctx, scope, payload); err != nil {
+		return err
+	}
+	return s.authorize(payload)
+}
+
+func TestEventServicePendingVisibilityLostDuringDNSWithholdsOnlyOccurrence(t *testing.T) {
+	s, state, source, now, events := runtimeFixture(t, http.StatusNoContent)
+	if _, err := s.Subscribe(context.Background(), serviceRequest()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	project := stateBinding().ProjectUIDs[0]
+	hiddenIssue := "01ARZ3NDEKTSV4RRFFQ69G5FAX"
+	allowedIssue := "01ARZ3NDEKTSV4RRFFQ69G5FAY"
+	var hidden atomic.Bool
+	s.source = occurrenceVisibilitySource{Source: source, authorize: func(payload Payload) error {
+		if hidden.Load() && payload.IssueUID == hiddenIssue {
+			return ErrOccurrenceHidden
+		}
+		return nil
+	}}
+	source.page = SourcePage{Events: []SourceEvent{
+		{EventID: "evt_withheld", SourceEventUID: "01ARZ3NDEKTSV4RRFFQ69G5FAZ", ProjectUID: project, IssueUID: hiddenIssue, Reason: "notification", Timestamp: *now, Positions: Position{project: 13}},
+		{EventID: "evt_allowed", ProjectUID: project, IssueUID: allowedIssue, Reason: "notification", Timestamp: *now, Positions: Position{project: 14}},
+	}, Positions: Position{project: 14}}
+	resolve := s.webhook.resolve
+	s.webhook.resolve = func(ctx context.Context, network, host string) ([]netip.Addr, error) {
+		hidden.Store(true)
+		return resolve(ctx, network, host)
+	}
+	if err := s.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(*events) != 1 {
+		t.Fatal("callback leaked a pending issue hidden during DNS")
+	}
+	records, err := state.Load()
+	if err != nil || len(records) != 1 {
+		t.Fatal(err)
+	}
+	sub := records[0]
+	if sub.Disabled || !sub.ContinuityLost || sub.ContinuityGeneration != 1 || sub.Positions[project] != 13 || sub.Pending == nil || sub.Pending.Attempts != 0 || sub.Status.Attempts != 0 {
+		t.Fatal("withholding revoked the remaining scope, consumed an attempt, or lost the explicit gap")
+	}
+	var resync Envelope
+	if json.Unmarshal(sub.Pending.Envelope, &resync) != nil || resync.Data.Reason != "resync" || !resync.Data.ResyncRequired || resync.Data.ProjectUID != "" || resync.Data.IssueUID != "" || resync.Data.SourceEventUID != "" {
+		t.Fatal("withheld occurrence was not replaced by an identifier-free application resync")
+	}
+	s.webhook.resolve = resolve
+	if err := s.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	source.page = SourcePage{Events: []SourceEvent{{EventID: "evt_allowed", ProjectUID: project, IssueUID: allowedIssue, Reason: "notification", Timestamp: *now, Positions: Position{project: 14}}}, Positions: Position{project: 14}}
+	if err := s.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(*events) != 3 || (*events)[1].Data.Reason != "resync" || (*events)[2].Data.IssueUID != allowedIssue || !(*events)[2].Data.ResyncRequired {
+		t.Fatal("withholding prevented subsequent authorized occurrences from continuing with the gap disclosed")
+	}
+}
+
+func TestEventServiceHiddenPendingIsWithheldBeforeDispatch(t *testing.T) {
+	s, state, source, now, events := runtimeFixture(t, http.StatusNoContent)
+	if _, err := s.Subscribe(context.Background(), serviceRequest()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	project := stateBinding().ProjectUIDs[0]
+	issue := "01ARZ3NDEKTSV4RRFFQ69G5FAX"
+	s.source = occurrenceVisibilitySource{Source: source, authorize: func(payload Payload) error {
+		if payload.IssueUID == issue {
+			return ErrOccurrenceHidden
+		}
+		return nil
+	}}
+	source.page = SourcePage{Events: []SourceEvent{{EventID: "evt_withheld", ProjectUID: project, IssueUID: issue, Reason: "notification", Timestamp: *now, Positions: Position{project: 13}}}, Positions: Position{project: 13}}
+	var resolutions atomic.Int32
+	resolve := s.webhook.resolve
+	s.webhook.resolve = func(ctx context.Context, network, host string) ([]netip.Addr, error) {
+		resolutions.Add(1)
+		return resolve(ctx, network, host)
+	}
+	if err := s.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if resolutions.Load() != 0 || len(*events) != 1 {
+		t.Fatal("known-hidden pending occurrence started callback resolution")
+	}
+	records, _ := state.Load()
+	if records[0].Disabled || records[0].Pending == nil || records[0].Pending.Attempts != 0 || !records[0].ContinuityLost {
+		t.Fatal("known-hidden occurrence did not retain an active subscription with a fresh resync")
+	}
+}
+
+func TestEventServiceOccurrenceGuardPreservesScopeErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		err      error
+		category string
+	}{
+		{"scope-change", ErrScopeChanged, ""},
+		{"resource-limit", ErrResourceLimit, "resource_limit"},
+		{"outage", ErrUnavailable, "source_unavailable"},
+		{"revocation", ErrRevoked, "principal_revoked"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, state, source, _, events := runtimeFixture(t, http.StatusNoContent)
+			if _, err := s.Subscribe(context.Background(), serviceRequest()); err != nil {
+				t.Fatal(err)
+			}
+			var changed atomic.Bool
+			s.source = occurrenceVisibilitySource{Source: source, authorize: func(Payload) error {
+				if changed.Load() {
+					return tc.err
+				}
+				return nil
+			}}
+			resolve := s.webhook.resolve
+			s.webhook.resolve = func(ctx context.Context, network, host string) ([]netip.Addr, error) {
+				if errors.Is(tc.err, ErrScopeChanged) {
+					source.mu.Lock()
+					source.scope = Scope{Dynamic: true}
+					source.positions = Position{}
+					source.mu.Unlock()
+				}
+				changed.Store(true)
+				return resolve(ctx, network, host)
+			}
+			if err := s.step(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			records, err := state.Load()
+			if err != nil || len(records) != 1 {
+				t.Fatal(err)
+			}
+			sub := records[0]
+			if len(*events) != 0 || sub.Status.Attempts != 0 {
+				t.Fatal("occurrence guard failure sent a callback or consumed an attempt")
+			}
+			if errors.Is(tc.err, ErrRevoked) {
+				if !sub.Disabled || sub.Pending != nil {
+					t.Fatal("confirmed authority revocation did not disable the subscription")
+				}
+			} else if sub.Disabled || sub.Pending == nil || sub.Pending.Attempts != 0 {
+				t.Fatal("scope-local or temporary guard failure revoked the whole subscription")
+			}
+			if errors.Is(tc.err, ErrScopeChanged) {
+				if len(sub.Scope.Projects) != 0 || len(sub.Positions) != 0 || !sub.ContinuityLost {
+					t.Fatal("scope change did not reconcile the current empty aggregate")
+				}
+			} else if sub.Status.Category != tc.category {
+				t.Fatalf("guard error lost its safe category: %q", sub.Status.Category)
+			}
+		})
+	}
+}

@@ -368,13 +368,27 @@ func (s *Service) webhookAuthority(ctx context.Context, scope Scope) error {
 	return ErrUnavailable
 }
 
-func (s *Service) webhookAuthorityBefore(ctx context.Context, scope Scope, expiresAt time.Time) error {
+func (s *Service) webhookOccurrenceAuthorityBefore(ctx context.Context, scope Scope, payload Payload, expiresAt time.Time) error {
 	if !s.now().Before(expiresAt) {
 		return ErrUnavailable
 	}
-	err := s.webhookAuthority(ctx, scope)
+	if err := s.usable(); err != nil {
+		return err
+	}
+	err := s.source.AuthorizeOccurrence(ctx, scope, payload)
 	if !s.now().Before(expiresAt) {
 		return ErrUnavailable
 	}
-	return err
+	switch {
+	case err == nil || errors.Is(err, ErrRevoked):
+		return err
+	case errors.Is(err, ErrOccurrenceHidden):
+		return &WebhookError{Reason: "occurrence_hidden", cause: ErrOccurrenceHidden}
+	case errors.Is(err, ErrScopeChanged):
+		return &WebhookError{Reason: "source_unavailable", cause: ErrScopeChanged}
+	case errors.Is(err, ErrResourceLimit):
+		return &WebhookError{Reason: "resource_limit", cause: ErrResourceLimit}
+	default:
+		return ErrUnavailable
+	}
 }
