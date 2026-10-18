@@ -179,12 +179,14 @@ func (s *Service) Unsubscribe(ctx context.Context, request UnsubscribeRequest) e
 	if entry == nil {
 		return nil
 	}
+	if ctx.Err() != nil {
+		return &Error{Code: -32015, Reason: "events_unavailable"}
+	}
+	// Once delivery is fenced, finish durable deletion even if the caller
+	// disconnects while the canceled in-flight operation releases its lock.
 	entry.stop()
 	entry.op.Lock()
 	defer entry.op.Unlock()
-	if err = ctx.Err(); err != nil {
-		return err
-	}
 	if err = s.state.Delete(id); err != nil {
 		return s.fail(err)
 	}

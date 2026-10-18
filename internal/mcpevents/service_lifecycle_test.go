@@ -3,6 +3,7 @@ package mcpevents
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -148,5 +149,81 @@ func TestEventServiceFailedRegistrationKeepsConcurrentReservation(t *testing.T) 
 	s.mu.Unlock()
 	if retained != reserved {
 		t.Fatal("failed verification orphaned another in-flight registration")
+	}
+}
+
+func TestEventServicePreCanceledUnsubscribeKeepsSubscriptionUsable(t *testing.T) {
+	s, state, _, _, _ := serviceFixture(t, http.StatusNoContent)
+	request := serviceRequest()
+	if _, err := s.Subscribe(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := s.Unsubscribe(ctx, UnsubscribeRequest{Name: request.Name, Arguments: request.Arguments, Delivery: request.Delivery})
+	var protocolError *Error
+	if !errors.As(err, &protocolError) || protocolError.Code != -32015 || protocolError.Reason != "events_unavailable" {
+		t.Errorf("pre-canceled unsubscribe did not return a sanitized protocol error: %v", err)
+	}
+	records, err := state.Load()
+	if err != nil || len(records) != 1 {
+		t.Fatalf("pre-canceled request changed durable registration: records=%d error=%v", len(records), err)
+	}
+	status, err := s.Status(context.Background())
+	if err != nil || len(status) != 1 {
+		t.Errorf("pre-canceled request hid a durable subscription: status=%d error=%v", len(status), err)
+	}
+	if _, err := s.Subscribe(context.Background(), request); err != nil {
+		t.Errorf("pre-canceled request prevented subscription refresh: %v", err)
+	}
+}
+
+func TestEventServiceCanceledWaitingUnsubscribeCompletesDurableDeletion(t *testing.T) {
+	s, state, _, _, _ := serviceFixture(t, http.StatusNoContent)
+	request := serviceRequest()
+	registered, err := s.Subscribe(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	entry := s.entries[registered.ID]
+	s.mu.Unlock()
+	entry.op.Lock()
+	locked := true
+	defer func() {
+		if locked {
+			entry.op.Unlock()
+		}
+	}()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- s.Unsubscribe(ctx, UnsubscribeRequest{Name: request.Name, Arguments: request.Arguments, Delivery: request.Delivery})
+	}()
+	deadline := time.Now().Add(3 * time.Second)
+	for !entry.stopping.Load() {
+		if time.Now().After(deadline) {
+			t.Fatal("unsubscribe did not fence its in-flight operation")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	cancel()
+	entry.op.Unlock()
+	locked = false
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("unsubscribe abandoned a fenced operation after cancellation: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("unsubscribe did not finish after its in-flight operation stopped")
+	}
+	records, err := state.Load()
+	if err != nil || len(records) != 0 {
+		t.Errorf("cancellation left a permanently fenced durable record: records=%d error=%v", len(records), err)
+	}
+	if _, err := s.Subscribe(context.Background(), request); err != nil {
+		t.Errorf("cancellation prevented subsequent re-registration: %v", err)
 	}
 }
