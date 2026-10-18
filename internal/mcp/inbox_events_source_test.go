@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -243,6 +244,101 @@ func TestSourceRevalidatesScopeAndIssue(t *testing.T) {
 	require.ErrorIs(t, source.Authorize(t.Context(), issueScope), mcpevents.ErrRevoked)
 	mode = "unavailable"
 	require.ErrorIs(t, source.Authorize(t.Context(), scope), mcpevents.ErrUnavailable)
+}
+
+func TestSourceDynamicProjectAccessRace(t *testing.T) {
+	for _, operation := range []string{"read", "head"} {
+		for _, status := range []int{403, 404} {
+			for _, change := range []string{"removed", "unchanged", "catalog-outage", "credential-revoked"} {
+				t.Run(fmt.Sprintf("%s/%d/%s", operation, status, change), func(t *testing.T) {
+					var rejected atomic.Bool
+					var catalogs, requests atomic.Int32
+					server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						w.Header().Set("Content-Type", "application/json")
+						switch r.URL.Path {
+						case "/api/v1/instance":
+							if rejected.Load() && change == "credential-revoked" {
+								w.WriteHeader(401)
+								return
+							}
+							_, _ = w.Write([]byte(`{"instance_uid":"` + sourceDaemon + `","auth":{"kind":"token"}}`))
+						case "/api/v1/projects":
+							catalogs.Add(1)
+							if rejected.Load() && change == "catalog-outage" {
+								w.WriteHeader(503)
+								return
+							}
+							if rejected.Load() && change == "removed" {
+								_, _ = w.Write([]byte(`{"projects":[{"id":1,"uid":"` + sourceProject + `","name":"spoke-project"}]}`))
+								return
+							}
+							sourceCatalog(w)
+						default:
+							requests.Add(1)
+							if strings.Contains(r.URL.Path, "/2/") {
+								rejected.Store(true)
+								w.WriteHeader(status)
+								return
+							}
+							if operation == "head" {
+								_, _ = w.Write([]byte(`{"after_id":1,"instance_uid":"` + sourceDaemon + `"}`))
+								return
+							}
+							b, _ := json.Marshal(generated.PollEventsBody{Events: []generated.EventEnvelope{sourceEvent("issue.closed", 1, `{}`)}, NextAfterID: 1})
+							_, _ = w.Write(b)
+						}
+					}))
+					t.Cleanup(server.Close)
+					client, err := kataclient.NewWithHTTPClient(server.URL, server.Client())
+					require.NoError(t, err)
+					source := NewEventsSource(client, NewAllScope(), sourceDaemon)
+					scope, err := source.Resolve(t.Context(), mcpevents.Arguments{For: "example-user"})
+					require.NoError(t, err)
+					positions := mcpevents.Position{sourceProject: 0, sourceOtherProject: 0}
+					if operation == "head" {
+						var got mcpevents.Position
+						got, err = source.Head(t.Context(), scope)
+						require.Empty(t, got)
+					} else {
+						var page mcpevents.SourcePage
+						page, err = source.Read(t.Context(), scope, positions, 100)
+						require.Empty(t, page.Positions)
+						require.Empty(t, page.Events)
+					}
+					want := mcpevents.ErrUnavailable
+					if change == "removed" {
+						want = mcpevents.ErrScopeChanged
+					}
+					if change == "credential-revoked" {
+						want = mcpevents.ErrRevoked
+					}
+					require.ErrorIs(t, err, want)
+					require.Equal(t, mcpevents.Position{sourceProject: 0, sourceOtherProject: 0}, positions)
+					wantCatalogs := int32(3)
+					if change == "credential-revoked" {
+						wantCatalogs = 2
+					}
+					require.Equal(t, wantCatalogs, catalogs.Load(), "at most one authorization refresh after rejection")
+					require.Equal(t, int32(2), requests.Load(), "never retry the rejected project in this operation")
+					if change == "removed" {
+						remaining, resolveErr := source.Resolve(t.Context(), scope.Arguments)
+						require.NoError(t, resolveErr)
+						require.Len(t, remaining.Projects, 1)
+						if operation == "head" {
+							got, err := source.Head(t.Context(), remaining)
+							require.NoError(t, err)
+							require.Equal(t, mcpevents.Position{sourceProject: 1}, got)
+						} else {
+							page, err := source.Read(t.Context(), remaining, mcpevents.Position{sourceProject: 0}, 100)
+							require.NoError(t, err)
+							require.Len(t, page.Events, 1)
+							require.Equal(t, sourceProject, page.Events[0].ProjectUID)
+						}
+					}
+				})
+			}
+		}
+	}
 }
 
 func TestSourceBackendCommittedHeadAndNotification(t *testing.T) {

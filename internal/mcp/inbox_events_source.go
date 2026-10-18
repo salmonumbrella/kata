@@ -185,7 +185,7 @@ func (s *inboxEventsSource) Head(ctx context.Context, pinned mcpevents.Scope) (m
 	for _, p := range scope.Projects {
 		head, err := s.client.GetProjectEventHead(ctx, &generated.GetProjectEventHeadRequestOptions{PathParams: &generated.GetProjectEventHeadPath{ProjectID: p.ID}})
 		if err != nil {
-			return nil, sourceFailure(err)
+			return nil, s.projectFailure(ctx, scope, err)
 		}
 		if head.InstanceUID != s.daemonUID || head.AfterID < 0 {
 			return nil, mcpevents.ErrRevoked
@@ -230,7 +230,7 @@ func (s *inboxEventsSource) Read(ctx context.Context, pinned mcpevents.Scope, af
 			return mcpevents.SourcePage{Positions: head, Reset: true}, nil
 		}
 		if err != nil {
-			return mcpevents.SourcePage{}, sourceFailure(err)
+			return mcpevents.SourcePage{}, s.projectFailure(ctx, scope, err)
 		}
 		if len(page.Events) > limit {
 			return mcpevents.SourcePage{}, mcpevents.ErrUnavailable
@@ -289,6 +289,20 @@ func (s *inboxEventsSource) Read(ctx context.Context, pinned mcpevents.Scope, af
 	}
 	result.Positions = copySourcePosition(safe)
 	return result, nil
+}
+
+// A project can disappear after current's catalog read. One fresh authority
+// check distinguishes aggregate membership changes from principal revocation;
+// an isolated rejection with an unchanged catalog only pauses delivery.
+func (s *inboxEventsSource) projectFailure(ctx context.Context, scope mcpevents.Scope, err error) error {
+	failure := sourceFailure(err)
+	if !scope.Dynamic || !errors.Is(failure, mcpevents.ErrRevoked) {
+		return failure
+	}
+	if _, recheckErr := s.current(ctx, scope); recheckErr != nil {
+		return recheckErr
+	}
+	return mcpevents.ErrUnavailable
 }
 
 func (s *inboxEventsSource) projectPage(ctx context.Context, p mcpevents.Project, after int64, limit int) (*generated.PollEventsBody, error) {
