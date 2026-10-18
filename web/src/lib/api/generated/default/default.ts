@@ -118,6 +118,7 @@ import type {
   GetIssueMetadataResponseBody,
   GetIssueSyncStatusPathParameters,
   GetProjectAccessPathParameters,
+  GetProjectEventHeadPathParameters,
   GetProjectFederationPathParameters,
   GetProjectFederationStatusPathParameters,
   GetRelayResetPathParameters,
@@ -192,6 +193,7 @@ import type {
   PollProjectEventsPathParameters,
   PriorityRequestBody,
   ProjectAccessResponseBody,
+  ProjectEventHeadBody,
   ProjectFederationBody,
   ProjectPurgeRequestBody,
   ProjectPurgeResponseBody,
@@ -2852,6 +2854,41 @@ export const pollProjectEvents = async (
   options?: Parameters<typeof orvalFetch>[1],
 ): Promise<pollProjectEventsResponse> => {
   return orvalFetch<pollProjectEventsResponse>(getPollProjectEventsUrl({ projectId }, params), {
+    ...options,
+    method: 'GET',
+  })
+}
+
+export type getProjectEventHeadResponse200 = {
+  data: ProjectEventHeadBody
+  status: 200
+}
+
+export type getProjectEventHeadResponseDefault = {
+  data: ErrorEnvelope
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type getProjectEventHeadResponseSuccess = getProjectEventHeadResponse200 & {
+  headers: Headers
+}
+export type getProjectEventHeadResponseError = getProjectEventHeadResponseDefault & {
+  headers: Headers
+}
+
+export type getProjectEventHeadResponse =
+  | getProjectEventHeadResponseSuccess
+  | getProjectEventHeadResponseError
+
+export const getGetProjectEventHeadUrl = ({ projectId }: GetProjectEventHeadPathParameters) => {
+  return `/api/v1/projects/${encodeURIComponent(String(projectId))}/events/head`
+}
+
+export const getProjectEventHead = async (
+  { projectId }: GetProjectEventHeadPathParameters,
+  options?: Parameters<typeof orvalFetch>[1],
+): Promise<getProjectEventHeadResponse> => {
+  return orvalFetch<getProjectEventHeadResponse>(getGetProjectEventHeadUrl({ projectId }), {
     ...options,
     method: 'GET',
   })
