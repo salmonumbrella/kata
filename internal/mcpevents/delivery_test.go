@@ -187,3 +187,21 @@ func TestDeliveryAuthorityGuardDoesNotConsumeCallbackAttempt(t *testing.T) {
 		t.Fatalf("authority failure consumed callback authority or attempt: %+v %v received=%d", result, err, received)
 	}
 }
+
+func TestDeliveryAttemptCannotOutliveTotalRetryWindow(t *testing.T) {
+	state, _ := openTestState(t)
+	sub := deliverySubscription()
+	now := sub.Pending.CreatedAt
+	sub.Pending.CreatedAt = now.Add(-15*time.Minute + 20*time.Millisecond)
+	w, _ := fixtureWebhook(t, func(rw http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(250 * time.Millisecond):
+		}
+		rw.WriteHeader(202)
+	})
+	result, err := attemptDelivery(context.Background(), state.Identity(), sub, w, now, state.Save)
+	if err != nil || result.Pending == nil || result.Status.LastFailureCategory != "timeout" {
+		t.Fatalf("attempt escaped total retry deadline: %+v %v", result, err)
+	}
+}

@@ -92,6 +92,10 @@ func attemptDelivery(ctx context.Context, identity Identity, current Subscriptio
 	if len(sub.PreviousSigningKey) != 0 && now.Before(sub.PreviousKeyExpiresAt) {
 		keys = append(keys, "whsec_"+base64.StdEncoding.EncodeToString(sub.PreviousSigningKey))
 	}
+	// The last request cannot extend the overall retry window by another
+	// callback timeout. The callback's own ten-second limit still applies.
+	ctx, cancel := context.WithTimeout(ctx, pending.CreatedAt.Add(maxDeliveryElapsed).Sub(now))
+	defer cancel()
 	receipt, err := webhook.Send(ctx, sub.CallbackURL, pending.EventID, sub.ID, pending.Envelope, keys)
 	if errors.Is(err, ErrUnavailable) || errors.Is(err, ErrRevoked) {
 		pending.Attempts--

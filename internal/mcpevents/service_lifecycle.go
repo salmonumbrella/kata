@@ -36,13 +36,14 @@ func (s *Service) Subscribe(ctx context.Context, request SubscribeRequest) (resu
 	entry.op.Lock()
 	defer entry.op.Unlock()
 	defer func() {
-		if retErr != nil && entry.sub.ID == "" {
-			s.mu.Lock()
+		s.mu.Lock()
+		entry.registrations--
+		if retErr != nil && entry.sub.ID == "" && entry.registrations == 0 {
 			if s.entries[id] == entry {
 				delete(s.entries, id)
 			}
-			s.mu.Unlock()
 		}
+		s.mu.Unlock()
 	}()
 	ctx, done, err := s.operation(ctx, entry)
 	if err != nil {

@@ -124,3 +124,29 @@ func TestEventServiceRejectsMismatchedLoadedIdentity(t *testing.T) {
 		t.Fatal("mismatched deterministic state identity accepted")
 	}
 }
+
+func TestEventServiceFailedRegistrationKeepsConcurrentReservation(t *testing.T) {
+	s, _, _, _, _ := serviceFixture(t, 204)
+	request := serviceRequest()
+	id, _, err := s.subscriptionIdentity(request.Name, request.Arguments, request.Delivery)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// One caller has acquired its reservation and can be waiting on the same
+	// operation lock while a second caller's verification fails.
+	reserved, err := s.reserve(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, _ := fixtureWebhook(t, func(rw http.ResponseWriter, r *http.Request) { _, _ = rw.Write([]byte(`{"challenge":"wrong"}`)) })
+	s.webhook = w
+	if _, err = s.Subscribe(context.Background(), request); err == nil {
+		t.Fatal("invalid challenge accepted")
+	}
+	s.mu.Lock()
+	retained := s.entries[id]
+	s.mu.Unlock()
+	if retained != reserved {
+		t.Fatal("failed verification orphaned another in-flight registration")
+	}
+}

@@ -29,6 +29,7 @@ type subscriptionEntry struct {
 	sub            Subscription
 	sourceFailures int
 	nextSourceAt   time.Time
+	registrations  int // guarded by Service.mu, including callers waiting on op
 }
 
 func (e *subscriptionEntry) stop() {
@@ -185,6 +186,7 @@ func (s *Service) reserve(id string) (*subscriptionEntry, error) {
 		return nil, ErrState
 	}
 	if entry := s.entries[id]; entry != nil {
+		entry.registrations++
 		s.mu.Unlock()
 		return entry, nil
 	}
@@ -199,6 +201,7 @@ func (s *Service) reserve(id string) (*subscriptionEntry, error) {
 			return nil, ErrState
 		}
 		if entry := s.entries[id]; entry != nil {
+			entry.registrations++
 			s.mu.Unlock()
 			return entry, nil
 		}
@@ -207,7 +210,7 @@ func (s *Service) reserve(id string) (*subscriptionEntry, error) {
 			return nil, &Error{Code: -32013, Reason: "subscription_limit"}
 		}
 	}
-	entry := &subscriptionEntry{}
+	entry := &subscriptionEntry{registrations: 1}
 	s.entries[id] = entry
 	s.mu.Unlock()
 	return entry, nil
@@ -216,6 +219,13 @@ func (s *Service) reserve(id string) (*subscriptionEntry, error) {
 func (s *Service) reapExpired() error {
 	for _, entry := range s.snapshot() {
 		if !entry.op.TryLock() {
+			continue
+		}
+		s.mu.Lock()
+		reserved := entry.registrations != 0
+		s.mu.Unlock()
+		if reserved {
+			entry.op.Unlock()
 			continue
 		}
 		if entry.sub.ID != "" && !s.now().Before(entry.sub.ExpiresAt) {

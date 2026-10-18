@@ -3,6 +3,7 @@ package mcpevents
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -500,5 +501,111 @@ func TestEventServicePersistenceFailureStopsBeforeCallback(t *testing.T) {
 	}
 	if len(*events) != 0 {
 		t.Fatal("callback ran after uncertain durable write")
+	}
+}
+
+func TestEventServiceRefreshAndRetryRearmOnlyTransientPending(t *testing.T) {
+	for _, action := range []string{"refresh", "retry"} {
+		t.Run(action, func(t *testing.T) {
+			s, state, _, now, events := runtimeFixture(t, 503)
+			request := serviceRequest()
+			initial, err := s.Subscribe(context.Background(), request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for range 8 {
+				records, _ := state.Load()
+				*now = records[0].Pending.NextAttemptAt
+				if err = s.step(context.Background()); err != nil {
+					t.Fatal(err)
+				}
+			}
+			records, _ := state.Load()
+			before := records[0].Pending
+			if before == nil || !before.Failed {
+				t.Fatal("transient exhaustion was not retained")
+			}
+			if action == "retry" {
+				err = s.Retry(context.Background(), initial.ID)
+			} else {
+				request.Cursor = &initial.Cursor
+				_, err = s.Subscribe(context.Background(), request)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			records, _ = state.Load()
+			after := records[0].Pending
+			if after == nil || after.Failed || after.Attempts != 0 || after.EventID != before.EventID || !bytes.Equal(after.Envelope, before.Envelope) || records[0].Positions[stateBinding().ProjectUIDs[0]] != 12 {
+				t.Fatal("rearm changed failed occurrence or its safe watermark")
+			}
+			if err = s.step(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if len(*events) != 9 {
+				t.Fatal("explicit transient rearm did not dispatch retained occurrence")
+			}
+		})
+	}
+}
+
+func TestEventServiceConcurrentSubscribeRemainsScheduledAfterFailure(t *testing.T) {
+	s, state, _, _, _ := runtimeFixture(t, 204)
+	started, release := make(chan struct{}), make(chan struct{})
+	var verifications, deliveries atomic.Int32
+	w, _ := fixtureWebhook(t, func(rw http.ResponseWriter, r *http.Request) {
+		var value struct {
+			Type      string `json:"type"`
+			Challenge string `json:"challenge"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&value)
+		if value.Type == "verification" {
+			if verifications.Add(1) == 1 {
+				close(started)
+				<-release
+				_, _ = rw.Write([]byte(`{"challenge":"wrong"}`))
+				return
+			}
+			_ = json.NewEncoder(rw).Encode(map[string]string{"challenge": value.Challenge})
+			return
+		}
+		deliveries.Add(1)
+		rw.WriteHeader(204)
+	})
+	s.webhook = w
+	first, second := make(chan error, 1), make(chan error, 1)
+	go func() { _, err := s.Subscribe(context.Background(), serviceRequest()); first <- err }()
+	<-started
+	go func() { _, err := s.Subscribe(context.Background(), serviceRequest()); second <- err }()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		s.mu.Lock()
+		count := 0
+		for _, entry := range s.entries {
+			count = entry.registrations
+		}
+		s.mu.Unlock()
+		if count == 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			close(release)
+			t.Fatal("concurrent registration did not reserve identity")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	close(release)
+	if err := <-first; err == nil {
+		t.Fatal("failed initial verification accepted")
+	}
+	if err := <-second; err != nil {
+		t.Fatal(err)
+	}
+	if err := s.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	records, _ := state.Load()
+	if len(records) != 1 || deliveries.Load() != 1 || records[0].Pending != nil {
+		t.Fatal("accepted concurrent registration was orphaned from delivery scheduler")
 	}
 }
