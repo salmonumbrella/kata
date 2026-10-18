@@ -196,8 +196,9 @@ func (s *inboxEventsSource) Head(ctx context.Context, pinned mcpevents.Scope) (m
 }
 
 type inboxSourceCandidate struct {
-	event    mcpevents.SourceEvent
-	sequence int64
+	event      mcpevents.SourceEvent
+	sequence   int64
+	projectUID string
 }
 
 // Read makes one bounded round across the pinned projects. Matching rows are
@@ -215,6 +216,10 @@ func (s *inboxEventsSource) Read(ctx context.Context, pinned mcpevents.Scope, af
 	end := mcpevents.Position{}
 	remaining := map[string]int{}
 	candidates := []inboxSourceCandidate{}
+	allowed := map[string]bool{}
+	for _, p := range scope.Projects {
+		allowed[p.UID] = true
+	}
 	for _, p := range scope.Projects {
 		cursor, present := after[p.UID]
 		if !present || cursor < 0 {
@@ -236,8 +241,23 @@ func (s *inboxEventsSource) Read(ctx context.Context, pinned mcpevents.Scope, af
 			return mcpevents.SourcePage{}, mcpevents.ErrUnavailable
 		}
 		for _, row := range page.Events {
-			if row.EventID <= cursor || row.ProjectUID != p.UID || row.EventUID == "" || row.CreatedAt.IsZero() {
+			if row.EventID <= cursor || row.EventUID == "" || row.CreatedAt.IsZero() {
 				return mcpevents.SourcePage{}, mcpevents.ErrUnavailable
+			}
+			visibleProject := row.ProjectUID
+			hideIssue := false
+			if row.ProjectUID != p.UID {
+				var move struct {
+					From string `json:"from_project_uid"`
+					To   string `json:"to_project_uid"`
+				}
+				if row.Type != "issue.moved" || json.Unmarshal(row.Payload, &move) != nil || move.From != p.UID || move.To != row.ProjectUID {
+					return mcpevents.SourcePage{}, mcpevents.ErrUnavailable
+				}
+				if !allowed[row.ProjectUID] {
+					visibleProject = p.UID
+					hideIssue = true
+				}
 			}
 			if _, err := ulid.ParseStrict(row.EventUID); err != nil {
 				return mcpevents.SourcePage{}, mcpevents.ErrUnavailable
@@ -260,7 +280,10 @@ func (s *inboxEventsSource) Read(ctx context.Context, pinned mcpevents.Scope, af
 					return mcpevents.SourcePage{}, mcpevents.ErrUnavailable
 				}
 			}
-			candidates = append(candidates, inboxSourceCandidate{sequence: row.EventID, event: mcpevents.SourceEvent{EventID: inboxSourceEventID(s.daemonUID, row.EventUID, scope.Arguments.For), SourceEventUID: row.EventUID, ProjectUID: p.UID, IssueUID: issueUID, Reason: reason, Timestamp: row.CreatedAt}})
+			if hideIssue {
+				issueUID = ""
+			}
+			candidates = append(candidates, inboxSourceCandidate{sequence: row.EventID, projectUID: p.UID, event: mcpevents.SourceEvent{EventID: inboxSourceEventID(s.daemonUID, row.EventUID, scope.Arguments.For), SourceEventUID: row.EventUID, ProjectUID: visibleProject, IssueUID: issueUID, Reason: reason, Timestamp: row.CreatedAt}})
 			remaining[p.UID]++
 		}
 		if page.NextAfterID < cursor {
@@ -275,14 +298,18 @@ func (s *inboxEventsSource) Read(ctx context.Context, pinned mcpevents.Scope, af
 	}
 	sort.Slice(candidates, func(i, j int) bool { return candidates[i].sequence < candidates[j].sequence })
 	result := mcpevents.SourcePage{Events: []mcpevents.SourceEvent{}}
-	for i, c := range candidates {
-		if i == limit {
-			break
-		}
-		safe[c.event.ProjectUID] = c.sequence
-		remaining[c.event.ProjectUID]--
-		if remaining[c.event.ProjectUID] == 0 {
-			safe[c.event.ProjectUID] = end[c.event.ProjectUID]
+	for i := 0; i < len(candidates) && len(result.Events) < limit; {
+		c := candidates[i]
+		// A move is present in both departure and arrival feeds. One occurrence
+		// advances only the project copies actually inspected in this round.
+		for i < len(candidates) && candidates[i].sequence == c.sequence && candidates[i].event.EventID == c.event.EventID {
+			copy := candidates[i]
+			safe[copy.projectUID] = copy.sequence
+			remaining[copy.projectUID]--
+			if remaining[copy.projectUID] == 0 {
+				safe[copy.projectUID] = end[copy.projectUID]
+			}
+			i++
 		}
 		c.event.Positions = copySourcePosition(safe)
 		result.Events = append(result.Events, c.event)

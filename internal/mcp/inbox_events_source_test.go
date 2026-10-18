@@ -342,25 +342,7 @@ func TestSourceDynamicProjectAccessRace(t *testing.T) {
 }
 
 func TestSourceBackendCommittedHeadAndNotification(t *testing.T) {
-	for _, backend := range []dbtest.Backend{
-		{Name: "sqlite", Open: func(t *testing.T) db.Storage {
-			store, err := sqlitestore.Open(t.Context(), filepath.Join(t.TempDir(), "events.db"))
-			require.NoError(t, err)
-			t.Cleanup(func() { _ = store.Close() })
-			return store
-		}},
-		{Name: "postgres", Open: func(t *testing.T) db.Storage {
-			if testing.Short() {
-				t.Skip("PostgreSQL conformance fixture skipped in focused short run")
-			}
-			dsn, cleanup := pgstoretest.NewDatabase(t, t.Context())
-			t.Cleanup(cleanup)
-			store, err := pgstore.OpenWithConfig(t.Context(), dsn, pgstore.DefaultConfig())
-			require.NoError(t, err)
-			t.Cleanup(func() { _ = store.Close() })
-			return store
-		}},
-	} {
+	for _, backend := range sourceBackendFixtures() {
 		t.Run(backend.Name, func(t *testing.T) {
 			store := backend.Open(t)
 			project, err := store.CreateProject(t.Context(), "spoke-project")
@@ -390,6 +372,72 @@ func TestSourceBackendCommittedHeadAndNotification(t *testing.T) {
 			next, err := source.Read(t.Context(), scope, page.Positions, 100)
 			require.NoError(t, err)
 			require.Empty(t, next.Events)
+		})
+	}
+}
+
+func TestSourceMoveDeparturesConformance(t *testing.T) {
+	for _, backend := range sourceBackendFixtures() {
+		t.Run(backend.Name, func(t *testing.T) {
+			for _, both := range []bool{false, true} {
+				t.Run(fmt.Sprintf("both-projects-%t", both), func(t *testing.T) {
+					store := backend.Open(t)
+					a, err := store.CreateProject(t.Context(), "spoke-project")
+					require.NoError(t, err)
+					b, err := store.CreateProject(t.Context(), "hub-project")
+					require.NoError(t, err)
+					issue, _, err := store.CreateIssue(t.Context(), db.CreateIssueParams{ProjectID: a.ID, Title: "Moved issue", Author: "example-user"})
+					require.NoError(t, err)
+					daemonServer := daemon.NewServer(daemon.ServerConfig{DB: store, StartedAt: time.Now().UTC()})
+					t.Cleanup(func() { _ = daemonServer.Close() })
+					server := httptest.NewServer(daemonServer.Handler())
+					t.Cleanup(server.Close)
+					client, err := kataclient.NewWithHTTPClient(server.URL, server.Client())
+					require.NoError(t, err)
+					startup, err := NewBoundScope(ProjectIdentity{ID: a.ID, UID: a.UID, Name: a.Name})
+					require.NoError(t, err)
+					if both {
+						startup, err = NewAllowlistScope([]ProjectIdentity{{ID: a.ID, UID: a.UID, Name: a.Name}, {ID: b.ID, UID: b.UID, Name: b.Name}})
+						require.NoError(t, err)
+					}
+					source := NewEventsSource(client, startup, store.InstanceUID())
+					scope, err := source.Resolve(t.Context(), mcpevents.Arguments{For: "example-user"})
+					require.NoError(t, err)
+					head, err := source.Head(t.Context(), scope)
+					require.NoError(t, err)
+					_, earlier, err := store.CreateIssue(t.Context(), db.CreateIssueParams{ProjectID: b.ID, Title: "Earlier destination work", Author: "example-user", Metadata: map[string]jsontext.Value{notification.MetadataKey("example-user"): jsontext.Value(`{"from":"sender","message":"work"}`)}})
+					require.NoError(t, err)
+					moved, err := store.MoveIssueProject(t.Context(), db.MoveIssueProjectIn{IssueID: issue.ID, FromProjectID: a.ID, ToProjectID: b.ID, IfMatchRev: issue.Revision, Actor: "example-user"})
+					require.NoError(t, err)
+					require.NotNil(t, moved.Event)
+					page, err := source.Read(t.Context(), scope, head, 1)
+					require.NoError(t, err)
+					require.Len(t, page.Events, 1)
+					if both {
+						require.Equal(t, earlier.UID, page.Events[0].SourceEventUID)
+						require.Equal(t, head[a.UID], page.Positions[a.UID], "unreturned departure cannot advance the source cursor")
+						page, err = source.Read(t.Context(), scope, page.Positions, 1)
+						require.NoError(t, err)
+						require.Len(t, page.Events, 1, "two project copies form one occurrence")
+						require.Equal(t, b.UID, page.Events[0].ProjectUID)
+						require.Equal(t, issue.UID, page.Events[0].IssueUID)
+						require.Equal(t, moved.EventID, page.Positions[b.UID])
+					} else {
+						require.Equal(t, a.UID, page.Events[0].ProjectUID)
+						require.Empty(t, page.Events[0].IssueUID)
+						encoded, err := json.Marshal(page.Events)
+						require.NoError(t, err)
+						require.NotContains(t, string(encoded), b.UID)
+						require.NotContains(t, string(encoded), issue.UID)
+					}
+					require.Equal(t, moved.Event.UID, page.Events[0].SourceEventUID)
+					require.Equal(t, "visibility", page.Events[0].Reason)
+					require.Equal(t, moved.EventID, page.Positions[a.UID])
+					again, err := source.Read(t.Context(), scope, page.Positions, 1)
+					require.NoError(t, err)
+					require.Empty(t, again.Events)
+				})
+			}
 		})
 	}
 }
@@ -478,5 +526,27 @@ func TestSourceOversizedHTTPFailureNeverCreatesAGap(t *testing.T) {
 			require.Empty(t, page.Positions)
 			require.Zero(t, heads)
 		})
+	}
+}
+
+func sourceBackendFixtures() []dbtest.Backend {
+	return []dbtest.Backend{
+		{Name: "sqlite", Open: func(t *testing.T) db.Storage {
+			store, err := sqlitestore.Open(t.Context(), filepath.Join(t.TempDir(), "events.db"))
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = store.Close() })
+			return store
+		}},
+		{Name: "postgres", Open: func(t *testing.T) db.Storage {
+			if testing.Short() {
+				t.Skip("PostgreSQL conformance fixture skipped in focused short run")
+			}
+			dsn, cleanup := pgstoretest.NewDatabase(t, t.Context())
+			t.Cleanup(cleanup)
+			store, err := pgstore.OpenWithConfig(t.Context(), dsn, pgstore.DefaultConfig())
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = store.Close() })
+			return store
+		}},
 	}
 }
