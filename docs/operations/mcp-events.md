@@ -134,7 +134,9 @@ Verify the Standard Webhooks headers before accepting a receipt:
 Use constant-time signature comparison and a bounded timestamp tolerance. Persist
 and deduplicate the receipt by event ID before returning 2xx. A 2xx means receipt,
 not completed work. Identical source occurrences keep their ID across retries,
-restarts, and separate subscriptions. Retries preserve the exact envelope bytes
+restarts, separate subscriptions, and copies in different project pages. Delivery
+is at least once; deduplicate even when project pages reach the same move in
+different polling rounds. Retries preserve the exact envelope bytes
 while obtaining a fresh signing timestamp and signatures. The same occurrence
 may have different cursors across registrations: acknowledge a valid duplicate
 without dispatching again, and track refresh cursors separately by subscription ID.
