@@ -17,6 +17,7 @@ import (
 	"go.kenn.io/kata/internal/config"
 	"go.kenn.io/kata/internal/daemon"
 	mcpserver "go.kenn.io/kata/internal/mcp"
+	"go.kenn.io/kata/internal/mcpevents"
 	"go.kenn.io/kata/internal/storageadmin"
 	"go.kenn.io/kata/internal/version"
 	kataclient "go.kenn.io/kata/pkg/client"
@@ -39,6 +40,7 @@ func newMCPServeCmd() *cobra.Command {
 	var storageRoot string
 	var storageTargets []string
 	var enableTokenAdmin bool
+	var eventsStateDir string
 	var httpAddress string
 	var httpTokenEnv string
 	var httpTokenFile string
@@ -47,7 +49,10 @@ func newMCPServeCmd() *cobra.Command {
 		Use:   "serve",
 		Short: "serve Kata tools over stdio or streamable HTTP",
 		Args:  cobra.NoArgs,
-		RunE: func(command *cobra.Command, _ []string) error {
+		RunE: func(command *cobra.Command, _ []string) (runErr error) {
+			if eventsStateDir != "" && !filepath.IsAbs(eventsStateDir) {
+				return errors.New("--events-state-dir must be an absolute path")
+			}
 			if strings.TrimSpace(storageRoot) == "" && len(storageTargets) > 0 {
 				return errors.New("--storage-target requires --storage-root")
 			}
@@ -152,10 +157,34 @@ func newMCPServeCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("resolve MCP project scope: %w", err)
 			}
+			var eventService *mcpevents.Service
+			if eventsStateDir != "" {
+				var stopEvents context.CancelFunc
+				ctx, stopEvents = context.WithCancel(ctx)
+				eventService, err = configureMCPEvents(ctx, eventsStateDir, resolved, apiClient, scope, actor, httpToken)
+				if err != nil {
+					stopEvents()
+					return err
+				}
+				eventDone := make(chan error, 1)
+				go func() {
+					workerErr := eventService.Run(ctx)
+					eventDone <- workerErr
+					if workerErr != nil {
+						stopEvents()
+					}
+				}()
+				defer func() {
+					closeErr := eventService.Close()
+					stopEvents()
+					runErr = errors.Join(runErr, closeErr, <-eventDone)
+				}()
+			}
 			observe, stopReporting := startMCPAgentUseReporter(ctx, apiClient)
 			defer stopReporting()
 			server, err := mcpserver.New(mcpserver.Options{
 				Client:            apiClient,
+				Events:            eventService,
 				ObserveToolCall:   observe,
 				LongRunningClient: longRunningAPIClient,
 				Scope:             scope,
@@ -195,6 +224,7 @@ func newMCPServeCmd() *cobra.Command {
 			return err
 		},
 	}
+	command.Flags().StringVar(&eventsStateDir, "events-state-dir", "", "enable durable native Events using this private absolute directory")
 	command.Flags().StringVar(&runtimeDirectory, "runtime-dir", "", "use an existing daemon runtime directory without starting a daemon")
 	command.Flags().BoolVar(&allProjects, "all", false, "serve every project visible to the selected daemon")
 	command.Flags().StringSliceVar(&projects, "projects", nil, "serve only these project names")
