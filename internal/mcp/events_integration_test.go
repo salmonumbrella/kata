@@ -40,23 +40,28 @@ const integrationCallback = "https://example.com/inbox"
 const integrationBearer = "fixture-inbound-token"
 
 type eventsIntegrationFixture struct {
-	store      *sqlitestore.Store
-	project    db.Project
-	http       *httptest.Server
-	service    *mcpevents.Service
-	clock      atomic.Int64
-	secret     string
-	received   chan mcpevents.Envelope
-	receiptsMu sync.Mutex
-	receipts   map[string][]byte
-	receiptDir string
-	dispatch   func(mcpevents.Envelope)
+	store          *sqlitestore.Store
+	project        db.Project
+	http           *httptest.Server
+	service        *mcpevents.Service
+	clock          atomic.Int64
+	secret         string
+	secretMu       sync.RWMutex
+	received       chan mcpevents.Envelope
+	receiptsMu     sync.Mutex
+	receipts       map[string][]byte
+	receiptDir     string
+	dispatch       func(mcpevents.Envelope)
+	restart        func()
+	attempts       chan []byte
+	callbackStatus atomic.Int32
 }
 
 func newEventsIntegrationFixture(t *testing.T) *eventsIntegrationFixture {
 	t.Helper()
-	f := &eventsIntegrationFixture{received: make(chan mcpevents.Envelope, 32), receipts: map[string][]byte{}, secret: "whsec_" + base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32))}
+	f := &eventsIntegrationFixture{received: make(chan mcpevents.Envelope, 32), attempts: make(chan []byte, 64), receipts: map[string][]byte{}, secret: "whsec_" + base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32))}
 	f.clock.Store(time.Now().UTC().UnixNano())
+	f.callbackStatus.Store(http.StatusNoContent)
 	f.receiptDir = t.TempDir()
 	var err error
 	f.store, err = sqlitestore.Open(t.Context(), filepath.Join(t.TempDir(), "fixture.db"))
@@ -88,25 +93,48 @@ func newEventsIntegrationFixture(t *testing.T) *eventsIntegrationFixture {
 		}, RootCAs: roots, Now: f.now,
 	})
 	credentialHash := sha256.Sum256([]byte(integrationBearer))
-	state, err := mcpevents.OpenState(filepath.Join(t.TempDir(), "events"), mcpevents.Binding{BackendOrigin: backendHTTP.URL, DaemonUID: f.store.InstanceUID(), BackendCredentialFingerprint: strings.Repeat("a", 64), BackendPrincipal: "owner-local-fixture", TransportPrincipal: hex.EncodeToString(credentialHash[:]), Actor: "example-agent", ScopeMode: "bound", ProjectUIDs: []string{f.project.UID}})
-	require.NoError(t, err)
-	f.service, err = mcpevents.NewService(mcpevents.ServiceOptions{State: state, Source: NewEventsSource(client, scope, f.store.InstanceUID()), Webhook: webhook, Now: f.now, PollInterval: 10 * time.Millisecond})
-	require.NoError(t, err)
-	serviceDone := make(chan error, 1)
-	go func() { serviceDone <- f.service.Run(t.Context()) }()
-	t.Cleanup(func() { require.NoError(t, f.service.Close()); require.NoError(t, <-serviceDone) })
-	server, err := New(Options{Client: client, Scope: scope, Actor: "example-agent", Teammate: "worker", Version: "test", Events: f.service})
-	require.NoError(t, err)
-	handler := NewHTTPHandler(server)
-	f.http = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer "+integrationBearer {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-		handler.ServeHTTP(w, r)
-	}))
-	t.Cleanup(f.http.Close)
+	stateDir := filepath.Join(t.TempDir(), "events")
+	binding := mcpevents.Binding{BackendOrigin: backendHTTP.URL, DaemonUID: f.store.InstanceUID(), BackendCredentialFingerprint: strings.Repeat("a", 64), BackendPrincipal: "owner-local-fixture", TransportPrincipal: hex.EncodeToString(credentialHash[:]), Actor: "example-agent", ScopeMode: "bound", ProjectUIDs: []string{f.project.UID}}
+	var serviceDone chan error
+	start := func() {
+		state, err := mcpevents.OpenState(stateDir, binding)
+		require.NoError(t, err)
+		f.service, err = mcpevents.NewService(mcpevents.ServiceOptions{State: state, Source: NewEventsSource(client, scope, f.store.InstanceUID()), Webhook: webhook, Now: f.now, PollInterval: 10 * time.Millisecond})
+		require.NoError(t, err)
+		serviceDone = make(chan error, 1)
+		service, done := f.service, serviceDone
+		go func() { done <- service.Run(t.Context()) }()
+		server, err := New(Options{Client: client, Scope: scope, Actor: "example-agent", Teammate: "worker", Version: "test", Events: f.service})
+		require.NoError(t, err)
+		handler := NewHTTPHandler(server)
+		f.http = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("Authorization") != "Bearer "+integrationBearer {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			handler.ServeHTTP(w, r)
+		}))
+	}
+	stop := func() {
+		f.http.Close()
+		require.NoError(t, f.service.Close())
+		require.NoError(t, <-serviceDone)
+	}
+	start()
+	f.restart = func() { stop(); start() }
+	t.Cleanup(stop)
+
 	return f
+}
+func (f *eventsIntegrationFixture) signingSecret() string {
+	f.secretMu.RLock()
+	defer f.secretMu.RUnlock()
+	return f.secret
+}
+func (f *eventsIntegrationFixture) rotateSecret(secret string) {
+	f.secretMu.Lock()
+	defer f.secretMu.Unlock()
+	f.secret = secret
 }
 func (f *eventsIntegrationFixture) now() time.Time { return time.Unix(0, f.clock.Load()).UTC() }
 func (f *eventsIntegrationFixture) receive(w http.ResponseWriter, r *http.Request) {
@@ -115,13 +143,19 @@ func (f *eventsIntegrationFixture) receive(w http.ResponseWriter, r *http.Reques
 		w.WriteHeader(400)
 		return
 	}
-	key, _ := base64.StdEncoding.DecodeString(strings.TrimPrefix(f.secret, "whsec_"))
+	key, _ := base64.StdEncoding.DecodeString(strings.TrimPrefix(f.signingSecret(), "whsec_"))
 	mac := hmac.New(sha256.New, key)
 	_, _ = io.WriteString(mac, r.Header.Get("Webhook-Id")+"."+r.Header.Get("Webhook-Timestamp")+".")
 	_, _ = mac.Write(raw)
-	signature, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(r.Header.Get("Webhook-Signature"), "v1,"))
+	validSignature := false
+	for _, candidate := range strings.Fields(r.Header.Get("Webhook-Signature")) {
+		if encoded, ok := strings.CutPrefix(candidate, "v1,"); ok {
+			signature, decodeErr := base64.StdEncoding.DecodeString(encoded)
+			validSignature = (decodeErr == nil && hmac.Equal(signature, mac.Sum(nil))) || validSignature
+		}
+	}
 	stamp, timeErr := strconv.ParseInt(r.Header.Get("Webhook-Timestamp"), 10, 64)
-	if err != nil || timeErr != nil || !hmac.Equal(signature, mac.Sum(nil)) || (stamp < f.now().Unix()-300 || stamp > f.now().Unix()+300) || r.Header.Get("X-MCP-Subscription-Id") == "" {
+	if timeErr != nil || !validSignature || (stamp < f.now().Unix()-300 || stamp > f.now().Unix()+300) || r.Header.Get("X-MCP-Subscription-Id") == "" {
 		w.WriteHeader(401)
 		return
 	}
@@ -149,7 +183,8 @@ func (f *eventsIntegrationFixture) receive(w http.ResponseWriter, r *http.Reques
 	duplicate := errors.Is(writeErr, os.ErrExist)
 	if duplicate {
 		previous, readErr := os.ReadFile(path)
-		if readErr != nil || !bytes.Equal(previous, raw) {
+		var retained mcpevents.Envelope
+		if readErr != nil || json.Unmarshal(previous, &retained) != nil || retained.EventID != event.EventID {
 			f.receiptsMu.Unlock()
 			w.WriteHeader(http.StatusConflict)
 			return
@@ -168,7 +203,8 @@ func (f *eventsIntegrationFixture) receive(w http.ResponseWriter, r *http.Reques
 		f.received <- event
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	f.attempts <- bytes.Clone(raw)
+	w.WriteHeader(int(f.callbackStatus.Load()))
 }
 func (f *eventsIntegrationFixture) method(t *testing.T, method string, params map[string]any) map[string]any {
 	t.Helper()
@@ -205,7 +241,7 @@ func (f *eventsIntegrationFixture) tool(t *testing.T, name string, args map[stri
 }
 func (f *eventsIntegrationFixture) subscribe(t *testing.T, recipient string) map[string]any {
 	t.Helper()
-	return f.method(t, "events/subscribe", map[string]any{"name": "kata.inbox.changed", "arguments": map[string]any{"for": recipient, "project_uid": f.project.UID}, "delivery": map[string]any{"mode": "webhook", "url": integrationCallback, "secret": f.secret}})
+	return f.method(t, "events/subscribe", map[string]any{"name": "kata.inbox.changed", "arguments": map[string]any{"for": recipient, "project_uid": f.project.UID}, "delivery": map[string]any{"mode": "webhook", "url": integrationCallback, "secret": f.signingSecret()}})
 }
 func (f *eventsIntegrationFixture) next(t *testing.T, predicate func(mcpevents.Envelope) bool) mcpevents.Envelope {
 	t.Helper()
@@ -232,7 +268,7 @@ func TestExternalInboxNativeWebhookEndToEnd(t *testing.T) {
 		f.tool(t, loader, map[string]any{})
 	}
 	created := f.tool(t, "create", map[string]any{"title": "Review external request", "idempotency_key": "external-request-fixture"})["issue"].(map[string]any)
-	f.subscribe(t, "example-agent/worker")
+	subscription := f.subscribe(t, "example-agent/worker")
 	f.next(t, func(e mcpevents.Envelope) bool { return e.Data.ResyncRequired })
 	issue, err := f.store.IssueByUID(t.Context(), created["uid"].(string), db.IncludeDeletedNo)
 	require.NoError(t, err)
@@ -252,7 +288,18 @@ func TestExternalInboxNativeWebhookEndToEnd(t *testing.T) {
 	require.Equal(t, "Review external request", shown["title"])
 	require.Empty(t, f.tool(t, "inbox", map[string]any{"for": "example-agent/other-worker"})["requests"])
 	require.Empty(t, f.tool(t, "inbox", map[string]any{"for": "example-agent"})["requests"])
+
+	// Refresh and key rotation use the same native identity; old and new keys
+	// overlap on the next occurrence, and the receiver accepts its current key.
+	f.rotateSecret("whsec_" + base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{9}, 32)))
+	refreshed := f.method(t, "events/subscribe", map[string]any{"name": "kata.inbox.changed", "arguments": map[string]any{"for": "example-agent/worker", "project_uid": f.project.UID}, "delivery": map[string]any{"mode": "webhook", "url": integrationCallback, "secret": f.signingSecret()}, "cursor": delivery.Cursor})
+	require.Equal(t, subscription["id"], refreshed["id"])
 	f.tool(t, "set_metadata", map[string]any{"ref": request["qualified_ref"], "revision": shown["revision"], "patch": map[string]any{key: nil}})
+	cleared := f.next(t, func(e mcpevents.Envelope) bool {
+		return e.Data.Reason == "notification" && e.EventID != delivery.EventID
+	})
+	require.Equal(t, issue.UID, cleared.Data.IssueUID)
+
 	require.Empty(t, f.tool(t, "inbox", map[string]any{"for": "example-agent/worker"})["requests"])
 	f.method(t, "events/unsubscribe", map[string]any{"name": "kata.inbox.changed", "arguments": map[string]any{"for": "example-agent/worker", "project_uid": f.project.UID}, "delivery": map[string]any{"mode": "webhook", "url": integrationCallback}})
 }
@@ -266,6 +313,7 @@ func TestReceiverDurableDeduplicationAndWorkerAvailability(t *testing.T) {
 			event := mcpevents.Envelope{EventID: "fixture-event", Name: "kata.inbox.changed", Timestamp: f.now().Format(time.RFC3339Nano), Data: mcpevents.Payload{Recipient: "example-agent/worker", Reason: "notification"}, Cursor: "opaque-cursor"}
 			raw, err := json.Marshal(event)
 			require.NoError(t, err)
+			subscriptionID := "fixture-subscription"
 			post := func() {
 				req := httptest.NewRequest(http.MethodPost, integrationCallback, bytes.NewReader(raw))
 				stamp := strconv.FormatInt(f.now().Unix(), 10)
@@ -276,7 +324,7 @@ func TestReceiverDurableDeduplicationAndWorkerAvailability(t *testing.T) {
 				req.Header.Set("Webhook-Id", event.EventID)
 				req.Header.Set("Webhook-Timestamp", stamp)
 				req.Header.Set("Webhook-Signature", "v1,"+base64.StdEncoding.EncodeToString(mac.Sum(nil)))
-				req.Header.Set("X-MCP-Subscription-Id", "fixture-subscription")
+				req.Header.Set("X-MCP-Subscription-Id", subscriptionID)
 				response := httptest.NewRecorder()
 				f.receive(response, req)
 				require.Equal(t, http.StatusNoContent, response.Code)
@@ -309,6 +357,18 @@ func TestReceiverDurableDeduplicationAndWorkerAvailability(t *testing.T) {
 			receipt, err := os.ReadFile(filepath.Join(f.receiptDir, entries[0].Name()))
 			require.NoError(t, err)
 			require.Equal(t, raw, receipt)
+			original := bytes.Clone(raw)
+			// One source occurrence may have a different cursor in another
+			// registration. Verify it, acknowledge it, retain the first receipt.
+			event.Cursor = "another-registration-cursor"
+			subscriptionID = "second-fixture-subscription"
+			raw, err = json.Marshal(event)
+			require.NoError(t, err)
+			post()
+			require.Empty(t, f.received)
+			retained, err := os.ReadFile(filepath.Join(f.receiptDir, entries[0].Name()))
+			require.NoError(t, err)
+			require.Equal(t, original, retained)
 
 			// A distinct later occurrence for the same inbox coalesces with
 			// the busy worker's refresh; it never starts another worker.
@@ -351,4 +411,55 @@ func (w *fixtureWorker) accept(event mcpevents.Envelope) {
 		actor, _, _ := strings.Cut(event.Data.Recipient, "/")
 		w.pending[actor] = true
 	}
+}
+
+func TestNativeWebhookPendingRetryAfterServiceRestart(t *testing.T) {
+	f := newEventsIntegrationFixture(t)
+	f.tool(t, "load_issue_mutation", map[string]any{})
+	created := f.tool(t, "create", map[string]any{"title": "Restart delivery fixture", "idempotency_key": "restart-fixture"})["issue"].(map[string]any)
+	sub := f.subscribe(t, "example-agent/worker")
+	f.next(t, func(e mcpevents.Envelope) bool { return e.Data.ResyncRequired })
+	// Wait for the bootstrap receipt to be acknowledged before losing the next
+	// acknowledgment. The receiver will durably accept a new receipt but return500.
+	require.Eventually(t, func() bool {
+		status, err := f.service.Status(t.Context())
+		return err == nil && len(status) == 1 && status[0].Delivery.Category == "accepted"
+	}, 5*time.Second, 10*time.Millisecond)
+	f.callbackStatus.Store(http.StatusInternalServerError)
+	issue, err := f.store.IssueByUID(t.Context(), created["uid"].(string), db.IncludeDeletedNo)
+	require.NoError(t, err)
+	_, err = f.store.PatchIssueMetadata(t.Context(), db.PatchIssueMetadataIn{IssueID: issue.ID, Actor: "external-producer", Patch: map[string]jsontext.Value{notification.MetadataKey("example-agent/worker"): jsontext.Value(`{"from":"external-producer","message":"Review after restart"}`)}})
+	require.NoError(t, err)
+	delivered := f.next(t, func(e mcpevents.Envelope) bool { return e.Data.Reason == "notification" })
+	nextAttempt := func() []byte {
+		timer := time.NewTimer(5 * time.Second)
+		defer timer.Stop()
+		for {
+			select {
+			case raw := <-f.attempts:
+				var event mcpevents.Envelope
+				require.NoError(t, json.Unmarshal(raw, &event))
+				if event.EventID == delivered.EventID {
+					return raw
+				}
+			case <-timer.C:
+				t.Fatal("expected retried receipt did not arrive")
+				return nil
+			}
+		}
+	}
+	original := nextAttempt()
+	require.Eventually(t, func() bool {
+		status, err := f.service.Status(t.Context())
+		return err == nil && len(status) == 1 && status[0].Delivery.Category == "http_5xx"
+	}, 5*time.Second, 10*time.Millisecond)
+	f.callbackStatus.Store(http.StatusNoContent)
+	f.restart()
+	f.clock.Add(int64(2 * time.Second))
+	require.Equal(t, original, nextAttempt(), "restart retries the exact accepted-before-ack envelope")
+	require.Eventually(t, func() bool {
+		status, err := f.service.Status(t.Context())
+		return err == nil && len(status) == 1 && status[0].ID == sub["id"] && status[0].Delivery.Category == "accepted"
+	}, 5*time.Second, 10*time.Millisecond)
+	require.Empty(t, f.received, "a retried durable receipt never dispatches another wake")
 }

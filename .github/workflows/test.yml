@@ -289,6 +289,7 @@ jobs:
           ./internal/db/pgstore
           ./internal/db/storeopen
           ./internal/daemon
+          ./internal/mcp
           ./internal/jsonl
           ./internal/vector
           ./cmd/kata

@@ -135,7 +135,9 @@ Use constant-time signature comparison and a bounded timestamp tolerance. Persis
 and deduplicate the receipt by event ID before returning 2xx. A 2xx means receipt,
 not completed work. Identical source occurrences keep their ID across retries,
 restarts, and separate subscriptions. Retries preserve the exact envelope bytes
-while obtaining a fresh signing timestamp and signatures.
+while obtaining a fresh signing timestamp and signatures. The same occurrence
+may have different cursors across registrations: acknowledge a valid duplicate
+without dispatching again, and track refresh cursors separately by subscription ID.
 
 Map recipients explicitly. An idle worker can wake; a busy worker can coalesce a
 new inbox read; an unavailable worker's request remains pending for its accountable
