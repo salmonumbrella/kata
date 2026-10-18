@@ -609,3 +609,100 @@ func TestEventServiceConcurrentSubscribeRemainsScheduledAfterFailure(t *testing.
 		t.Fatal("accepted concurrent registration was orphaned from delivery scheduler")
 	}
 }
+
+func TestEventServiceExpiryDuringDNSDoesNotSendOrConsumeAttempt(t *testing.T) {
+	s, state, _, now, events := runtimeFixture(t, http.StatusNoContent)
+	request := serviceRequest()
+	ttl := int64(60000)
+	request.TTLMS = &ttl
+	if _, err := s.Subscribe(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	resolve := s.webhook.resolve
+	s.webhook.resolve = func(ctx context.Context, network, host string) ([]netip.Addr, error) {
+		*now = now.Add(time.Minute)
+		return resolve(ctx, network, host)
+	}
+	if err := s.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(*events) != 0 {
+		t.Fatal("callback sent after subscription expired during DNS")
+	}
+	assertExpiryPreservesPending(t, state)
+}
+
+type expiryDuringAuthorizationSource struct {
+	Source
+	onAuthorize func()
+}
+
+func (s expiryDuringAuthorizationSource) Authorize(ctx context.Context, scope Scope) error {
+	s.onAuthorize()
+	return s.Source.Authorize(ctx, scope)
+}
+
+func TestEventServiceExpiryDuringDispatchAuthorizationDoesNotStartDNS(t *testing.T) {
+	s, state, source, now, _ := runtimeFixture(t, http.StatusNoContent)
+	request := serviceRequest()
+	ttl := int64(60000)
+	request.TTLMS = &ttl
+	if _, err := s.Subscribe(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	s.source = expiryDuringAuthorizationSource{Source: source, onAuthorize: func() {
+		calls++
+		if calls == 2 {
+			*now = now.Add(time.Minute)
+		}
+	}}
+	var resolutions atomic.Int32
+	resolve := s.webhook.resolve
+	s.webhook.resolve = func(ctx context.Context, network, host string) ([]netip.Addr, error) {
+		resolutions.Add(1)
+		return resolve(ctx, network, host)
+	}
+	if err := s.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if resolutions.Load() != 0 {
+		t.Fatal("expired subscription began callback DNS after dispatch authorization")
+	}
+	assertExpiryPreservesPending(t, state)
+}
+
+func TestEventServiceDeliveryUsesRemainingExpiryWithFakeClock(t *testing.T) {
+	s, state, _, now, _ := runtimeFixture(t, http.StatusNoContent)
+	request := serviceRequest()
+	ttl := int64(60000)
+	request.TTLMS = &ttl
+	if _, err := s.Subscribe(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	*now = now.Add(time.Minute - 20*time.Millisecond)
+	w, _ := fixtureWebhook(t, func(rw http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(250 * time.Millisecond):
+		}
+		rw.WriteHeader(http.StatusAccepted)
+	})
+	s.webhook = w
+	if err := s.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	assertExpiryPreservesPending(t, state)
+}
+
+func assertExpiryPreservesPending(t *testing.T, state *State) {
+	t.Helper()
+	records, err := state.Load()
+	if err != nil || len(records) != 1 {
+		t.Fatalf("expiry changed durable registration: records=%d error=%v", len(records), err)
+	}
+	sub := records[0]
+	if sub.Disabled || sub.Pending == nil || sub.Pending.Attempts != 0 || sub.Pending.Failed || sub.Status.LastFailureCategory != "" || sub.Positions[stateBinding().ProjectUIDs[0]] != 12 {
+		t.Fatal("normal expiry consumed an attempt, revoked authority, or advanced the safe watermark")
+	}
+}

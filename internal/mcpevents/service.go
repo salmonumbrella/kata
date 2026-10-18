@@ -21,6 +21,8 @@ type ServiceOptions struct {
 	PollInterval time.Duration
 }
 
+var errSubscriptionExpired = errors.New("event subscription expired")
+
 type subscriptionEntry struct {
 	op             sync.Mutex
 	cancelMu       sync.Mutex
@@ -364,4 +366,15 @@ func (s *Service) webhookAuthority(ctx context.Context, scope Scope) error {
 		return err
 	}
 	return ErrUnavailable
+}
+
+func (s *Service) webhookAuthorityBefore(ctx context.Context, scope Scope, expiresAt time.Time) error {
+	if !s.now().Before(expiresAt) {
+		return ErrUnavailable
+	}
+	err := s.webhookAuthority(ctx, scope)
+	if !s.now().Before(expiresAt) {
+		return ErrUnavailable
+	}
+	return err
 }

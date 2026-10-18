@@ -19,7 +19,11 @@ func (s *Service) process(ctx context.Context, entry *subscriptionEntry) error {
 	}
 	defer done()
 	sub := cloneSubscription(entry.sub)
-	if err = s.source.Authorize(ctx, sub.Scope); err != nil {
+	err = s.source.Authorize(ctx, sub.Scope)
+	if !s.now().Before(sub.ExpiresAt) {
+		return nil
+	}
+	if err != nil {
 		if errors.Is(err, ErrScopeChanged) {
 			return s.reconcile(ctx, entry)
 		}
@@ -44,6 +48,9 @@ func (s *Service) process(ctx context.Context, entry *subscriptionEntry) error {
 	}
 	if sub.Pending == nil {
 		page, err := s.source.Read(ctx, sub.Scope, clonePosition(sub.Positions), 100)
+		if !s.now().Before(sub.ExpiresAt) {
+			return nil
+		}
 		if err != nil {
 			if errors.Is(err, ErrRevoked) {
 				return s.sourceError(ctx, entry, err)
@@ -87,8 +94,15 @@ func (s *Service) process(ctx context.Context, entry *subscriptionEntry) error {
 		return nil
 	}
 	defer func() { <-s.outbound }()
+	if !s.now().Before(sub.ExpiresAt) {
+		return nil
+	}
 	// Authorization is checked again after waiting for an outbound slot.
-	if err = s.source.Authorize(ctx, sub.Scope); err != nil {
+	err = s.source.Authorize(ctx, sub.Scope)
+	if !s.now().Before(sub.ExpiresAt) {
+		return nil
+	}
+	if err != nil {
 		if errors.Is(err, ErrRevoked) {
 			return s.sourceError(ctx, entry, err)
 		}
@@ -97,8 +111,44 @@ func (s *Service) process(ctx context.Context, entry *subscriptionEntry) error {
 		}
 		return s.pauseSource(ctx, entry, "source_unavailable")
 	}
-	guardedCtx := withWebhookGuard(ctx, func(guardCtx context.Context) error { return s.webhookAuthority(guardCtx, sub.Scope) })
-	_, err = attemptDelivery(guardedCtx, s.identity, sub, s.webhook, s.now(), func(next Subscription) error { return s.save(ctx, entry, next) })
+	remaining := sub.ExpiresAt.Sub(s.now())
+	if remaining <= 0 {
+		return nil
+	}
+	// Convert the service clock's remaining duration into a real context timer;
+	// a fake service clock must never be compared directly to time.Now().
+	deliveryCtx, cancel := context.WithTimeoutCause(ctx, remaining, errSubscriptionExpired)
+	defer cancel()
+	expired := func() bool {
+		return !s.now().Before(sub.ExpiresAt) || errors.Is(context.Cause(deliveryCtx), errSubscriptionExpired)
+	}
+	persistExpired := func() error {
+		original := cloneSubscription(sub)
+		original.Status.Category = "expired"
+		original.Status.UpdatedAt = s.now()
+		if err := s.save(ctx, entry, original); err != nil {
+			return err
+		}
+		return errSubscriptionExpired
+	}
+	guardedCtx := withWebhookGuard(deliveryCtx, func(guardCtx context.Context) error {
+		return s.webhookAuthorityBefore(guardCtx, sub.Scope, sub.ExpiresAt)
+	})
+	_, err = attemptDelivery(guardedCtx, s.identity, sub, s.webhook, s.now(), func(next Subscription) error {
+		if expired() {
+			return persistExpired()
+		}
+		if err := s.save(ctx, entry, next); err != nil {
+			return err
+		}
+		if expired() {
+			return persistExpired()
+		}
+		return nil
+	})
+	if errors.Is(err, errSubscriptionExpired) {
+		return nil
+	}
 	if errors.Is(err, context.Canceled) {
 		return nil
 	}
