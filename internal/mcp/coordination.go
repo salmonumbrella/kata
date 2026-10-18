@@ -2,7 +2,6 @@ package mcpserver
 
 import (
 	"context"
-	"encoding/json/v2"
 	"errors"
 	"strings"
 	"time"
@@ -10,7 +9,6 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"go.kenn.io/kata/internal/notification"
-	"go.kenn.io/kata/internal/teammate"
 	kataclient "go.kenn.io/kata/pkg/client"
 	"go.kenn.io/kata/pkg/client/generated"
 )
@@ -156,23 +154,13 @@ func (h toolHandlers) inbox(ctx context.Context, request *sdkmcp.CallToolRequest
 	output := InboxOutput{Recipient: recipient, Requests: make([]InboxRequest, 0, len(listed.Issues)), Truncated: listed.Truncated, NextCursor: listed.NextCursor}
 	for _, issue := range listed.Issues {
 		// Skip malformed requests the same way the CLI inbox does.
-		var value struct {
-			From     string `json:"from"`
-			Message  string `json:"message"`
-			Teammate any    `json:"teammate"`
-		}
-		encoded, err := json.Marshal(issue.metadata[key])
-		if err != nil || json.Unmarshal(encoded, &value) != nil ||
-			strings.TrimSpace(value.From) == "" || strings.TrimSpace(value.Message) == "" {
+		value, valid := parseInboxNotification(issue.metadata[key])
+		if !valid {
 			continue
-		}
-		handle, _ := value.Teammate.(string)
-		if teammate.Validate(handle) != nil {
-			handle = ""
 		}
 		output.Requests = append(output.Requests, InboxRequest{
 			IssueUID: issue.UID, ProjectUID: issue.projectUID, Ref: issue.Ref, QualifiedRef: issue.QualifiedRef, WebURL: issue.WebURL, Title: issue.Title,
-			From: value.From, Teammate: handle, Message: value.Message,
+			From: value.From, Teammate: value.Teammate, Message: value.Message,
 		})
 	}
 	return successResult(), output, nil
