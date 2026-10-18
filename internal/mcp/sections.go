@@ -38,7 +38,7 @@ func registerSectionLoaders(server *sdkmcp.Server, options Options) {
 		for i := range sections {
 			if sections[i].section == "coordination" {
 				sections[i].tools = []string{"kata.assign", "kata.event_delivery_retry", "kata.event_subscriptions", "kata.inbox", "kata.status", "kata.unassign"}
-				sections[i].description += " Includes scoped webhook delivery health and explicit retry for the configured native Events service."
+				sections[i].description += " Native Events can signal exact-recipient inbox changes. Includes scoped webhook delivery health and explicit retry for the configured native Events service."
 				sections[i].register = func(server *sdkmcp.Server, h toolHandlers) {
 					registerCoordinationTools(server, h)
 					registerEventDeliveryTools(server, h)
@@ -75,7 +75,7 @@ func toolSections(storageAvailable, tokenAdminAvailable bool) []toolSection {
 		},
 		{
 			loader: "kata.load_coordination", section: "coordination", title: "Load coordination tools",
-			description: "Load inbox, assign, unassign, and issue-status tools. Inbox reads are paginated; native Events can signal exact-recipient inbox changes. Refresh the MCP tool list.",
+			description: "Load inbox, assign, unassign, and issue-status tools. Inbox reads are paginated. Refresh the MCP tool list.",
 			tools:       []string{"kata.assign", "kata.inbox", "kata.status", "kata.unassign"}, available: true, register: registerCoordinationTools,
 		},
 		{

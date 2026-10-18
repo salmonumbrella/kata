@@ -114,6 +114,13 @@ func TestMCPEventsDiscoveryEnabledAndDisabled(t *testing.T) {
 				}
 				response := eventWireCall(t, server, method, params)
 				result := response["result"].(map[string]any)
+				if method == "server/discover" {
+					require.Equal(t, "complete", result["resultType"])
+					meta, ok := result["_meta"].(map[string]any)
+					require.True(t, ok, "core2026 discovery must retain SDK annotations")
+					info := meta["io.modelcontextprotocol/serverInfo"].(map[string]any)
+					require.Equal(t, "kata", info["name"])
+				}
 				capabilities := result["capabilities"].(map[string]any)
 				_, has := capabilities["events"]
 				require.Equal(t, enabled, has)

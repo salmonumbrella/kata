@@ -309,6 +309,22 @@ func TestReceiverDurableDeduplicationAndWorkerAvailability(t *testing.T) {
 			receipt, err := os.ReadFile(filepath.Join(f.receiptDir, entries[0].Name()))
 			require.NoError(t, err)
 			require.Equal(t, raw, receipt)
+
+			// A distinct later occurrence for the same inbox coalesces with
+			// the busy worker's refresh; it never starts another worker.
+			event.EventID = "second-fixture-event"
+			raw, err = json.Marshal(event)
+			require.NoError(t, err)
+			post()
+			f.next(t, func(e mcpevents.Envelope) bool { return e.EventID == event.EventID })
+			post()
+			require.Empty(t, f.received)
+			if availability == "idle" {
+				require.Equal(t, 1, worker.starts)
+			} else {
+				require.Zero(t, worker.starts)
+			}
+			require.Len(t, worker.pending, 1)
 		})
 	}
 }
