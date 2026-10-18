@@ -135,7 +135,11 @@ func TestStateAtomicRecovery(t *testing.T) {
 }
 
 func TestStateRejectsCorruptUnknownAndOversized(t *testing.T) {
-	for i, bad := range []string{"{", `{"version":99}`, `{"version":1,"unexpected":true}`, `{"version":1,"version":1}`, strings.Repeat("x", (1<<20)+1)} {
+	valid, err := encodeState(stateSubscription())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, bad := range []string{"{", `{"version":99}`, `{"version":1,"unexpected":true}`, `{"version":1,"version":1}`, strings.Replace(string(valid), `"version"`, `"Version"`, 1), strings.Replace(string(valid), `:12`, `:null`, 1), strings.Repeat("x", (1<<20)+1)} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			s, dir := openTestState(t)
 			if err := s.Save(stateSubscription()); err != nil {

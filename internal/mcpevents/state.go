@@ -1,10 +1,10 @@
 package mcpevents
 
 import (
-	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -302,16 +302,8 @@ func readState[T any](path string, out *T) error {
 	if err != nil || len(b) > MaxStateBytes {
 		return ErrState
 	}
-	if err := uniqueJSON(json.NewDecoder(bytes.NewReader(b)), 0); err != nil {
-		return ErrState
-	}
-	d := json.NewDecoder(bytes.NewReader(b))
-	d.DisallowUnknownFields()
 	var r stateRecord[T]
-	if err := d.Decode(&r); err != nil {
-		return ErrState
-	}
-	if r.Version != stateVersion || d.Decode(new(any)) != io.EOF {
+	if jsonv2.Unmarshal(b, &r, jsonv2.RejectUnknownMembers(true)) != nil || r.Version != stateVersion {
 		return ErrState
 	}
 	*out = r.Value
@@ -324,40 +316,6 @@ func encodeState[T any](v T) ([]byte, error) {
 		return nil, ErrState
 	}
 	return b, nil
-}
-
-// Reject duplicate members instead of accepting ambiguous identity/cursor data.
-func uniqueJSON(d *json.Decoder, depth int) error {
-	if depth > 32 {
-		return ErrState
-	}
-	t, err := d.Token()
-	if err != nil {
-		return err
-	}
-	delim, ok := t.(json.Delim)
-	if !ok {
-		return nil
-	}
-	seen := map[string]bool{}
-	for d.More() {
-		if delim == '{' {
-			k, err := d.Token()
-			if err != nil {
-				return err
-			}
-			key, ok := k.(string)
-			if !ok || seen[key] {
-				return ErrState
-			}
-			seen[key] = true
-		}
-		if err := uniqueJSON(d, depth+1); err != nil {
-			return err
-		}
-	}
-	_, err = d.Token()
-	return err
 }
 
 func validID(id string) bool {

@@ -1,7 +1,10 @@
 // Package mcpevents owns the optional durable MCP Events webhook service.
 package mcpevents
 
-import "time"
+import (
+	json "encoding/json/v2"
+	"time"
+)
 
 const (
 	MaxSubscriptions = 128
@@ -19,6 +22,34 @@ type Arguments struct {
 
 // Position is a vector; project log sequence numbers cannot be combined.
 type Position map[string]int64
+
+// UnmarshalJSON rejects null entries instead of silently converting them to a
+// safe-looking zero watermark. A nil vector still denotes an empty scope.
+func (p *Position) UnmarshalJSON(raw []byte) error {
+	var fields map[string]*int64
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return err
+	}
+	if fields == nil {
+		*p = nil
+		return nil
+	}
+	if len(fields) > MaxProjects {
+		return ErrState
+	}
+	result := make(Position, len(fields))
+	for id, n := range fields {
+		if n == nil {
+			return ErrState
+		}
+		result[id] = *n
+	}
+	if err := validatePosition(result); err != nil {
+		return err
+	}
+	*p = result
+	return nil
+}
 
 type Project struct {
 	UID  string `json:"uid"`
