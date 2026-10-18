@@ -119,8 +119,11 @@ type Pending struct {
 // DeliveryStatus contains only safe categorized diagnostics, never responses,
 // callback URLs, payloads, or transport errors.
 type DeliveryStatus struct {
-	Category  string    `json:"category,omitempty"`
-	EventID   string    `json:"event_id,omitempty"`
-	Attempts  int       `json:"attempts"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Category            string    `json:"category,omitempty"`
+	EventID             string    `json:"event_id,omitempty"`
+	Attempts            int       `json:"attempts"`
+	UpdatedAt           time.Time `json:"updated_at"`
+	LastFailureCategory string    `json:"last_failure_category,omitempty"`
+	LastFailureEventID  string    `json:"last_failure_event_id,omitempty"`
+	LastFailureAt       time.Time `json:"last_failure_at,omitempty"`
 }
