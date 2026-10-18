@@ -7,9 +7,10 @@ import (
 )
 
 var (
-	ErrRevoked      = errors.New("event source authority revoked")
-	ErrUnavailable  = errors.New("event source temporarily unavailable")
-	ErrScopeChanged = errors.New("event source scope changed")
+	ErrRevoked       = errors.New("event source authority revoked")
+	ErrUnavailable   = errors.New("event source temporarily unavailable")
+	ErrScopeChanged  = errors.New("event source scope changed")
+	ErrResourceLimit = errors.New("event source exceeds project resource limit")
 )
 
 // Source exposes committed authorized daemon events without a database handle.
