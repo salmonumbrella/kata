@@ -142,3 +142,5 @@ is a local ledger for the work itself. They coexist. See
 -   [__Comparisons__](guide/comparisons.md). kata vs. SaaS issue trackers.
 
 </div>
+
+-   [__Native MCP inbox events__](operations/mcp-events.md). Deliver signed inbox wakes to a durable receiver.

@@ -504,3 +504,23 @@ a burst of 20, and at most eight concurrent daemon calls per server process.
 Host process control stays outside MCP: daemon lifecycle, the TUI and Web UI,
 install/update, database migrations and cutovers, and raw internal replication
 endpoints remain CLI or operator workflows.
+
+## Native inbox events
+
+Start the bridge with an absolute private runtime directory to advertise native
+`events/list`, `events/subscribe`, and `events/unsubscribe` methods:
+
+```bash
+kata mcp serve --events-state-dir /absolute/private/events
+```
+
+`kata.inbox.changed` accepts an exact `for` recipient and optional stable
+`project_uid` and `issue_uid` filters. Delivery uses a verified HTTPS webhook,
+signed receipts, durable retries, and opaque replay cursors. Receivers persist
+and deduplicate receipts before acknowledging them, then exhaust `kata.inbox`
+pages and read the issue. A receipt does not claim, clear, or complete work.
+
+The [native events operator guide](../operations/mcp-events.md) covers callback
+verification, startup binding, expiry, refresh, replay, revocation, diagnostics,
+and recovery. `kata.events_status` and `kata.events_retry` are available through
+`kata.load_coordination` when events are enabled.
