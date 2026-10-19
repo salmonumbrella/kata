@@ -3,7 +3,6 @@ package mcpserver
 import (
 	"encoding/json"
 	"fmt"
-	kataclient "go.kenn.io/kata/pkg/client"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,11 +12,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.kenn.io/kata/internal/notification"
+	kataclient "go.kenn.io/kata/pkg/client"
 )
 
 func TestInboxPaginationPreservesEmptyCandidatePage(t *testing.T) {
 	session, _ := newCoordinationSession(t)
-	for i := 0; i < 25; i++ {
+	for i := range 25 {
 		created := callAdministrationTool(t, session, "kata.create", map[string]any{"title": "Attention issue", "idempotency_key": fmt.Sprint("page-", i)})
 		ref := created["issue"].(map[string]any)["ref"].(string)
 		from := "example-agent"
@@ -48,7 +48,7 @@ func TestInboxPaginationPreservesEmptyCandidatePage(t *testing.T) {
 
 func TestInboxCursorScopeMismatch(t *testing.T) {
 	session, _ := newCoordinationSession(t)
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		created := callAdministrationTool(t, session, "kata.create", map[string]any{"title": "Request", "idempotency_key": fmt.Sprint("scope-", i)})
 		ref := created["issue"].(map[string]any)["ref"].(string)
 		callAdministrationTool(t, session, "kata.set_metadata", map[string]any{"ref": ref, "patch": map[string]any{notification.MetadataKey("reader"): map[string]any{"from": "example-agent", "message": "Review"}}})
