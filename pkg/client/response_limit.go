@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 
@@ -26,7 +27,10 @@ func (e *ResponseTooLargeError) Unwrap() error { return ErrResponseTooLarge }
 // request editors, with a byte bound applied before generated JSON decoding.
 // It does not mutate the original client or redirect its credentials.
 func (c *Client) WithResponseLimit(maxBytes int64) *Client {
-	bounded := boundedAPIClient{streamingAPIClient: streamingAPIClient{APIClient: c.apiClient, client: c.httpClient}, maxBytes: maxBytes}
+	bounded := boundedAPIClient{
+		streamingAPIClient{APIClient: c.apiClient, client: c.httpClient},
+		maxBytes,
+	}
 	return &Client{Client: generated.NewClient(bounded), apiClient: bounded, httpClient: c.httpClient}
 }
 
@@ -35,12 +39,17 @@ type boundedAPIClient struct {
 	maxBytes int64
 }
 
-func (c boundedAPIClient) ExecuteRequest(ctx context.Context, req *http.Request, path string) (*runtime.Response, error) {
+func (c boundedAPIClient) ExecuteRequest(ctx context.Context, req *http.Request, path string) (result *runtime.Response, resultErr error) {
 	response, err := c.streamingAPIClient.ExecuteRequest(ctx, req, path)
 	if err != nil {
 		return nil, err
 	}
-	defer response.Raw.Body.Close()
+	defer func() {
+		if closeErr := response.Raw.Body.Close(); resultErr == nil && closeErr != nil {
+			result = nil
+			resultErr = fmt.Errorf("close daemon response body: %w", closeErr)
+		}
+	}()
 	if c.maxBytes <= 0 {
 		return nil, &ResponseTooLargeError{StatusCode: response.StatusCode}
 	}
