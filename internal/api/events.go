@@ -114,11 +114,13 @@ type ProjectEventHeadRequest struct {
 	ProjectID int64 `path:"project_id"`
 }
 
+// ProjectEventHeadBody carries the latest committed event cursor for a project.
 type ProjectEventHeadBody struct {
 	AfterID     int64  `json:"after_id"`
 	InstanceUID string `json:"instance_uid"`
 }
 
+// ProjectEventHeadResponse returns the committed project event-log boundary.
 type ProjectEventHeadResponse struct {
 	Body ProjectEventHeadBody
 }
