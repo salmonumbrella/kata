@@ -12,6 +12,7 @@ import (
 	"go.kenn.io/kata/internal/activity"
 	"go.kenn.io/kata/internal/db"
 	"go.kenn.io/kata/internal/embedding"
+	"go.kenn.io/kata/internal/pagination"
 	"go.kenn.io/kata/internal/vector"
 	"go.kenn.io/kit/embedclient"
 	kitvec "go.kenn.io/kit/vector"
@@ -76,6 +77,13 @@ type Reconciler struct {
 	wake  chan struct{}
 	retry chan struct{}
 	now   func() time.Time
+
+	// Artifact recapture rotates bounded pages of hub issues so vectors that
+	// predate artifact retention eventually become portable without another
+	// provider call. Only reconcileOnce touches these cursors.
+	recaptureCursors       map[string]*pagination.Position
+	recaptureProjectCursor string
+	recaptureKey           string
 
 	mu       sync.Mutex
 	health   ReconcilerHealth
@@ -342,6 +350,8 @@ func (r *Reconciler) reconcileOnce(ctx context.Context) error {
 			return err
 		}
 		portableRecipe = &recipe
+		_ = r.recaptureHubArtifacts(ctx, key, recipe) // bounded and best effort; fill remains authoritative
+
 		if _, err := r.idx.ReconcileArtifacts(ctx, key, r.store, recipe); err != nil {
 			r.markError(err)
 			return err
