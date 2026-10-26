@@ -1,7 +1,7 @@
 ---
 title: Native cron
 description: Recurring child issues, shared job definitions, and attributed run evidence.
-last_edited: 2026-10-23
+last_edited: 2026-10-26
 ---
 
 Kata creates recurring child issues and inbox requests from enabled native
@@ -12,6 +12,8 @@ Kata also stores portable job and workflow definitions and independent run
 observations. External adapters schedule other jobs, resolve checkout and provider
 configuration, create or update ordinary issues, deliver notifications, and launch processes.
 An observation records evidence; its status does not control whether anything runs.
+
+Browse jobs, runs, and workflows in `kata tui` with the `2`, `3`, and `4` tabs for the current project.
 
 ## Vocabulary
 
