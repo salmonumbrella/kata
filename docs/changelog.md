@@ -9,6 +9,8 @@ All notable changes to kata, grouped by release. Versioned releases start with
 
 ## Unreleased
 
+- Find and edit the current TUI search above issue and cron lists. Press `/` or click the search line with `--mouse`.
+
 - Browse jobs, recorded runs, and workflows in `kata tui` with the `1`–`4` tabs. Filter each list, inspect definitions, and follow links between jobs and their runs. These screens are read-only. Thanks to [Rusty Shackleford](https://github.com/salmonumbrella).
 
 - Pull the container image from `ghcr.io/kenn-io/kata:<version>` starting with the next release. Releases 0.19.0 and 0.20.0 documented the image but did not publish it; see [Containers](operations/containers.md).
