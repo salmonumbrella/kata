@@ -269,3 +269,100 @@ func TestCronKeylessOrdinaryWrite(t *testing.T) {
 	response, raw := envDoRaw(t, env, http.MethodPost, fmt.Sprintf("/api/v1/projects/%d/cron/jobs", project.ID), map[string]any{"actor": "tester", "name": "Review", "definition": definition}, nil)
 	require.Equalf(t, http.StatusCreated, response.StatusCode, "%s", raw)
 }
+
+// Push enrollment manages native recurring jobs only. An adapter job must
+// never be convertible in either direction: replacing it with a native
+// definition would irreversibly discard the adapter configuration, and
+// replacing a native job with an adapter definition would abandon native
+// ownership. Every rejection must leave the definition and history untouched.
+func TestCronEnrollmentCannotConvertAdapterJob(t *testing.T) {
+	for _, kind := range []string{"adapter-target", "adapter-submission"} {
+		t.Run(kind, func(t *testing.T) {
+			env, project, _, definition := nativeCronEnrollmentFixture(t, testenv.WithAuthToken("owner-token"))
+			enrollment := createClaimEnrollment(t, env, project.ID, cronHTTPUID(t), "push")
+			headers := map[string]string{"Authorization": "Bearer " + enrollment.Token}
+			owner := map[string]string{"Authorization": "Bearer owner-token"}
+			path := fmt.Sprintf("/api/v1/projects/%d/cron/jobs", project.ID)
+			if kind == "adapter-target" {
+				response, raw := envDoRaw(t, env, http.MethodPost, path, map[string]any{"actor": "tester", "name": "Inspection", "definition": cronHTTPDefinition(t)}, owner)
+				require.Equalf(t, http.StatusCreated, response.StatusCode, "%s", raw)
+			} else {
+				response, raw := envDoRaw(t, env, http.MethodPost, path, map[string]any{"actor": "tester", "name": "Review service", "definition": definition}, headers)
+				require.Equalf(t, http.StatusCreated, response.StatusCode, "%s", raw)
+			}
+			jobs, err := env.DB.ListCronJobs(t.Context(), db.CronList{ProjectID: project.ID})
+			require.NoError(t, err)
+			require.Len(t, jobs, 1)
+			current := jobs[0]
+			// adapter-target: the enrollment submits a native definition over an
+			// adapter job. adapter-submission: the enrollment submits an adapter
+			// definition over a native job.
+			submission := definition
+			if kind == "adapter-submission" {
+				submission = cronHTTPDefinition(t)
+			}
+			before, err := env.DB.MaxEventID(t.Context())
+			require.NoError(t, err)
+			body := map[string]any{"actor": "tester", "name": current.Name, "definition": submission, "expected_event_uid": current.DefinitionEventUID}
+			response, raw := envDoRaw(t, env, http.MethodPut, path+"/"+current.UID, body, headers)
+			// adapter-target must fail authorization; adapter-submission already
+			// fails validation, because native ownership is immutable in storage.
+			want := http.StatusForbidden
+			if kind == "adapter-submission" {
+				want = http.StatusBadRequest
+			}
+			require.Equalf(t, want, response.StatusCode, "%s", raw)
+			after, err := env.DB.MaxEventID(t.Context())
+			require.NoError(t, err)
+			require.Equal(t, before, after, "rejected conversion must not change history")
+			kept, err := env.DB.CronJob(t.Context(), project.ID, current.UID)
+			require.NoError(t, err)
+			require.Equal(t, current.DefinitionEventUID, kept.DefinitionEventUID)
+			require.Equal(t, current.Definition.Action.Kind, kept.Definition.Action.Kind)
+			require.Equal(t, string(current.Definition.Options), string(kept.Definition.Options))
+		})
+	}
+}
+
+// Cron routes resolve credentials inside the handler, after the root
+// attribution middleware has already run. Remote enrollment push writes and
+// static-token writes (forwarding headers mark the request as proxied, so it
+// is not owner-local) must still commit root receipts, or the hub loses
+// certified acceptance for its cron history.
+func TestCronEnrollmentWriteRootReceipts(t *testing.T) {
+	for _, kind := range []string{"enrollment", "static-token"} {
+		t.Run(kind, func(t *testing.T) {
+			public, key, err := ed25519.GenerateKey(nil)
+			require.NoError(t, err)
+			env, project, _, definition := nativeCronEnrollmentFixture(t,
+				testenv.WithAuthToken("owner-token"), testenv.WithRootSigning(key))
+			headers := map[string]string{"Authorization": "Bearer owner-token", "X-Forwarded-For": "203.0.113.10"}
+			if kind == "enrollment" {
+				enrollment := createClaimEnrollment(t, env, project.ID, cronHTTPUID(t), "push")
+				headers = map[string]string{"Authorization": "Bearer " + enrollment.Token, "X-Forwarded-For": "203.0.113.10"}
+			}
+			path := fmt.Sprintf("/api/v1/projects/%d/cron/jobs", project.ID)
+			response, raw := envDoRaw(t, env, http.MethodPost, path, map[string]any{"actor": "tester", "name": "Review service", "definition": definition}, headers)
+			require.Equalf(t, http.StatusCreated, response.StatusCode, "%s", raw)
+			pin := db.RootKeyPin{ProjectUID: project.UID, AuthorityUID: env.DB.InstanceUID(), KeyID: db.RootPublicKeyID(public), PublicKey: public}
+			receipts, err := env.DB.AttributionReceiptsAfter(t.Context(), project.UID, 1, 0, 100)
+			require.NoError(t, err)
+			require.NotEmpty(t, receipts, "cron write committed without a root receipt")
+			events, err := env.DB.EventsAfter(t.Context(), db.EventsAfterParams{ProjectID: project.ID, Types: []string{"cron.job.created"}, Limit: 10})
+			require.NoError(t, err)
+			require.NotEmpty(t, events)
+			eventUID := events[0].UID
+			matched := false
+			for _, receipt := range receipts {
+				if receipt.EventUID != eventUID {
+					continue
+				}
+				matched = true
+				require.NoError(t, db.VerifyRootReceipt(pin, receipt))
+				require.Equal(t, "tester", receipt.AccountableActor)
+				require.Equal(t, "tester", receipt.SourceActor)
+			}
+			require.True(t, matched, "no receipt for the cron definition event")
+		})
+	}
+}

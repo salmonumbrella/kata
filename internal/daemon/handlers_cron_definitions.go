@@ -66,8 +66,8 @@ func cronJobWriteContext(ctx context.Context, cfg ServerConfig, projectID int64,
 	if err != nil {
 		return ctx, "", false, err
 	}
+	fed := principal.Federation
 	if principal.Enrollment {
-		fed := principal.Federation
 		if fed.ScopedProjectID != projectID || fed.RelayBindingUID != "" || fed.RelayProtocolVersion != 0 {
 			return ctx, "", true, federationCredentialDenied()
 		}
@@ -76,24 +76,63 @@ func cronJobWriteContext(ctx context.Context, cfg ServerConfig, projectID int64,
 		}
 		actor = fed.Actor
 	}
+	ctx = attachCronRootAttribution(ctx, cfg, principal)
 	ctx, actor, err = cronWriteContext(ctx, actor)
 	return ctx, actor, principal.Enrollment, err
 }
 
-func checkEnrollmentCronJob(ctx context.Context, cfg ServerConfig, projectID int64, id string, definition cron.JobDefinition) error {
-	if cron.IsRecurringIssueJob(definition) {
-		return nil
+// attachCronRootAttribution restores signing context for cron routes whose
+// handler resolves credentials after the withRootAttribution middleware has
+// already run. Enrollment push credentials, static tokens, and identity tokens
+// bind no middleware principal on these self-authenticated routes, so without
+// this the writes would commit without root receipts. An existing attribution
+// from the middleware always wins.
+func attachCronRootAttribution(ctx context.Context, cfg ServerConfig, principal claimPrincipal) context.Context {
+	if cfg.RootSigning == nil {
+		return ctx
 	}
+	if _, _, ok := db.RootAttributionFromContext(ctx); ok {
+		return ctx
+	}
+	signer := cfg.RootSigning.Signer()
+	switch {
+	case principal.Enrollment && principal.Federation != nil:
+		return db.WithRootAttribution(ctx, signer, principal.Federation.Actor)
+	case principal.RequestPrincipal != nil && principal.RequestPrincipal.Actor != "":
+		return db.WithRootAttribution(ctx, signer, principal.RequestPrincipal.Actor)
+	case principal.OwnerAuthority:
+		return db.WithOwnerRootAttribution(ctx, signer)
+	}
+	return ctx
+}
+
+func checkEnrollmentCronJob(ctx context.Context, cfg ServerConfig, projectID int64, id string, definition cron.JobDefinition) error {
+	var current *db.CronJob
 	if id != "" {
-		current, err := cfg.DB.CronJob(ctx, projectID, id)
-		if err == nil && cron.IsRecurringIssueJob(current.Definition) {
-			return nil
-		}
-		if err != nil && !errors.Is(err, db.ErrNotFound) {
+		value, err := cfg.DB.CronJob(ctx, projectID, id)
+		switch {
+		case err == nil && !cron.IsRecurringIssueJob(value.Definition):
+			// Adapter ownership is final. A push enrollment can neither replace
+			// an adapter job with a native definition nor discard the adapter
+			// configuration irreversibly.
+			return federationCredentialDenied()
+		case err == nil:
+			current = &value
+		case errors.Is(err, db.ErrNotFound):
+			// An unused caller-selected UID keeps creating.
+		default:
 			return cronAPIError(ctx, cfg, err, projectID, id, true)
 		}
 	}
-	return federationCredentialDenied()
+	if cron.IsRecurringIssueJob(definition) {
+		return nil
+	}
+	if current == nil {
+		return federationCredentialDenied()
+	}
+	// A non-native submission may only retouch the existing native job; storage
+	// rejects replacements that abandon native ownership.
+	return nil
 }
 
 func registerCronJobHandlers(h huma.API, cfg ServerConfig) {
