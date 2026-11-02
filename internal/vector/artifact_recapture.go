@@ -31,10 +31,6 @@ func (ix *Index) RecaptureArtifacts(ctx context.Context, key string, source db.S
 	if err != nil {
 		return 0, err
 	}
-	stored, err := ix.LookupVectors(ctx, key, projectUID, docs)
-	if err != nil {
-		return 0, err
-	}
 	existing := make(map[string]bool, len(docs))
 	for record, exportErr := range exporter.ExportEmbeddingArtifacts(ctx, db.ExportFilter{}, docs...) {
 		if exportErr != nil {
@@ -53,11 +49,21 @@ func (ix *Index) RecaptureArtifacts(ctx context.Context, key string, source db.S
 			existing[artifact.IssueUID] = true
 		}
 	}
-	recaptured := 0
+	missing := make([]string, 0, len(docs))
 	for _, issueUID := range docs {
-		if existing[issueUID] {
-			continue
+		if !existing[issueUID] {
+			missing = append(missing, issueUID)
 		}
+	}
+	if len(missing) == 0 {
+		return 0, nil
+	}
+	stored, err := ix.LookupVectors(ctx, key, projectUID, missing)
+	if err != nil {
+		return 0, err
+	}
+	recaptured := 0
+	for _, issueUID := range missing {
 		issue, present := issues[issueUID]
 		if !present {
 			continue

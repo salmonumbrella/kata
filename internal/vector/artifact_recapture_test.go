@@ -19,7 +19,12 @@ func TestRecaptureArtifactsFromCoveredVectors(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, store.Close()) })
 	idx, err := vector.Open(ctx, filepath.Join(t.TempDir(), "vectors.db"))
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, idx.Close()) })
+	idxClosed := false
+	t.Cleanup(func() {
+		if !idxClosed {
+			require.NoError(t, idx.Close())
+		}
+	})
 
 	project, err := store.CreateProject(ctx, "recapture-project")
 	require.NoError(t, err)
@@ -56,4 +61,10 @@ func TestRecaptureArtifactsFromCoveredVectors(t *testing.T) {
 	recaptured, err = idx.RecaptureArtifacts(ctx, key, store, recipe, project.UID, []string{issue.UID})
 	require.NoError(t, err)
 	require.Zero(t, recaptured, "a matching artifact should not be retained repeatedly")
+
+	require.NoError(t, idx.Close())
+	idxClosed = true
+	recaptured, err = idx.RecaptureArtifacts(ctx, "missing-generation", store, recipe, project.UID, []string{issue.UID})
+	require.NoError(t, err, "a matching artifact should not require a vector lookup")
+	require.Zero(t, recaptured)
 }
