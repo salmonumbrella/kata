@@ -121,16 +121,22 @@ func loadFederationMoveHistoryCutoffs(ctx context.Context, tx federationHistoryQ
 			return err
 		}
 		uncovered := map[string]bool{}
+		activePredecessor := map[string]bool{}
 		for _, event := range history {
 			if event.eventType == "issue.moved" {
 				// Local moves have no federated snapshot, so the first later
 				// federation baseline supersedes them even while their source hub
 				// remains active. Snapshot-bearing moves stay in the feed while
-				// that source hub is active; a later baseline retires them only
-				// after the source enrollment ends.
-				uncovered[event.issueUID] = !event.snapshotBearing || event.sourceProjectUID == "" || !activeSources[event.sourceProjectUID]
+				// that source hub is active. Preserve an earlier active departure
+				// across later inactive hops and baselines: a destination baseline
+				// cannot replace the source stream's evidence that the issue left.
+				activeMove := event.snapshotBearing && event.sourceProjectUID != "" && activeSources[event.sourceProjectUID]
+				activePredecessor[event.issueUID] = activePredecessor[event.issueUID] || activeMove
+				uncovered[event.issueUID] = !activeMove
 			} else if uncovered[event.issueUID] {
-				cutoffs[event.issueUID] = event.eventID
+				if !activePredecessor[event.issueUID] {
+					cutoffs[event.issueUID] = event.eventID
+				}
 				uncovered[event.issueUID] = false
 			}
 		}

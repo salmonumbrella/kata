@@ -334,8 +334,8 @@ func pushDirectSpoke(
 
 // PushDirectSpoke drains pending direct-spoke events without requiring pull authority.
 // The caller holds shared federation coordination for the complete operation.
-func PushDirectSpoke(ctx context.Context, store db.Storage, binding db.FederationBinding, hubProjectID int64, client *Client) error {
-	return pushDirectSpoke(ctx, store, &binding, hubProjectID, client, nil, config.DefaultFederationCredentialStore(), clientpkg.Opts{})
+func PushDirectSpoke(ctx context.Context, store db.Storage, binding db.FederationBinding, hubProjectID int64, client *Client, credentials config.FederationCredentialStore) error {
+	return pushDirectSpoke(ctx, store, &binding, hubProjectID, client, nil, credentials, clientpkg.Opts{})
 }
 
 // CredentialHTTPClient builds a bearer-pinned, signing-aware HTTP client for
@@ -350,13 +350,13 @@ func CredentialHTTPClient(ctx context.Context, credential config.FederationCrede
 
 // DirectSpokePushPending returns the daemon hook that drains a direct spoke's
 // pending events to its hub with the stored credential.
-func DirectSpokePushPending(store db.Storage) func(context.Context, db.FederationBinding, config.FederationCredential) error {
+func DirectSpokePushPending(store db.Storage, credentials config.FederationCredentialStore) func(context.Context, db.FederationBinding, config.FederationCredential) error {
 	return func(ctx context.Context, binding db.FederationBinding, credential config.FederationCredential) error {
 		client, err := NewClient(ctx, credential.HubURL, credential.Token, clientpkg.Opts{AllowInsecure: credential.AllowInsecure, FederationSigning: credential.Signing})
 		if err != nil {
 			return err
 		}
-		return PushDirectSpoke(ctx, store, binding, credential.HubProjectID, client)
+		return PushDirectSpoke(ctx, store, binding, credential.HubProjectID, client, credentials)
 	}
 }
 

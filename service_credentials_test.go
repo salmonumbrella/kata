@@ -114,6 +114,29 @@ func TestServiceCredentialStoreAdapterFindManagedReturnsCleanNotFound(t *testing
 	)
 }
 
+func TestServiceCredentialStoreAdapterRoundTripsNativeLeaveRecovery(t *testing.T) {
+	ctx := t.Context()
+	store := newServiceFederationCredentialStore()
+	adapter := serviceCredentialStoreAdapter{store: store}
+	want := config.FederationCredential{
+		HubURL: "https://hub.example", HubProjectID: 42, Token: "public-token",
+		Capabilities: "pull,push", Actor: "example-actor",
+		NativeLeave: &config.FederationNativeLeaveState{
+			Enabled: true, PushEnabled: true, CreatedCredential: true,
+			Preparations: []config.FederationNativeLeavePreparation{{
+				ID: "restart-abort", Keys: []string{"instance/project"},
+			}},
+		},
+	}
+
+	require.NoError(t, adapter.StoreFederationCredential(ctx, serviceAdapterTargetProjectUID, want))
+
+	got, found, err := adapter.FederationCredential(ctx, serviceAdapterTargetProjectUID)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, want, got, "native leave recovery must survive the public credential adapter")
+}
+
 func assertBoundedManagedUnsupportedError(t *testing.T, err error) {
 	t.Helper()
 	require.ErrorIs(t, err, errManagedFederationCredentialsUnsupported)

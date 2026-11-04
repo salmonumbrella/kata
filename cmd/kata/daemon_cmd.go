@@ -1685,7 +1685,7 @@ func runDaemonProcess(
 		ExternalRootService:    externalRootService,
 		ExternalRootReconciler: externalRootReconciler,
 		ExternalRootWake:       externalRootWake,
-		FederationPushPending:  federation.DirectSpokePushPending(store),
+		FederationPushPending:  federation.DirectSpokePushPending(store, config.DefaultFederationCredentialStore()),
 		FederationHubClient:    federation.CredentialHTTPClient,
 		CloseThrottle: daemon.CloseThrottlePolicy{
 			SiblingBurstEnabled: dcfg.Close.Throttle.ThrottleEnabled(),

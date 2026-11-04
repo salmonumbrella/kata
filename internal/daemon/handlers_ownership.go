@@ -503,7 +503,7 @@ func syncForwardedAssignmentDestination(
 		}
 		if afterBinding.PullCursorEventID <= previousCursor {
 			return api.NewError(http.StatusBadGateway, "federation_pull_failed",
-				"destination federation sync made no progress before materializing the moved issue", "retry the claim after federation sync succeeds", nil)
+				"destination sync stalled before loading the moved issue", "retry the claim after federation sync succeeds", nil)
 		}
 	}
 }

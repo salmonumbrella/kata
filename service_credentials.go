@@ -3,13 +3,14 @@ package kata
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 
 	"go.kenn.io/kata/internal/config"
 )
 
-// FederationCredential is the secret material used by one spoke project to
-// communicate with its hub.
+// FederationCredential is the secret material and local recovery state used
+// by one spoke project to communicate with its hub.
 type FederationCredential struct {
 	HubURL        string
 	HubProjectID  int64
@@ -17,12 +18,31 @@ type FederationCredential struct {
 	Capabilities  string
 	Actor         string
 	AllowInsecure bool
+	// NativeLeave stores the original binding flags and outstanding
+	// preparations needed to restore a native spoke leave after restart.
+	NativeLeave *FederationNativeLeaveState
 }
 
-// FederationCredentialStore supplies service-scoped federation secrets.
-// Implementations must be safe for concurrent use. Callers that need
-// credentials to survive process restarts should provide a durable store;
-// otherwise each Service receives its own in-memory store.
+// FederationNativeLeaveState is temporary recovery state for an abortable
+// native spoke leave. Credential stores must retain it across service restarts.
+type FederationNativeLeaveState struct {
+	Enabled           bool
+	PushEnabled       bool
+	CreatedCredential bool
+	Preparations      []FederationNativeLeavePreparation
+}
+
+// FederationNativeLeavePreparation identifies one pending leave preparation.
+type FederationNativeLeavePreparation struct {
+	ID   string
+	Keys []string
+}
+
+// FederationCredentialStore supplies service-scoped federation credentials.
+// Implementations must be safe for concurrent use and retain every credential
+// field, including NativeLeave, when storing a value. Callers that need
+// credentials and recovery state to survive process restarts should provide a
+// durable store; otherwise each Service receives its own in-memory store.
 type FederationCredentialStore interface {
 	FederationCredential(context.Context, string) (FederationCredential, bool, error)
 	StoreFederationCredential(context.Context, string, FederationCredential) error
@@ -105,6 +125,7 @@ func internalFederationCredential(credential FederationCredential) config.Federa
 		Capabilities:  credential.Capabilities,
 		Actor:         credential.Actor,
 		AllowInsecure: credential.AllowInsecure,
+		NativeLeave:   internalFederationNativeLeaveState(credential.NativeLeave),
 	}
 }
 
@@ -116,7 +137,42 @@ func publicFederationCredential(credential config.FederationCredential) Federati
 		Capabilities:  credential.Capabilities,
 		Actor:         credential.Actor,
 		AllowInsecure: credential.AllowInsecure,
+		NativeLeave:   publicFederationNativeLeaveState(credential.NativeLeave),
 	}
+}
+
+func internalFederationNativeLeaveState(state *FederationNativeLeaveState) *config.FederationNativeLeaveState {
+	if state == nil {
+		return nil
+	}
+	replacement := &config.FederationNativeLeaveState{
+		Enabled: state.Enabled, PushEnabled: state.PushEnabled,
+		CreatedCredential: state.CreatedCredential,
+		Preparations:      make([]config.FederationNativeLeavePreparation, len(state.Preparations)),
+	}
+	for i, preparation := range state.Preparations {
+		replacement.Preparations[i] = config.FederationNativeLeavePreparation{
+			ID: preparation.ID, Keys: slices.Clone(preparation.Keys),
+		}
+	}
+	return replacement
+}
+
+func publicFederationNativeLeaveState(state *config.FederationNativeLeaveState) *FederationNativeLeaveState {
+	if state == nil {
+		return nil
+	}
+	replacement := &FederationNativeLeaveState{
+		Enabled: state.Enabled, PushEnabled: state.PushEnabled,
+		CreatedCredential: state.CreatedCredential,
+		Preparations:      make([]FederationNativeLeavePreparation, len(state.Preparations)),
+	}
+	for i, preparation := range state.Preparations {
+		replacement.Preparations[i] = FederationNativeLeavePreparation{
+			ID: preparation.ID, Keys: slices.Clone(preparation.Keys),
+		}
+	}
+	return replacement
 }
 
 type memoryFederationCredentialStore struct {

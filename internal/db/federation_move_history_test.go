@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -200,6 +201,152 @@ func TestFederationMoveHistorySupersedesSnapshotlessMovesAtBaseline(t *testing.T
 			if returned[moveIDs[i]] != tc.wantMoveEvent {
 				ht.Fatalf("move event %d included=%t, want %t after %d intervening updates (%s)",
 					moveIDs[i], returned[moveIDs[i]], tc.wantMoveEvent, interveningUpdates, tc.name)
+			}
+		}
+	}, hegel.WithTestCases(32))
+}
+
+func TestFederationMoveHistoryPreservesActivePredecessorAcrossArchivedHop(t *testing.T) {
+	ctx := t.Context()
+	pool := sql.OpenDB(referenceConnector{&referenceWork{}})
+	pool.SetMaxOpenConns(1)
+	t.Cleanup(func() { require.NoError(t, pool.Close()) })
+	for _, query := range []string{
+		`CREATE TABLE events(id INTEGER PRIMARY KEY,issue_uid TEXT,type TEXT,payload TEXT)`,
+		`CREATE INDEX idx_events_issue_uid ON events(issue_uid) WHERE issue_uid IS NOT NULL`,
+		`CREATE TABLE projects(id INTEGER PRIMARY KEY,uid TEXT,deleted_at TEXT)`,
+		`CREATE TABLE federation_bindings(project_id INTEGER,role TEXT,enabled INTEGER)`,
+		`INSERT INTO projects VALUES
+		 (1,'01M40000000000000000000001',NULL),
+		 (2,'01M40000000000000000000002','archived'),
+		 (3,'01M40000000000000000000003',NULL)`,
+		`INSERT INTO federation_bindings VALUES
+		 (1,'hub',1), (2,'hub',1)`,
+		`INSERT INTO events VALUES
+		 (1,'01M40000000000000000000011','issue.moved','{"from_project_uid":"01M40000000000000000000001","to_project_uid":"01M40000000000000000000002","snapshot":{}}'),
+		 (2,'01M40000000000000000000011','issue.moved','{"from_project_uid":"01M40000000000000000000002","to_project_uid":"01M40000000000000000000003","snapshot":{}}'),
+		 (3,'01M40000000000000000000011','issue.snapshot','{}')`,
+	} {
+		_, err := pool.ExecContext(ctx, query)
+		require.NoError(t, err)
+	}
+	tx, err := pool.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	defer func() { _ = tx.Rollback() }()
+	readPage := func(afterID int64, limit int) ([]Event, error) {
+		rows, err := tx.QueryContext(ctx, `SELECT id,issue_uid,type,payload FROM events WHERE id>$1 ORDER BY id LIMIT $2`, afterID, limit)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = rows.Close() }()
+		var events []Event
+		for rows.Next() {
+			var event Event
+			if err := rows.Scan(&event.ID, &event.IssueUID, &event.Type, &event.Payload); err != nil {
+				return nil, err
+			}
+			events = append(events, event)
+		}
+		return events, rows.Err()
+	}
+
+	page, err := ReadFederationMoveHistory(ctx, tx, 0, 100, readPage)
+	require.NoError(t, err)
+	var ids []int64
+	for _, event := range page {
+		ids = append(ids, event.ID)
+	}
+	require.Equal(t, []int64{1, 2, 3}, ids,
+		"a baseline after an archived hop must not retire the earlier departure from an active predecessor hub")
+}
+
+func TestFederationMoveHistoryPreservesActivePredecessorAcrossArchivedHops(t *testing.T) {
+	ctx := t.Context()
+	hegel.Test(t, func(ht *hegel.T) {
+		archivedHops := hegel.Draw(ht, hegel.Integers(1, 5))
+		pool := sql.OpenDB(referenceConnector{&referenceWork{}})
+		pool.SetMaxOpenConns(1)
+		defer func() {
+			if err := pool.Close(); err != nil {
+				ht.Fatalf("close history database: %v", err)
+			}
+		}()
+		for _, query := range []string{
+			`CREATE TABLE events(id INTEGER PRIMARY KEY,issue_uid TEXT,type TEXT,payload TEXT)`,
+			`CREATE INDEX idx_events_issue_uid ON events(issue_uid) WHERE issue_uid IS NOT NULL`,
+			`CREATE TABLE projects(id INTEGER PRIMARY KEY,uid TEXT,deleted_at TEXT)`,
+			`CREATE TABLE federation_bindings(project_id INTEGER,role TEXT,enabled INTEGER)`,
+		} {
+			if _, err := pool.ExecContext(ctx, query); err != nil {
+				ht.Fatalf("prepare history database: %v", err)
+			}
+		}
+
+		projectUID := func(index int) string {
+			return fmt.Sprintf("01M400000000000000000000%02d", index+1)
+		}
+		for projectIndex := 0; projectIndex <= archivedHops+1; projectIndex++ {
+			var deletedAt any
+			if projectIndex > 0 && projectIndex <= archivedHops {
+				deletedAt = "archived"
+			}
+			_, err := pool.ExecContext(ctx, `INSERT INTO projects VALUES($1,$2,$3)`, projectIndex+1, projectUID(projectIndex), deletedAt)
+			if err != nil {
+				ht.Fatalf("insert project: %v", err)
+			}
+			if projectIndex <= archivedHops {
+				_, err := pool.ExecContext(ctx, `INSERT INTO federation_bindings VALUES($1,'hub',1)`, projectIndex+1)
+				if err != nil {
+					ht.Fatalf("insert federation binding: %v", err)
+				}
+			}
+		}
+
+		issueUID := "01M40000000000000000000011"
+		eventID := int64(1)
+		for projectIndex := 0; projectIndex <= archivedHops; projectIndex++ {
+			payload := fmt.Sprintf(`{"from_project_uid":%q,"to_project_uid":%q,"snapshot":{}}`, projectUID(projectIndex), projectUID(projectIndex+1))
+			if _, err := pool.ExecContext(ctx, `INSERT INTO events VALUES($1,$2,'issue.moved',$3)`, eventID, issueUID, payload); err != nil {
+				ht.Fatalf("insert move event: %v", err)
+			}
+			eventID++
+		}
+		if _, err := pool.ExecContext(ctx, `INSERT INTO events VALUES($1,$2,'issue.snapshot','{}')`, eventID, issueUID); err != nil {
+			ht.Fatalf("insert destination baseline: %v", err)
+		}
+
+		tx, err := pool.BeginTx(ctx, nil)
+		if err != nil {
+			ht.Fatalf("begin history read: %v", err)
+		}
+		defer func() { _ = tx.Rollback() }()
+		readPage := func(afterID int64, limit int) ([]Event, error) {
+			rows, err := tx.QueryContext(ctx, `SELECT id,issue_uid,type,payload FROM events WHERE id>$1 ORDER BY id LIMIT $2`, afterID, limit)
+			if err != nil {
+				return nil, err
+			}
+			defer func() { _ = rows.Close() }()
+			var events []Event
+			for rows.Next() {
+				var event Event
+				if err := rows.Scan(&event.ID, &event.IssueUID, &event.Type, &event.Payload); err != nil {
+					return nil, err
+				}
+				events = append(events, event)
+			}
+			return events, rows.Err()
+		}
+		page, err := ReadFederationMoveHistory(ctx, tx, 0, 100, readPage)
+		if err != nil {
+			ht.Fatalf("read federation move history: %v", err)
+		}
+		wantCount := archivedHops + 2 // every move, plus the destination baseline
+		if len(page) != wantCount {
+			ht.Fatalf("retained %d events, want all %d: %#v", len(page), wantCount, page)
+		}
+		for index, event := range page {
+			if event.ID != int64(index+1) {
+				ht.Fatalf("retained event %d at index %d, want %d", event.ID, index, index+1)
 			}
 		}
 	}, hegel.WithTestCases(32))

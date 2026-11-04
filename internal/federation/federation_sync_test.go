@@ -4815,9 +4815,9 @@ func TestPushDirectSpokeWithPushOnlyEnrollment(t *testing.T) {
 	release, err := federationcoord.BeginSync(ctx, federationcoord.Key(spoke.DB.InstanceUID(), replica.ID), spoke.DB, replica.ID)
 	require.NoError(t, err)
 	defer release()
-	require.NoError(t, PushDirectSpoke(ctx, spoke.DB, binding, project.ID, client))
+	require.NoError(t, PushDirectSpoke(ctx, spoke.DB, binding, project.ID, client, config.DefaultFederationCredentialStore()))
 	// Replaying the original binding re-submits the already acknowledged batch.
-	require.NoError(t, PushDirectSpoke(ctx, spoke.DB, binding, project.ID, client))
+	require.NoError(t, PushDirectSpoke(ctx, spoke.DB, binding, project.ID, client, config.DefaultFederationCredentialStore()))
 	require.Zero(t, polls.Load())
 	mirrored, err := hub.DB.IssueByUID(ctx, parent.UID, db.IncludeDeletedNo)
 	require.NoError(t, err)

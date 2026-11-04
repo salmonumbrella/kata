@@ -67,6 +67,34 @@ func TestFederationMoveBackfillAcceptsPayloadIssueIdentity(t *testing.T) {
 	require.Equal(t, issueUID, db.FederationEventIssueUID(backfilled[0].IssueUID, string(backfilled[0].Payload)))
 }
 
+func TestIssueHistoryThroughReportsStalledSync(t *testing.T) {
+	ctx := t.Context()
+	issueUID := "01ARZ3NDEKTSV4RRFFQ69AAA11"
+	issueEnvelopeUID := issueUID
+	event := api.EventEnvelope{
+		EventID: 1, EventUID: "01ARZ3NDEKTSV4RRFFQ69AAA14", OriginInstanceUID: "01ARZ3NDEKTSV4RRFFQ69AAA15",
+		Type: "issue.updated", ProjectID: 42, ProjectUID: "01ARZ3NDEKTSV4RRFFQ69AAA12",
+		ProjectName: "history-source", IssueUID: &issueEnvelopeUID,
+		Actor: "example-actor", ContentHash: "history-hash",
+		Payload:   jsontext.Value(`{"issue_uid":"` + issueUID + `"}`),
+		CreatedAt: time.Unix(1, 0).UTC(),
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.MarshalWrite(w, api.PollEventsBody{
+			Events: []api.EventEnvelope{event}, NextAfterID: 0,
+		}); err != nil {
+			t.Errorf("write stalled event page: %v", err)
+		}
+	}))
+	defer server.Close()
+	client, err := NewClient(ctx, server.URL, "test-token", clientpkg.Opts{})
+	require.NoError(t, err)
+
+	_, err = client.issueHistoryThrough(ctx, 42, issueUID, 10)
+	require.EqualError(t, err, "issue history sync stalled")
+}
+
 func TestSyncFederationMoveBackfillsClaimAuditHistory(t *testing.T) {
 	ctx := t.Context()
 	hub, projects := newMoveDeliveryHub(t, "history-source", "history-target")

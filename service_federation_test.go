@@ -113,6 +113,71 @@ func TestServiceRunWakesFederationOnCommittedEvent(t *testing.T) {
 	}, 2*time.Second, 10*time.Millisecond, "federation push should be event-driven, not wait for the 30-second poll")
 }
 
+func TestServiceNativeLeaveAbortRestoresPublicCredentialStateAfterRestart(t *testing.T) {
+	ctx := t.Context()
+	credentials := newServiceFederationCredentialStore()
+	dsn := filepath.Join(t.TempDir(), "service.db")
+	first, err := New(ctx, Config{
+		DSN:  dsn,
+		Auth: AuthConfig{TrustCallerAuthentication: true}, FederationCredentials: credentials,
+	})
+	require.NoError(t, err)
+	firstClosed := false
+	t.Cleanup(func() {
+		if !firstClosed {
+			require.NoError(t, first.Close())
+		}
+	})
+
+	project, err := first.store.CreateProject(ctx, "spoke-project")
+	require.NoError(t, err)
+	hubURL := "https://hub.example"
+	_, err = first.store.UpsertFederationBinding(ctx, db.FederationBinding{
+		ProjectID: project.ID, Role: db.FederationRoleSpoke,
+		HubURL: hubURL, HubProjectID: 42, HubProjectUID: project.UID,
+		Actor: "example-actor", Enabled: true, PushEnabled: true,
+	})
+	require.NoError(t, err)
+	require.NoError(t, credentials.StoreFederationCredential(ctx, project.UID, FederationCredential{
+		HubURL: hubURL, HubProjectID: 42, Token: "spoke-test-token",
+		Capabilities: "pull,push", Actor: "example-actor",
+	}))
+	prepared, err := daemon.PrepareFederationReplicaLeave(
+		ctx, first.store, first.federationCredentials, project.ID, "restart-abort",
+	)
+	require.NoError(t, err)
+	fenced, err := first.store.FederationBindingByProject(ctx, project.ID)
+	require.NoError(t, err)
+	assert.False(t, fenced.PushEnabled)
+
+	require.NoError(t, first.Close())
+	firstClosed = true
+
+	// Use a fresh daemon store identity to model the process-local preparation
+	// registry being lost while the public credential store survives restart.
+	restarted, err := New(ctx, Config{
+		DSN:  dsn,
+		Auth: AuthConfig{TrustCallerAuthentication: true}, FederationCredentials: credentials,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, restarted.Close()) })
+	restartedProject, err := restarted.store.ProjectByUID(ctx, project.UID)
+	require.NoError(t, err)
+	require.Equal(t, project.ID, restartedProject.ID)
+	restartedBinding, err := restarted.store.FederationBindingByProject(ctx, restartedProject.ID)
+	require.NoError(t, err)
+	assert.False(t, restartedBinding.PushEnabled)
+	require.NoError(t, daemon.AbortFederationReplicaLeave(
+		ctx, restarted.store, restarted.federationCredentials,
+		restartedProject.ID, prepared.PreparationID,
+	))
+
+	restored, err := restarted.store.FederationBindingByProject(ctx, restartedProject.ID)
+	require.NoError(t, err)
+	assert.True(t, restored.Enabled)
+	assert.True(t, restored.PushEnabled)
+}
+
 func TestMountedServiceOmitsUnsupportedFederationRebindRoute(t *testing.T) {
 	service, err := New(t.Context(), Config{
 		DSN:  filepath.Join(t.TempDir(), "service.db"),

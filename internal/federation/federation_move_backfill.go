@@ -77,7 +77,7 @@ func (c *Client) issueHistoryThrough(ctx context.Context, projectID int64, uid s
 			return events, nil
 		}
 		if page.NextAfterID <= cursor {
-			return nil, errors.New("hub issue history cursor did not advance")
+			return nil, errors.New("issue history sync stalled")
 		}
 		cursor = page.NextAfterID
 	}
