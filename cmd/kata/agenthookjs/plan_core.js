@@ -575,8 +575,10 @@ function createKataCore(host, options) {
         "comment",
         "unassign",
       ].includes(args[0])
-    )
+    ) {
       await checkDaemonFloor(cwd);
+      checkCancellation();
+    }
     if (host.current?.() === false)
       throw new Error("Kata plan generation inactive");
     const separator = args.indexOf("--");
@@ -589,6 +591,7 @@ function createKataCore(host, options) {
             "--",
             ...args.slice(separator + 1),
           ];
+    checkCancellation();
     const result = await host.exec(
       options.executable,
       invocation,

@@ -108,6 +108,7 @@ export function coreApp(options) {
       binding: options.binding,
       delegatedRunning: () =>
         h.ctx.getAsyncJobSnapshot().running.some((j) => j.type === "task"),
+      current: options.current,
       beforeReconcile: options.beforeReconcile,
     },
     {

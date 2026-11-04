@@ -418,6 +418,54 @@ test("canceled init stops after the first task create in its batch", async () =>
   ]);
 });
 
+test("cancellation after the daemon-floor probe prevents the next subprocess", async () => {
+  const controller = new AbortController();
+  let armed = false;
+  let healthReturned = false;
+  let canceled = false;
+  const afterProbe = [];
+  const app = host({
+    current: () => {
+      if (armed && healthReturned && !canceled) {
+        canceled = true;
+        controller.abort(new Error("todo operation canceled"));
+      }
+      return true;
+    },
+    before: async (args, opts) => {
+      if (armed && args[0] === "health") {
+        healthReturned = true;
+        return {
+          code: 0,
+          stdout: JSON.stringify({ api_schema_version: "0.15.0" }),
+          stderr: "",
+        };
+      }
+      if (armed && healthReturned) {
+        afterProbe.push(args[0]);
+        return { code: 0, stdout: "", stderr: "" };
+      }
+    },
+  });
+  await app.event("session_start");
+  const previousServer = process.env.KATA_SERVER;
+  process.env.KATA_SERVER = "http://daemon.example:7777";
+  armed = true;
+  let result;
+  try {
+    result = await app.call(
+      { op: "init", items: ["Stop after canceled daemon-floor probe"] },
+      controller.signal,
+    );
+  } finally {
+    if (previousServer === undefined) delete process.env.KATA_SERVER;
+    else process.env.KATA_SERVER = previousServer;
+  }
+  expect(canceled).toBe(true);
+  expect(result.isError).toBe(true);
+  expect(afterProbe).toEqual([]);
+});
+
 test("canceled phase completion stops after the first close in its batch", async () => {
   const controller = new AbortController();
   let canceled = false;
