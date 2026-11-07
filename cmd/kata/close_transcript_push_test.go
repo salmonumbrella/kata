@@ -262,6 +262,49 @@ func TestCloseTranscriptPushKeyedReplayNeverUploads(t *testing.T) {
 	assert.Equal(t, 1, *calls)
 }
 
+func TestCloseTranscriptPushKeyedReplayPreservesAbsentTranscript(t *testing.T) {
+	env, dir, _, ref := setupWorkspaceWithIssue(t, "Complete retryable work")
+	transcriptProjectConfig(t, `[close.transcript]
+enabled=false
+agentsview_url="https://default.example"
+[close.transcript.project.kata]
+enabled=false
+agentsview_url="https://team.example/archive"
+push=true
+token_env="TEAM_UPLOAD_TOKEN"
+`)
+	calls, _ := transcriptPushFixture(t, "success")
+	args := []string{"--json", "close", ref, "--done", "--message", "Implemented retryable behavior and checked the focused tests.", "--test", "go test ./internal/example", "--idempotency-key", "close-absent-transcript-fixture-key"}
+	first, _, err := runCLIWithErr(t, env, dir, args...)
+	require.NoError(t, err)
+	assert.Nil(t, closeReceiptTranscript(t, first))
+	assert.Zero(t, *calls)
+
+	transcriptProjectConfig(t, `[close.transcript]
+enabled=false
+agentsview_url="https://default.example"
+[close.transcript.project.kata]
+enabled=true
+agentsview_url="https://team.example/archive"
+push=true
+token_env="TEAM_UPLOAD_TOKEN"
+`)
+	replayed, _, err := runCLIWithErr(t, env, dir, args...)
+	require.NoError(t, err)
+	var replayReceipt api.MutationResponse
+	require.NoError(t, json.Unmarshal([]byte(replayed), &replayReceipt.Body))
+	assert.False(t, replayReceipt.Body.Changed)
+	assert.True(t, replayReceipt.Body.Reused)
+	assert.Nil(t, replayReceipt.Body.Event)
+	require.NotNil(t, replayReceipt.Body.OriginalEvent)
+	var payload struct {
+		Transcript *transcript.Transcript `json:"transcript"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(replayReceipt.Body.OriginalEvent.Payload), &payload))
+	assert.Nil(t, payload.Transcript)
+	assert.Zero(t, *calls, "replaying an unannotated close never uploads")
+}
+
 func TestCloseTranscriptPushKeyedReplayAfterSoftDeleteUsesProjectTarget(t *testing.T) {
 	env, dir, pid, ref := setupWorkspaceWithIssue(t, "Complete retryable work")
 	transcriptProjectConfig(t, `[close.transcript]
@@ -300,6 +343,97 @@ token_env="TEAM_UPLOAD_TOKEN"
 	require.NotNil(t, replayReceipt.Body.OriginalEvent)
 	assert.Equal(t, firstReceipt.Body.Event.UID, replayReceipt.Body.OriginalEvent.UID)
 	assert.Equal(t, 1, *calls, "a keyed retry after soft deletion replays the receipt without uploading again")
+}
+
+func TestCloseTranscriptPushKeyedReplayAfterProjectLookupFailurePreservesTranscript(t *testing.T) {
+	env, dir, _, ref := setupWorkspaceWithIssue(t, "Complete retryable work")
+	transcriptProjectConfig(t, `[close.transcript]
+enabled=false
+agentsview_url="https://default.example"
+[close.transcript.project.kata]
+enabled=true
+agentsview_url="https://team.example/archive"
+push=true
+token_env="TEAM_UPLOAD_TOKEN"
+`)
+	calls, _ := transcriptPushFixture(t, "success")
+	upstream, err := url.Parse(env.URL)
+	require.NoError(t, err)
+	proxy := &httputil.ReverseProxy{Rewrite: func(r *httputil.ProxyRequest) { r.SetURL(upstream) }}
+	lookupUnavailable := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if lookupUnavailable && r.Method == http.MethodGet && r.URL.Query().Get("include_deleted") == "true" {
+			http.Error(w, "fixture project lookup unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		proxy.ServeHTTP(w, r)
+	}))
+	defer server.Close()
+	original := env.URL
+	env.URL = server.URL
+	defer func() { env.URL = original }()
+	args := []string{"--json", "close", ref, "--done", "--message", "Implemented retryable behavior and checked the focused tests.", "--test", "go test ./internal/example", "--idempotency-key", "close-lookup-fixture-key"}
+	first, _, err := runCLIWithErr(t, env, dir, args...)
+	require.NoError(t, err)
+	firstTranscript := closeReceiptTranscript(t, first)
+	require.NotNil(t, firstTranscript)
+	assert.Equal(t, "https://team.example/archive/sessions/codex/"+transcriptSessionOne, firstTranscript.URL)
+	assert.Equal(t, 1, *calls)
+
+	lookupUnavailable = true
+	replayed, _, err := runCLIWithErr(t, env, dir, args...)
+	require.NoError(t, err)
+	var replayReceipt api.MutationResponse
+	require.NoError(t, json.Unmarshal([]byte(replayed), &replayReceipt.Body))
+	assert.False(t, replayReceipt.Body.Changed)
+	assert.True(t, replayReceipt.Body.Reused)
+	assert.Nil(t, replayReceipt.Body.Event)
+	require.NotNil(t, replayReceipt.Body.OriginalEvent)
+	var payload struct {
+		Transcript *transcript.Transcript `json:"transcript"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(replayReceipt.Body.OriginalEvent.Payload), &payload))
+	assert.Equal(t, firstTranscript, payload.Transcript)
+	assert.Equal(t, 1, *calls, "replaying a keyed close never uploads a second time")
+}
+
+func TestCloseTranscriptPushKeyedReplayAfterMovePreservesTranscript(t *testing.T) {
+	env, dir, _, ref := setupWorkspaceWithIssue(t, "Complete retryable work")
+	spoke, err := env.DB.CreateProject(t.Context(), "spoke-project")
+	require.NoError(t, err)
+	transcriptProjectConfig(t, `[close.transcript]
+enabled=false
+agentsview_url="https://default.example"
+[close.transcript.project.kata]
+enabled=true
+agentsview_url="https://team.example/archive"
+push=true
+token_env="TEAM_UPLOAD_TOKEN"
+`)
+	calls, _ := transcriptPushFixture(t, "success")
+	args := []string{"--json", "close", ref, "--done", "--message", "Implemented retryable behavior and checked the focused tests.", "--test", "go test ./internal/example", "--idempotency-key", "close-move-fixture-key"}
+	first, _, err := runCLIWithErr(t, env, dir, args...)
+	require.NoError(t, err)
+	firstTranscript := closeReceiptTranscript(t, first)
+	require.NotNil(t, firstTranscript)
+	assert.Equal(t, 1, *calls)
+
+	runCLI(t, env, dir, "move", ref, spoke.Name)
+	args[2] = "kata#" + ref
+	replayed, _, err := runCLIWithErr(t, env, dir, args...)
+	require.NoError(t, err)
+	var replayReceipt api.MutationResponse
+	require.NoError(t, json.Unmarshal([]byte(replayed), &replayReceipt.Body))
+	assert.False(t, replayReceipt.Body.Changed)
+	assert.True(t, replayReceipt.Body.Reused)
+	assert.Nil(t, replayReceipt.Body.Event)
+	require.NotNil(t, replayReceipt.Body.OriginalEvent)
+	var payload struct {
+		Transcript *transcript.Transcript `json:"transcript"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(replayReceipt.Body.OriginalEvent.Payload), &payload))
+	assert.Equal(t, firstTranscript, payload.Transcript)
+	assert.Equal(t, 1, *calls, "moving the issue cannot make a keyed replay upload again")
 }
 
 func TestCloseTranscriptPushBeforeFollowupCommentFailure(t *testing.T) {
