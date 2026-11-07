@@ -224,7 +224,7 @@ func TestCloseTranscript_MalformedConfigurationNamesFile(t *testing.T) {
 	cmd := &cobra.Command{}
 	var stderr bytes.Buffer
 	cmd.SetErr(&stderr)
-	assert.Nil(t, prepareCloseTranscript(t.Context(), cmd, nil, 0, resolvedIssueRef{}).ref)
+	assert.Nil(t, prepareCloseTranscript(t.Context(), cmd, nil, 0, resolvedIssueRef{}, false).ref)
 	assert.Contains(t, stderr.String(), filepath.Join(home, "config.toml"))
 	assert.Contains(t, stderr.String(), "skipping attachment")
 }

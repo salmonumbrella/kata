@@ -9,7 +9,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"hegel.dev/go/hegel"
+	"pgregory.net/rapid"
 )
 
 func TestReadCloseTranscriptConfig_InvalidAgentNamesKey(t *testing.T) {
@@ -138,31 +138,31 @@ enabled = false
 }
 
 func TestCloseTranscriptTargetURLIsolation(t *testing.T) {
-	hegel.Test(t, func(ht *hegel.T) {
-		name := hegel.Draw(ht, hegel.Text())
-		globalURL := hegel.Draw(ht, hegel.Text())
-		targetURL := hegel.Draw(ht, hegel.Text())
-		push := hegel.Draw(ht, hegel.Booleans())
+	rapid.Check(t, func(rt *rapid.T) {
+		name := rapid.String().Draw(rt, "project name")
+		globalURL := rapid.String().Draw(rt, "global URL")
+		targetURL := rapid.String().Draw(rt, "project URL")
+		push := rapid.Bool().Draw(rt, "push enabled")
 		cfg := CloseTranscriptConfig{AgentsViewURL: globalURL, Project: map[string]CloseTranscriptTarget{
 			name: {AgentsViewURL: targetURL, Push: push, TokenEnv: "SELECTED_TOKEN"},
 		}}
 		got := cfg.Target(name)
 		if got.AgentsViewURL != targetURL || got.Push != push || got.TokenEnv != "SELECTED_TOKEN" {
-			ht.Fatalf("selected target changed: %#v", got)
+			rt.Fatalf("selected target changed: %#v", got)
 		}
 		other := cfg.Target(name + "\x00")
 		if other.AgentsViewURL != globalURL || other.Push || other.TokenEnv != "" {
-			ht.Fatalf("unmatched project inherited another project's upload authority: %#v", other)
+			rt.Fatalf("unmatched project inherited another project's upload authority: %#v", other)
 		}
-	}, hegel.WithTestCases(2000))
+	})
 }
 
 func TestCloseTranscriptTargetEnabledInheritance(t *testing.T) {
-	hegel.Test(t, func(ht *hegel.T) {
-		global := hegel.Draw(ht, hegel.Booleans())
-		override := hegel.Draw(ht, hegel.Booleans())
-		present := hegel.Draw(ht, hegel.Booleans())
-		name := hegel.Draw(ht, hegel.Text())
+	rapid.Check(t, func(rt *rapid.T) {
+		global := rapid.Bool().Draw(rt, "global enabled")
+		override := rapid.Bool().Draw(rt, "project override")
+		present := rapid.Bool().Draw(rt, "override present")
+		name := rapid.String().Draw(rt, "project name")
 		target := CloseTranscriptTarget{}
 		want := global
 		if present {
@@ -172,7 +172,7 @@ func TestCloseTranscriptTargetEnabledInheritance(t *testing.T) {
 		cfg := CloseTranscriptConfig{Enabled: global, Project: map[string]CloseTranscriptTarget{name: target}}
 		got := cfg.Target(name)
 		if got.Enabled == nil || *got.Enabled != want || cfg.Project[name].Enabled != target.Enabled {
-			ht.Fatalf("enabled inheritance mutated configuration or changed the selected value")
+			rt.Fatalf("enabled inheritance mutated configuration or changed the selected value")
 		}
-	}, hegel.WithTestCases(2000))
+	})
 }

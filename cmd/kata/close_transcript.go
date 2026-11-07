@@ -26,7 +26,7 @@ func warnCloseTranscript(cmd *cobra.Command, message string) {
 	_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "close: transcript: "+message)
 }
 
-func prepareCloseTranscript(ctx context.Context, cmd *cobra.Command, client *kataclient.Client, pid int64, issue resolvedIssueRef) closeTranscriptAttachment {
+func prepareCloseTranscript(ctx context.Context, cmd *cobra.Command, client *kataclient.Client, pid int64, issue resolvedIssueRef, includeDeleted bool) closeTranscriptAttachment {
 	cfg, err := config.ReadCloseTranscriptConfig()
 	if err != nil {
 		warnCloseTranscript(cmd, fmt.Sprintf("configuration unavailable (%v); skipping attachment", err))
@@ -35,7 +35,7 @@ func prepareCloseTranscript(ctx context.Context, cmd *cobra.Command, client *kat
 	target := cfg.Target(issue.ProjectName)
 	selectedPID := pid
 	if len(cfg.Project) > 0 {
-		name, actualPID, err := closeTranscriptProject(ctx, client, pid, issue)
+		name, actualPID, err := closeTranscriptProject(ctx, client, pid, issue, includeDeleted)
 		if err != nil {
 			warnCloseTranscript(cmd, "project unavailable; attaching the session identifier only")
 			target = config.CloseTranscriptTarget{Enabled: &cfg.Enabled}
@@ -50,8 +50,11 @@ func prepareCloseTranscript(ctx context.Context, cmd *cobra.Command, client *kat
 
 // Historical references can resolve to an issue that has moved projects.
 // Failure is optional provenance failure, never a new close prerequisite.
-func closeTranscriptProject(ctx context.Context, client *kataclient.Client, pid int64, issue resolvedIssueRef) (string, int64, error) {
-	response, callErr := client.ShowIssueWithResponse(ctx, &generated.ShowIssueRequestOptions{PathParams: &generated.ShowIssuePath{ProjectID: pid, Ref: issue.RefForAPI}})
+func closeTranscriptProject(ctx context.Context, client *kataclient.Client, pid int64, issue resolvedIssueRef, includeDeleted bool) (string, int64, error) {
+	response, callErr := client.ShowIssueWithResponse(ctx, &generated.ShowIssueRequestOptions{
+		PathParams: &generated.ShowIssuePath{ProjectID: pid, Ref: issue.RefForAPI},
+		Query:      &generated.ShowIssueQuery{IncludeDeleted: &includeDeleted},
+	})
 	if response == nil {
 		return "", 0, errors.New("issue unavailable")
 	}

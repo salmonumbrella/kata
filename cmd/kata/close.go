@@ -305,7 +305,7 @@ func runActionWithHeaders(
 	var attachment closeTranscriptAttachment
 	if action == "close" {
 		if evidence, ok := body["evidence"].([]api.Evidence); ok && len(evidence) > 0 {
-			attachment = prepareCloseTranscript(ctx, cmd, apiClient, pid, issue)
+			attachment = prepareCloseTranscript(ctx, cmd, apiClient, pid, issue, headers["Idempotency-Key"] != "")
 			if attachment.ref != nil {
 				body["transcript"] = attachment.ref
 			}

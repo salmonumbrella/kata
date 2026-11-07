@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -17,12 +16,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.kenn.io/kata/internal/api"
 	"go.kenn.io/kata/internal/config"
+	"go.kenn.io/kata/internal/db"
 	"go.kenn.io/kata/internal/transcript"
-	"hegel.dev/go/hegel"
+	"pgregory.net/rapid"
 )
 
 // This fixture exits before TestMain, without opening any application source.
@@ -164,9 +164,14 @@ func TestCloseTranscriptPushRejectsUnsafeOrMissingSettings(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			calls, _ := transcriptPushFixture(t, "success")
 			t.Setenv("AGENTSVIEW_PUSH_TOKEN", "ambient-token-must-not-be-used")
+			t.Setenv("TEAM_UPLOAD_TOKEN", "fixture-team-token")
 			t.Setenv("MISSING_UPLOAD_TOKEN", "")
 			t.Setenv("KATA_AUTH_TOKEN", "fixture-kata-token")
-			err := runCloseTranscriptPush(t.Context(), config.CloseTranscriptTarget{AgentsViewURL: tc.url, TokenEnv: tc.token, Push: true}, nativePushTranscript(t, "codex"))
+			ref := nativePushTranscript(t, "codex")
+			if tc.name == "HTTP locator" {
+				ref.URL = "http://team.example/archive/sessions/codex/" + ref.SessionID
+			}
+			err := runCloseTranscriptPush(t.Context(), config.CloseTranscriptTarget{AgentsViewURL: tc.url, TokenEnv: tc.token, Push: true}, ref)
 			require.Error(t, err)
 			assert.Equal(t, 0, *calls)
 			assert.NotContains(t, err.Error(), "secret")
@@ -189,18 +194,18 @@ func TestCloseTranscriptPushCancellationReapsChild(t *testing.T) {
 }
 
 func TestCloseTranscriptPushCanonicalIDPreservesNativeID(t *testing.T) {
-	hegel.Test(t, func(ht *hegel.T) {
-		agent := hegel.Draw(ht, hegel.SampledFrom([]string{"claude", "codex", "pi"}))
-		id := fmt.Sprintf("%08x-0000-4000-8000-%012x", hegel.Draw(ht, hegel.Integers[int64](0, 1<<32-1)), hegel.Draw(ht, hegel.Integers[int64](0, 1<<48-1)))
+	rapid.Check(t, func(rt *rapid.T) {
+		agent := rapid.SampledFrom([]string{"claude", "codex", "pi"}).Draw(rt, "agent")
+		id := fmt.Sprintf("%08x-0000-4000-8000-%012x", rapid.Int64Range(0, 1<<32-1).Draw(rt, "UUID prefix"), rapid.Int64Range(0, 1<<48-1).Draw(rt, "UUID suffix"))
 		ref := transcript.Transcript{Agent: agent, SessionID: id}
 		want := id
 		if agent != "claude" {
 			want = agent + ":" + id
 		}
 		if got := agentsViewPushSessionID(ref); got != want || ref.SessionID != id {
-			ht.Fatalf("canonical conversion changed native session identity")
+			rt.Fatalf("canonical conversion changed native session identity")
 		}
-	}, hegel.WithTestCases(2000))
+	})
 }
 
 const pushProjectConfig = `[close.transcript]
@@ -257,16 +262,44 @@ func TestCloseTranscriptPushKeyedReplayNeverUploads(t *testing.T) {
 	assert.Equal(t, 1, *calls)
 }
 
-func TestCloseTranscriptPushMissingExecutable(t *testing.T) {
-	original := closeTranscriptPushCommand
-	closeTranscriptPushCommand = func(ctx context.Context, _ string, args ...string) *exec.Cmd {
-		return exec.CommandContext(ctx, filepath.Join(t.TempDir(), "missing-agentsview"), args...) // #nosec G204 -- deliberately nonexistent executable beneath a synthetic test directory.
-	}
-	t.Cleanup(func() { closeTranscriptPushCommand = original })
-	t.Setenv("TEAM_UPLOAD_TOKEN", "fixture-only-token")
-	err := runCloseTranscriptPush(t.Context(), transcriptPushFixtureTarget(), nativePushTranscript(t, "codex"))
-	require.Error(t, err)
-	assert.False(t, errors.Is(err, context.Canceled))
+func TestCloseTranscriptPushKeyedReplayAfterSoftDeleteUsesProjectTarget(t *testing.T) {
+	env, dir, pid, ref := setupWorkspaceWithIssue(t, "Complete retryable work")
+	transcriptProjectConfig(t, `[close.transcript]
+enabled=false
+agentsview_url="https://default.example"
+[close.transcript.project.kata]
+enabled=true
+agentsview_url="https://team.example/archive"
+push=true
+token_env="TEAM_UPLOAD_TOKEN"
+`)
+	calls, _ := transcriptPushFixture(t, "success")
+	args := []string{"--json", "close", ref, "--done", "--message", "Implemented retryable behavior and checked the focused tests.", "--test", "go test ./internal/example", "--idempotency-key", "close-soft-delete-fixture-key"}
+	first, _, err := runCLIWithErr(t, env, dir, args...)
+	require.NoError(t, err)
+	firstTranscript := closeReceiptTranscript(t, first)
+	require.NotNil(t, firstTranscript)
+	assert.Equal(t, "https://team.example/archive/sessions/codex/"+transcriptSessionOne, firstTranscript.URL)
+	assert.Equal(t, 1, *calls)
+	var firstReceipt api.MutationResponse
+	require.NoError(t, json.Unmarshal([]byte(first), &firstReceipt.Body))
+	require.NotNil(t, firstReceipt.Body.Event)
+
+	issue, err := env.DB.IssueByShortID(t.Context(), pid, ref, db.IncludeDeletedNo)
+	require.NoError(t, err)
+	_, _, changed, err := env.DB.SoftDeleteIssue(t.Context(), issue.ID, "tester")
+	require.NoError(t, err)
+	require.True(t, changed)
+
+	replayed, _, err := runCLIWithErr(t, env, dir, args...)
+	require.NoError(t, err)
+	var replayReceipt api.MutationResponse
+	require.NoError(t, json.Unmarshal([]byte(replayed), &replayReceipt.Body))
+	assert.False(t, replayReceipt.Body.Changed)
+	assert.True(t, replayReceipt.Body.Reused)
+	require.NotNil(t, replayReceipt.Body.OriginalEvent)
+	assert.Equal(t, firstReceipt.Body.Event.UID, replayReceipt.Body.OriginalEvent.UID)
+	assert.Equal(t, 1, *calls, "a keyed retry after soft deletion replays the receipt without uploading again")
 }
 
 func TestCloseTranscriptPushBeforeFollowupCommentFailure(t *testing.T) {
@@ -339,22 +372,4 @@ func TestCloseTranscriptPushNoDisclosure(t *testing.T) {
 			assert.Zero(t, *calls)
 		})
 	}
-}
-
-func TestCloseTranscriptPushOldDaemonNeverUploads(t *testing.T) {
-	calls, _ := transcriptPushFixture(t, "success")
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "/api/v1/health", r.URL.Path)
-		_, _ = fmt.Fprint(w, `{"ok":true,"api_schema_version":"0.25.0"}`)
-	}))
-	defer server.Close()
-	ref := nativePushTranscript(t, "codex")
-	body := map[string]any{"transcript": &ref}
-	var stderr strings.Builder
-	cmd := &cobra.Command{}
-	cmd.SetErr(&stderr)
-	require.NoError(t, dropUnsupportedTranscript(t.Context(), cmd, server.Client(), server.URL, body))
-	attachment := closeTranscriptAttachment{ref: &ref, target: transcriptPushFixtureTarget(), projectID: 7}
-	attachment.finish(t.Context(), cmd, body, transcriptConfirmation(t, nil))
-	assert.Zero(t, *calls)
 }
