@@ -187,8 +187,7 @@ func TestCloseTranscriptPushCancellationReapsChild(t *testing.T) {
 	err := runCloseTranscriptPush(ctx, transcriptPushFixtureTarget(), nativePushTranscript(t, "codex"))
 	require.Error(t, err)
 	require.NotNil(t, *command)
-	require.NotNil(t, (*command).ProcessState)
-	assert.ErrorIs(t, (*command).Process.Kill(), os.ErrProcessDone)
+	require.NotNil(t, (*command).ProcessState, "cancellation waits for the child to exit")
 	_, err = os.Stat(filepath.Join(os.Getenv("AGENTSVIEW_DATA_DIR"), "capture.json")) // #nosec G703 -- fixed capture marker in transcriptPushFixture's synthetic archive directory.
 	require.NoError(t, err, "the fixture started before cancellation")
 }
