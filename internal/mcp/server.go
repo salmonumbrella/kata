@@ -190,7 +190,7 @@ func registerIssueMutationTools(server *sdkmcp.Server, handlers toolHandlers) {
 	additive := toolHints(false, false, false)
 	mutating := toolHints(false, true, false)
 	addTool(server, "kata.claim", "Claim issue", "Claim an issue for the bound actor. Without force the call fails when another owner already holds it; force replaces that owner.", mutating, handlers.claim)
-	addTool(server, "kata.comment", "Add comment", "Append a progress or context comment using a required idempotency key.", additive, handlers.comment)
+	addTool(server, "kata.comment", "Add comment or typed reply", "Append a comment, or reply to, confirm, refute, or supersede an existing comment. Supply reply_to and kind together. Confirm/refute require 40 characters after whitespace normalization. Reuse idempotency_key and payload for retries; force only bypasses duplicate replies.", additive, handlers.comment)
 	addTool(server, "kata.create", "Create issue", "Create project work after searching for duplicates. A stable idempotency key is required.", additive, handlers.create)
 	addTool(server, "kata.edit", "Edit issue", "Edit issue fields, ownership, priority, and relationship deltas atomically.", mutating, handlers.edit)
 	addTool(server, "kata.edit_comment", "Edit comment", "Replace one comment body as the startup actor.", mutating, handlers.editComment)
@@ -721,9 +721,9 @@ type EditInput struct {
 
 // CommentInput appends an idempotent comment.
 type CommentInput struct {
-	ReplyTo        string  `json:"reply_to,omitempty" jsonschema:"Comment reference to reply to, confirm, refute, or supersede"`
-	Kind           string  `json:"kind,omitempty" jsonschema:"reply, confirm, refute, or supersede; confirm asserts verification/reproduction; confirm/refute need 40 evidence characters"`
-	Force          bool    `json:"force,omitempty" jsonschema:"Allow another same-kind reply by this actor and teammate"`
+	ReplyTo        string  `json:"reply_to,omitempty" jsonschema:"Existing target comment: c:<suffix> on this issue, <issue>:<suffix>, <project>#<issue>:<suffix>, or full UID; pair with kind; target must be in the same project"`
+	Kind           string  `json:"kind,omitempty" jsonschema:"Pair with reply_to: reply responds, confirm asserts verification or reproduction, refute disputes with evidence, supersede replaces the earlier assertion. Confirm/refute require 40 Unicode characters after whitespace normalization"`
+	Force          bool    `json:"force,omitempty" jsonschema:"Allow another same-kind reply by this actor and teammate; does not bypass evidence, target, open source issue, or permission checks"`
 	Teammate       *string `json:"teammate,omitempty" jsonschema:"Teammate handle; empty suppresses the startup default"`
 	Ref            string  `json:"ref" jsonschema:"Issue reference; use project#ref in multi-project mode"`
 	Body           string  `json:"body" jsonschema:"Comment body"`

@@ -15,8 +15,8 @@ type SkillCommand struct {
 var skillCommands = []SkillCommand{
 	{"kata search", []string{"kata.search"}, "`project` narrows the search; omit it to search every project in scope"},
 	{"kata create", []string{"kata.create"}, "`idempotency_key` required; `project` required in multi-project scope"},
-	{"kata show", []string{"kata.show"}, ""},
-	{"kata comment", []string{"kata.comment"}, "`idempotency_key` required"},
+	{"kata show", []string{"kata.show"}, "Use `thread`, `inbound`, `kind`, and `since` to read linked comments; results include handles and backlinks"},
+	{"kata comment", []string{"kata.comment"}, "`idempotency_key` required. `--reply`, `--confirm`, `--refute`, and `--supersede` map to `reply_to` plus the matching `kind`. Confirm/refute need 40 normalized Unicode characters; `force` only bypasses duplicate replies"},
 	{"kata edit", []string{"kata.edit"}, "relationship flags are fields; field and metadata changes need separate calls"},
 	{"kata label add", []string{"kata.set_label"}, "`present: true`; `--comment` becomes a separate `kata.comment` call"},
 	{"kata next", []string{"kata.next"}, ""},

@@ -1,7 +1,7 @@
 ---
 title: Model Context Protocol server
 description: Configure Kata's MCP server and use its typed issue, administration, and event tools.
-last_edited: 2026-11-06
+last_edited: 2026-11-07
 ---
 
 # Model Context Protocol server
@@ -249,17 +249,60 @@ The MCP server still starts against its documented baseline daemon. A
 mutating and returns a tool error explaining the API requirement against an older daemon.
 Teammate-free calls retain their existing compatibility floor.
 
-With daemon API `0.28.0` or newer, `kata.comment` accepts `reply_to` (a comment
-handle or full UID), `kind` (`reply`, `confirm`, `refute`, or `supersede` (reply is a general response; confirm asserts verification or reproduction)),
-and optional `force` to bypass duplicate-reply rejection. The required
-`idempotency_key` includes the resolved target and kind in its request identity.
-`kata.show` accepts `thread`, `inbound`, `kind`, and `since` selectors and
-returns handles, reply lines, backlinks, and edit state. Thread results retain
-their root within the requested comment limit and report truncation.
-Endpoint identities and backlinks remain within the server's fixed startup
-project UID scope, including after project moves or renames. See the
-[CLI reference](cli.md#issue-lifecycle) for selector behavior, reply validation,
-and handle syntax.
+### Respond to a finding with a typed comment
+
+With daemon API `0.28.0` or newer, use the existing `kata.comment` tool to
+reply to, confirm, refute, or supersede a comment. Load
+`kata.load_issue_mutation` and `kata.load_issue_discovery`, then refresh the
+tool list. Read `kata.show` for the issue and choose the target comment's
+`handle` or `uid`.
+
+| CLI flag | `kata.comment` fields | Meaning |
+| --- | --- | --- |
+| `--reply c:abcdef` | `"kind": "reply", "reply_to": "c:abcdef"` | Respond to the comment. |
+| `--confirm c:abcdef` | `"kind": "confirm", "reply_to": "c:abcdef"` | Record verification or reproduction. |
+| `--refute c:abcdef` | `"kind": "refute", "reply_to": "c:abcdef"` | Dispute the assertion with evidence. |
+| `--supersede c:abcdef` | `"kind": "supersede", "reply_to": "c:abcdef"` | Replace the earlier assertion. |
+
+For example, call `kata.comment` with the actual issue and comment references:
+
+```json
+{
+  "ref": "example-project#abc1",
+  "reply_to": "c:abcdef",
+  "kind": "confirm",
+  "body": "Reproduced the reported failure with the isolated fixture and captured the result.",
+  "idempotency_key": "confirm-fixture-result-1"
+}
+```
+
+Supply `reply_to` and `kind` together. Confirm and refute require at least 40
+Unicode characters after whitespace normalization: leading and trailing
+whitespace is removed, and each internal whitespace run becomes one space.
+Reply and supersede require a nonblank body. The source issue must be open;
+the target may be on another issue in the same project. Use `c:<suffix>` for
+this issue, `<issue>:<suffix>` or `<project>#<issue>:<suffix>` for another
+issue, or a full comment UID.
+
+Reuse the same `idempotency_key` and payload after a lost response. An exact
+retry returns the same comment UID with `changed: false` and `reused: true`.
+Changing its resolved target, kind, body, or attributed identity conflicts.
+A new key for the same target, kind, actor, and teammate gets
+`duplicate_reply`, including the existing reply's handle. Set `force: true`
+only to add another such reply. Force does not bypass evidence, target,
+source-issue status, or permission checks. The actor remains bound to the
+server or daemon identity; `teammate` supplies optional attribution.
+
+On unreleased `main`, the mutation result's `comment.reply` retains the resolved
+target `uid` and `kind`. Call `kata.show` for handles, endpoint state, backlinks,
+and edit state. Its `thread`, `inbound`, `kind`, and `since` selectors let you
+read the linked conversation. Thread results retain their root within the
+requested comment limit and report truncation. Endpoint identities and
+backlinks remain within the server's fixed startup project UID scope,
+including after moves or renames. See the [CLI
+reference](cli.md#issue-lifecycle) for selector behavior and handle syntax.
+
+### Refine an empty search
 
 An empty first page of a lexical multi-word `kata.search` includes
 `hints: [{"code": "every_word_required", "message": "no issue contains every word; search again with fewer words"}]`,

@@ -1373,7 +1373,7 @@ func commentSummary(comment generated.Comment) CommentSummary {
 	if comment.Teammate != nil {
 		handle = *comment.Teammate
 	}
-	return CommentSummary{
+	out := CommentSummary{
 		AccountableActor: comment.AccountableActor,
 		SourceActor:      comment.SourceActor,
 		AuthorityUID:     comment.AuthorityUID,
@@ -1384,6 +1384,12 @@ func commentSummary(comment generated.Comment) CommentSummary {
 		Body:             comment.Body,
 		CreatedAt:        formatTime(comment.CreatedAt),
 	}
+	// Mutation responses carry the daemon's scoped relation, without the
+	// richer handles and endpoint state returned by kata.show.
+	if comment.ReplyToUID != nil && comment.ReplyKind != nil {
+		out.Reply = &commentref.Link{UID: *comment.ReplyToUID, Kind: *comment.ReplyKind}
+	}
+	return out
 }
 
 func linkSummary(issueUID string, link generated.LinkOut) LinkSummary {
