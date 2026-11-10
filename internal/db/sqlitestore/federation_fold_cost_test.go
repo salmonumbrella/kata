@@ -277,3 +277,27 @@ func TestFederationFoldScopedIdentity(t *testing.T) {
 	require.Equal(t, []string{"1", "2", "3", "5", "7"}, ids)
 	require.True(t, projectEvent)
 }
+
+func TestFederationFoldScopedMovedHistoryPageBudget(t *testing.T) {
+	d, project := seedFederationFoldMoves(t, 2_000, 2_000)
+	const subject = "00000000000000000000000001"
+	_, err := d.ExecContext(t.Context(), `UPDATE events SET issue_uid=?,payload=json_set(payload,'$.issue_uid',?) WHERE type='issue.updated'`, subject, subject)
+	require.NoError(t, err)
+	raw, err := sql.Open("sqlite", d.Path())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, raw.Close()) })
+	raw.SetMaxOpenConns(1)
+	conn, err := raw.Conn(t.Context())
+	require.NoError(t, err)
+	defer func() { require.NoError(t, conn.Close()) }()
+	tx, err := conn.BeginTx(t.Context(), nil)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, tx.Rollback()) }()
+	cronPullPageFetches(t, conn, true)
+	events, err := federationFoldEventsForIssues(t.Context(), tx, project.ID, []string{subject})
+	require.NoError(t, err)
+	pages := cronPullPageFetches(t, conn, false)
+	require.Len(t, events, 2_003)
+	t.Logf("%d page fetches", pages)
+	require.LessOrEqual(t, pages, 120_000)
+}

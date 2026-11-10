@@ -1870,9 +1870,8 @@ func federationFoldEventsQuery(projectID int64, eventTypes, issueScope []string)
 		selector = `(e.project_id=?1 OR (` + eventIssueUID + ` IN (
    SELECT ` + historyIssueUID + ` FROM events h WHERE h.project_id=?1
    UNION SELECT uid FROM issues WHERE project_id=?1)
- AND EXISTS(SELECT 1 FROM events m WHERE m.type='issue.moved' AND
-   ` + moveIssueUID + ` = ` + eventIssueUID + `)))`
-		// CASE evaluates the scope before the correlated move lookup. Scope
+ AND ` + eventIssueUID + ` IN (SELECT ` + moveIssueUID + ` FROM events m WHERE m.type='issue.moved')))`
+		// CASE evaluates the scope before the move lookup. Scope
 		// identity follows the scanner even for non-issue event payloads.
 		scopeUID := `CASE WHEN e.issue_uid IS NOT NULL AND e.issue_uid<>'' THEN e.issue_uid
  WHEN json_type(e.payload,'$.issue_uid')='text' THEN json_extract(e.payload,'$.issue_uid')
