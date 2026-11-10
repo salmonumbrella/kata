@@ -1853,18 +1853,25 @@ func federationFoldEventsQuery(projectID int64, eventTypes, issueScope []string)
 	historyIssueUID := issueUID("h")
 	moveIssueUID := issueUID("m")
 	candidateIssueUID := issueUID("x")
+	subjects := `SELECT s.uid FROM (
+       SELECT ` + historyIssueUID + ` AS uid FROM events h WHERE h.project_id=$1
+       UNION SELECT uid FROM issues WHERE project_id=$1) s
+     WHERE s.uid IN (SELECT ` + moveIssueUID + ` FROM events m WHERE m.type='issue.moved')`
+	selector := `e.id IN (
+   SELECT id FROM events WHERE project_id=$1
+   UNION
+   SELECT x.id FROM events x WHERE ` + candidateIssueUID + ` IN (
+     ` + subjects + `))`
+	if len(issueScope) > 0 {
+		// An issue-scoped fold keeps one event scan: project rows match before
+		// the moved-subject set is needed, so unrelated history is not reread.
+		selector = `(e.project_id=$1 OR ` + db.FederationReadIssueUIDExpr(false) + ` IN (` + subjects + `))`
+	}
 	query := `
 		SELECT e.uid, e.origin_instance_uid, p.uid, e.issue_uid, e.related_issue_uid,
 		       e.type, e.actor, e.payload, e.hlc_physical_ms, e.hlc_counter, e.created_at
 		  FROM events e JOIN projects p ON p.id=e.project_id
- WHERE e.id IN (
-   SELECT id FROM events WHERE project_id=$1
-   UNION
-   SELECT x.id FROM events x WHERE ` + candidateIssueUID + ` IN (
-     SELECT s.uid FROM (
-       SELECT ` + historyIssueUID + ` AS uid FROM events h WHERE h.project_id=$1
-       UNION SELECT uid FROM issues WHERE project_id=$1) s
-     WHERE s.uid IN (SELECT ` + moveIssueUID + ` FROM events m WHERE m.type='issue.moved')))`
+ WHERE ` + selector
 	args := []any{projectID}
 	if len(eventTypes) > 0 {
 		placeholders := make([]string, 0, len(eventTypes))
