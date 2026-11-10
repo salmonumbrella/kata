@@ -25,7 +25,9 @@ func newAgentsViewPrepareCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			//nolint:staticcheck // Adapter is a temporary unavailable stub.
 			workflow, err := newLiveAgentsViewWorkflow(cmd.Context())
+			//nolint:staticcheck // The live adapter remains unavailable until prerequisites land.
 			if err != nil {
 				return err
 			}
@@ -61,7 +63,9 @@ func newAgentsViewShareCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			//nolint:staticcheck // Adapter is a temporary unavailable stub.
 			workflow, err := newLiveAgentsViewWorkflow(cmd.Context())
+			//nolint:staticcheck // The live adapter remains unavailable until prerequisites land.
 			if err != nil {
 				return err
 			}
@@ -83,7 +87,7 @@ func readAgentsViewConsent(ctx context.Context, path string) (agentsViewConsent,
 	if err != nil {
 		return agentsViewConsent{}, errors.New("AgentsView: cannot open retained consent")
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	info, err := file.Stat()
 	if err != nil || !info.Mode().IsRegular() {
 		return agentsViewConsent{}, errors.New("AgentsView: consent must be a regular file")
@@ -191,7 +195,9 @@ func (f agentsViewCloseFlags) run(ctx context.Context, cmd *cobra.Command, ref s
 	if err != nil {
 		return err
 	}
+	//nolint:staticcheck // Adapter is a temporary unavailable stub.
 	workflow, err := newLiveAgentsViewWorkflow(ctx)
+	//nolint:staticcheck // The live adapter remains unavailable until prerequisites land.
 	if err != nil {
 		return err
 	}
