@@ -21,7 +21,7 @@ func registerAgentsViewServiceHandlers(humaAPI huma.API, cfg ServerConfig) {
 			ctx, cancel := context.WithTimeout(ctx, agentsViewRequestTimeout)
 			defer cancel()
 			if configErr != nil {
-				return nil, agentsViewUnavailable()
+				return nil, agentsViewDiscoveryUnavailable()
 			}
 			result, err := discoverAgentsViewService(ctx, cfg, in.ProjectID)
 			if err != nil {
@@ -37,7 +37,7 @@ func registerAgentsViewServiceHandlers(humaAPI huma.API, cfg ServerConfig) {
 			ctx, cancel := context.WithTimeout(ctx, agentsViewRequestTimeout)
 			defer cancel()
 			if configErr != nil {
-				return nil, agentsViewUnavailable()
+				return nil, agentsViewDiscoveryUnavailable()
 			}
 			operation := federationTransportOperation("getFederationTranscriptService")
 			ctx, principal, err := authorizeFederationRequest(ctx, cfg, in.Authorization, in.ProjectID, "pull", operation)
@@ -45,7 +45,7 @@ func registerAgentsViewServiceHandlers(humaAPI huma.API, cfg ServerConfig) {
 				return nil, err
 			}
 			if !agentsViewRelayGenerationMatches(principal, in.ProjectID, in.ProtocolVersion, in.BindingUID, in.PeerInstanceUID, in.ResetEpoch) {
-				return nil, agentsViewUnavailable()
+				return nil, agentsViewDiscoveryUnavailable()
 			}
 			project, err := activeProjectByID(ctx, cfg.DB, in.ProjectID)
 			if err != nil {
@@ -53,7 +53,7 @@ func registerAgentsViewServiceHandlers(humaAPI huma.API, cfg ServerConfig) {
 			}
 			pin, err := cfg.DB.RootAuthority(ctx, project.UID)
 			if err != nil || project.UID != in.ProjectUID || pin.AuthorityUID != in.AuthorityUID {
-				return nil, agentsViewUnavailable()
+				return nil, agentsViewDiscoveryUnavailable()
 			}
 			result, err := discoverAgentsViewService(ctx, cfg, in.ProjectID)
 			if err != nil {
@@ -66,7 +66,7 @@ func registerAgentsViewServiceHandlers(humaAPI huma.API, cfg ServerConfig) {
 				return nil, err
 			}
 			if !sameAgentsViewPrincipal(principal, current.principal) {
-				return nil, agentsViewUnavailable()
+				return nil, agentsViewDiscoveryUnavailable()
 			}
 			return &api.AgentsViewServiceResponse{CacheControl: "private, no-store", Body: result}, nil
 		})

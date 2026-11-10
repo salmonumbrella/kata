@@ -21,7 +21,7 @@ import (
 	"go.kenn.io/kata/internal/httpurl"
 )
 
-func agentsViewUnavailable() error {
+func agentsViewDiscoveryUnavailable() error {
 	return api.NewError(http.StatusServiceUnavailable, "transcript_service_unavailable", "configured AgentsView service is unavailable for this project and route", "no transcript was read or uploaded", nil)
 }
 
@@ -61,7 +61,7 @@ func tryBeginAgentsViewTransport(ctx context.Context, cfg ServerConfig, projectI
 		projectID,
 	)
 	if errors.Is(err, federationcoord.ErrBusy) || errors.Is(err, context.DeadlineExceeded) {
-		return nil, agentsViewUnavailable()
+		return nil, agentsViewDiscoveryUnavailable()
 	}
 	if err != nil {
 		return nil, internalAPIError(fmt.Errorf("coordinate AgentsView discovery: %w", err))
@@ -85,11 +85,11 @@ func discoverAgentsViewService(ctx context.Context, cfg ServerConfig, projectID 
 	}
 	binding, err := claimBinding(ctx, cfg.DB, projectID)
 	if err != nil {
-		return agentsviewservice.Discovery{}, agentsViewUnavailable()
+		return agentsviewservice.Discovery{}, agentsViewDiscoveryUnavailable()
 	}
 	pin, err := cfg.DB.RootAuthority(ctx, project.UID)
 	if err != nil || db.ValidateRootKeyPin(pin) != nil || pin.Retired {
-		return agentsviewservice.Discovery{}, agentsViewUnavailable()
+		return agentsviewservice.Discovery{}, agentsViewDiscoveryUnavailable()
 	}
 	var result agentsviewservice.Discovery
 	path := []string{cfg.DB.InstanceUID()}
@@ -97,15 +97,15 @@ func discoverAgentsViewService(ctx context.Context, cfg ServerConfig, projectID 
 	case db.FederationRoleHub:
 		target := cfg.AgentsView.Project[project.UID]
 		if !target.Enabled || pin.AuthorityUID != cfg.DB.InstanceUID() || cfg.RootSigning == nil {
-			return result, agentsViewUnavailable()
+			return result, agentsViewDiscoveryUnavailable()
 		}
 		signer := cfg.RootSigning.Signer()
 		if !db.RootSignerMatches(pin, signer) {
-			return result, agentsViewUnavailable()
+			return result, agentsViewDiscoveryUnavailable()
 		}
 		serviceID, policyErr := agentsviewservice.ServiceID(target.ReceiverURL, target.LocatorURL)
 		if policyErr != nil {
-			return result, agentsViewUnavailable()
+			return result, agentsViewDiscoveryUnavailable()
 		}
 		now := time.Now().UTC()
 		descriptor, signErr := agentsviewservice.SignDescriptor(agentsviewservice.Descriptor{
@@ -114,7 +114,7 @@ func discoverAgentsViewService(ctx context.Context, cfg ServerConfig, projectID 
 			IssuedAt: now.Unix(), ExpiresAt: now.Add(agentsviewservice.MaxLifetime).Unix(),
 		}, signer.PrivateKey)
 		if signErr != nil {
-			return result, agentsViewUnavailable()
+			return result, agentsViewDiscoveryUnavailable()
 		}
 		result = agentsviewservice.Discovery{Descriptor: descriptor, InstanceUID: cfg.DB.InstanceUID(), Route: []agentsviewservice.RouteObservation{{InstanceUID: cfg.DB.InstanceUID(), ProjectUID: project.UID}}}
 	case db.FederationRoleSpoke:
@@ -122,17 +122,17 @@ func discoverAgentsViewService(ctx context.Context, cfg ServerConfig, projectID 
 		// Legacy cursor-only spokes have no negotiated route generation. Refuse
 		// this new service rather than pretending they have the relay contract.
 		if relay == nil || relay.UpstreamRevoked || relay.Validate(cfg.DB.InstanceUID()) != nil || relay.AuthorityUID != pin.AuthorityUID || binding.HubProjectUID != project.UID {
-			return result, agentsViewUnavailable()
+			return result, agentsViewDiscoveryUnavailable()
 		}
 		path = append([]string(nil), relay.HubPath...)
 		credential, _, credentialErr := cfg.federationCredentialStore().FederationCredential(ctx, project.UID)
 		if credentialErr != nil || credential.LeavePending || credential.NativeLeave != nil || credential.RelayEnrollmentPending || credential.Token == "" {
-			return result, agentsViewUnavailable()
+			return result, agentsViewDiscoveryUnavailable()
 		}
 		credentialURL, e1 := httpurl.CanonicalHTTPBaseURL(credential.HubURL)
 		bindingURL, e2 := httpurl.CanonicalHTTPBaseURL(binding.HubURL)
 		if e1 != nil || e2 != nil || credentialURL != bindingURL || credential.HubProjectID != binding.HubProjectID {
-			return result, agentsViewUnavailable()
+			return result, agentsViewDiscoveryUnavailable()
 		}
 		result, err = fetchAgentsViewService(ctx, cfg, binding, credential, project.UID, pin, path[:len(path)-1], *relay, cfg.DB.InstanceUID())
 		if err != nil {
@@ -141,7 +141,7 @@ func discoverAgentsViewService(ctx context.Context, cfg ServerConfig, projectID 
 		result.Route = append(result.Route, agentsviewservice.RouteObservation{InstanceUID: cfg.DB.InstanceUID(), ProjectUID: project.UID, BindingUID: relay.BindingUID, UpstreamInstanceUID: relay.UpstreamInstanceUID, ResetEpoch: relay.ResetEpoch})
 		result.InstanceUID = cfg.DB.InstanceUID()
 	default:
-		return result, agentsViewUnavailable()
+		return result, agentsViewDiscoveryUnavailable()
 	}
 	// Projection/route/key changes during I/O invalidate the selected result;
 	// cursor progress alone does not. No fallback or transparent retarget occurs.
@@ -152,14 +152,14 @@ func discoverAgentsViewService(ctx context.Context, cfg ServerConfig, projectID 
 	currentBinding, bindingErr := claimBinding(ctx, cfg.DB, projectID)
 	currentPin, pinErr := cfg.DB.RootAuthority(ctx, project.UID)
 	if current.UID != project.UID || bindingErr != nil || pinErr != nil || !reflect.DeepEqual(pin, currentPin) || !sameAgentsViewRoute(binding, currentBinding) {
-		return agentsviewservice.Discovery{}, agentsViewUnavailable()
+		return agentsviewservice.Discovery{}, agentsViewDiscoveryUnavailable()
 	}
 	raw, err := json.Marshal(result)
 	if err != nil {
-		return agentsviewservice.Discovery{}, agentsViewUnavailable()
+		return agentsviewservice.Discovery{}, agentsViewDiscoveryUnavailable()
 	}
 	if _, err = agentsviewservice.DecodeDiscovery(raw, agentsViewPin(pin), path, time.Now()); err != nil {
-		return agentsviewservice.Discovery{}, agentsViewUnavailable()
+		return agentsviewservice.Discovery{}, agentsViewDiscoveryUnavailable()
 	}
 	return result, nil
 }
@@ -172,11 +172,11 @@ func fetchAgentsViewService(ctx context.Context, cfg ServerConfig, binding db.Fe
 	credential = config.FederationTransportCredential(binding.HubURL, binding.HubProjectID, binding.AllowInsecure, credential)
 	client, err := agentsViewForwardHTTPClient(ctx, cfg, credential)
 	if err != nil || client == nil {
-		return agentsviewservice.Discovery{}, agentsViewUnavailable()
+		return agentsviewservice.Discovery{}, agentsViewDiscoveryUnavailable()
 	}
 	endpoint, err := httpurl.AppendHTTPBaseURLPath(credential.HubURL, fmt.Sprintf("/api/v1/projects/%d/federation/transcript-service", credential.HubProjectID))
 	if err != nil {
-		return agentsviewservice.Discovery{}, agentsViewUnavailable()
+		return agentsviewservice.Discovery{}, agentsViewDiscoveryUnavailable()
 	}
 	query := url.Values{
 		"project_uid":       {project},
@@ -188,7 +188,7 @@ func fetchAgentsViewService(ctx context.Context, cfg ServerConfig, binding db.Fe
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"?"+query.Encode(), nil)
 	if err != nil {
-		return agentsviewservice.Discovery{}, agentsViewUnavailable()
+		return agentsviewservice.Discovery{}, agentsViewDiscoveryUnavailable()
 	}
 	req.Header.Set("Accept-Encoding", "identity")
 	if err := addClaimForwardProjectScope(ctx, req); err != nil {
@@ -196,23 +196,23 @@ func fetchAgentsViewService(ctx context.Context, cfg ServerConfig, binding db.Fe
 	}
 	resp, err := client.Do(req) //nolint:gosec // credential-pinned configured upstream only
 	if err != nil {
-		return agentsviewservice.Discovery{}, agentsViewUnavailable()
+		return agentsviewservice.Discovery{}, agentsViewDiscoveryUnavailable()
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return agentsviewservice.Discovery{}, agentsViewUnavailable()
+		return agentsviewservice.Discovery{}, agentsViewDiscoveryUnavailable()
 	}
 	encodings := resp.Header.Values("Content-Encoding")
 	if resp.Uncompressed || len(encodings) > 1 || (len(encodings) == 1 && !strings.EqualFold(strings.TrimSpace(encodings[0]), "identity")) {
-		return agentsviewservice.Discovery{}, agentsViewUnavailable()
+		return agentsviewservice.Discovery{}, agentsViewDiscoveryUnavailable()
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, agentsviewservice.MaxDiscoveryBytes+1))
 	if err != nil {
-		return agentsviewservice.Discovery{}, agentsViewUnavailable()
+		return agentsviewservice.Discovery{}, agentsViewDiscoveryUnavailable()
 	}
 	result, err := agentsviewservice.DecodeDiscovery(raw, agentsViewPin(pin), path, time.Now())
 	if err != nil {
-		return agentsviewservice.Discovery{}, agentsViewUnavailable()
+		return agentsviewservice.Discovery{}, agentsViewDiscoveryUnavailable()
 	}
 	return result, nil
 }
