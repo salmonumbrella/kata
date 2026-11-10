@@ -303,29 +303,7 @@ func federationFoldEventsOfTypes(
 	projectID int64,
 	eventTypes []string,
 ) ([]db.FoldEvent, error) {
-	// Only issue events use payload fields as issue identity. Other event
-	// payloads can reference an issue without becoming part of its history.
-	eventIssueUID := `CASE WHEN e.type LIKE 'issue.%' THEN COALESCE(NULLIF(e.issue_uid,''),e.payload::jsonb->>'issue_uid',e.payload::jsonb->>'uid') ELSE NULLIF(e.issue_uid,'') END`
-	historyIssueUID := `CASE WHEN h.type LIKE 'issue.%' THEN COALESCE(NULLIF(h.issue_uid,''),h.payload::jsonb->>'issue_uid',h.payload::jsonb->>'uid') ELSE NULLIF(h.issue_uid,'') END`
-	moveIssueUID := `COALESCE(NULLIF(m.issue_uid,''),m.payload::jsonb->>'issue_uid',m.payload::jsonb->>'uid')`
-	query := `SELECT e.uid,e.origin_instance_uid,p.uid,e.issue_uid,
-e.related_issue_uid,e.type,e.actor,e.payload,e.hlc_physical_ms,e.hlc_counter,e.created_at
-FROM events e JOIN projects p ON p.id=e.project_id WHERE (e.project_id=$1 OR (` + eventIssueUID + ` IN (
-   SELECT ` + historyIssueUID + ` FROM events h WHERE h.project_id=$1
-   UNION SELECT uid FROM issues WHERE project_id=$1)
- AND EXISTS(SELECT 1 FROM events m WHERE m.type='issue.moved' AND
-   ` + moveIssueUID + ` = ` + eventIssueUID + `)))`
-	args := []any{projectID}
-	if len(eventTypes) > 0 {
-		placeholders := make([]string, 0, len(eventTypes))
-		for i, eventType := range eventTypes {
-			placeholders = append(placeholders, fmt.Sprintf("$%d", i+2))
-			args = append(args, eventType)
-		}
-		//nolint:gosec // G202: generated $N placeholders only; values are bound separately.
-		query += " AND e.type IN (" + strings.Join(placeholders, ",") + ")"
-	}
-	query += " ORDER BY e.id ASC"
+	query, args := federationFoldEventsQuery(projectID, eventTypes)
 	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, mapSQLError(err, nil)
@@ -352,6 +330,33 @@ FROM events e JOIN projects p ON p.id=e.project_id WHERE (e.project_id=$1 OR (` 
 		output = append(output, event)
 	}
 	return db.FederationMoveBaselineEvents(output), mapSQLError(rows.Err(), nil)
+}
+
+func federationFoldEventsQuery(projectID int64, eventTypes []string) (string, []any) {
+	issueUID := func(alias string) string {
+		return strings.NewReplacer("e.type", alias+".type", "e.issue_uid", alias+".issue_uid", "e.payload", alias+".payload").Replace(db.FederationReadIssueUIDExpr(true))
+	}
+	query := `SELECT e.uid,e.origin_instance_uid,p.uid,e.issue_uid,
+e.related_issue_uid,e.type,e.actor,e.payload,e.hlc_physical_ms,e.hlc_counter,e.created_at
+FROM events e JOIN projects p ON p.id=e.project_id WHERE e.id IN (
+   SELECT id FROM events WHERE project_id=$1
+   UNION SELECT x.id FROM events x WHERE ` + issueUID("x") + ` IN (
+     SELECT s.uid FROM (
+       SELECT ` + issueUID("h") + ` AS uid FROM events h WHERE h.project_id=$1
+       UNION SELECT uid FROM issues WHERE project_id=$1) s
+     WHERE s.uid IN (SELECT ` + issueUID("m") + ` FROM events m WHERE m.type='issue.moved'))) `
+	args := []any{projectID}
+	if len(eventTypes) > 0 {
+		placeholders := make([]string, 0, len(eventTypes))
+		for i, eventType := range eventTypes {
+			placeholders = append(placeholders, fmt.Sprintf("$%d", i+2))
+			args = append(args, eventType)
+		}
+		//nolint:gosec // G202: generated $N placeholders only; values are bound separately.
+		query += " AND e.type IN (" + strings.Join(placeholders, ",") + ")"
+	}
+	query += " ORDER BY e.id ASC"
+	return query, args
 }
 
 func federationGroupIssueIDs(

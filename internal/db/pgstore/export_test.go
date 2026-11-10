@@ -44,3 +44,5 @@ func InstallRelayHistoryFullScanObserverForTest(store *Store, observe func()) fu
 const EventSelectForTest = eventSelect
 
 var ScanEventForTest = scanEvent
+
+var FederationFoldEventsQueryForTest = federationFoldEventsQuery

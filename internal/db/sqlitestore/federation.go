@@ -1863,9 +1863,14 @@ func federationFoldEventsQuery(projectID int64, eventTypes, issueScope []string)
    SELECT x.id FROM events x WHERE ` + candidateIssueUID + ` IN (
      ` + subjects + `))`
 	if len(issueScope) > 0 {
-		// An issue-scoped fold keeps one event scan: project rows match before
-		// the moved-subject set is needed, so unrelated history is not reread.
-		selector = `(e.project_id=$1 OR ` + db.FederationReadIssueUIDExpr(false) + ` IN (` + subjects + `))`
+		// Scoped pushes can short-circuit project rows without building the
+		// project-wide moved-subject set.
+		eventIssueUID := db.FederationReadIssueUIDExpr(false)
+		selector = `(e.project_id=$1 OR (` + eventIssueUID + ` IN (
+   SELECT ` + historyIssueUID + ` FROM events h WHERE h.project_id=$1
+   UNION SELECT uid FROM issues WHERE project_id=$1)
+ AND EXISTS(SELECT 1 FROM events m WHERE m.type='issue.moved' AND
+   ` + moveIssueUID + ` = ` + eventIssueUID + `)))`
 	}
 	query := `
 		SELECT e.uid, e.origin_instance_uid, p.uid, e.issue_uid, e.related_issue_uid,

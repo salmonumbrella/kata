@@ -43,6 +43,9 @@ func TestFederationIngestUnrelatedHistoryPageBudget(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 1, result.Accepted)
 		count := pages(false)
+		var title string
+		require.NoError(t, d.QueryRowContext(t.Context(), `SELECT title FROM issues WHERE uid=?`, issue.UID).Scan(&title))
+		require.Equal(t, fmt.Sprintf("batch-%d", history), title)
 		t.Logf("history=%d: %d page fetches", history, count)
 		if history == 100 {
 			small = count

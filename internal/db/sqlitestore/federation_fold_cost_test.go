@@ -75,7 +75,7 @@ func TestFederationFoldBulkMovePageBudget(t *testing.T) {
 				t.Logf("20k history / 2k moves: %d page fetches", pages)
 				// The original full fold used 2,513,099 page fetches remotely;
 				// the indexed rewrite used 54,486 before this case expansion.
-				require.LessOrEqual(t, pages, 500_000, "bulk moves must not multiply history reads by move count")
+				require.LessOrEqual(t, pages, 120_000, "bulk moves must not multiply history reads by move count")
 			})
 		}
 	}
@@ -121,6 +121,8 @@ func BenchmarkFederationFoldBulkMoves(b *testing.B) {
 						p, err := d.CreateProject(b.Context(), fmt.Sprintf("group-project-%d", i))
 						require.NoError(b, err)
 						projectIDs = append(projectIDs, p.ID)
+						_, err = d.ExecContext(b.Context(), `UPDATE events SET project_id=$1, project_name=$2 WHERE project_id=$3 AND id % 25=$4`, p.ID, p.Name, sourceID, i)
+						require.NoError(b, err)
 					}
 				}
 				tx, err := d.BeginTx(b.Context(), nil)
@@ -166,4 +168,36 @@ func seedFederationFoldMoves(t testing.TB, history, moves int) (*Store, db.Proje
  json_object('issue_uid',printf('%026d',x),'from_project_uid',$5,'from_short_id',printf('%08d',x),'to_project_uid',$6,'to_short_id',printf('%08d',x),'updated_at','2026-05-23T12:00:00.000Z'),x+$2,0,$7 FROM n`, moves, history, d.InstanceUID(), destination.ID, source.UID, destination.UID, strings.Repeat("b", 64))
 	require.NoError(t, err)
 	return d, destination
+}
+
+func TestFederationFoldSelection(t *testing.T) {
+	d, project := seedFederationFoldMoves(t, 4, 2)
+	tx, err := d.BeginTx(t.Context(), nil)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, tx.Rollback()) }()
+	for _, tc := range []struct {
+		name         string
+		types, scope []string
+		want         []string
+	}{
+		{"all", nil, nil, []string{"1", "2", "3", "4", "5", "6"}},
+		{"typed", []string{"issue.updated"}, nil, []string{"1", "2", "3", "4"}},
+		{"scoped", nil, []string{"00000000000000000000000001"}, []string{"1", "3", "5"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			events, err := federationFoldEventsScoped(t.Context(), tx, project.ID, tc.types, tc.scope)
+			require.NoError(t, err)
+			var got []string
+			for _, e := range events {
+				if strings.HasPrefix(e.UID, "0000000000000000000000000") {
+					got = append(got, strings.TrimLeft(e.UID, "0"))
+				}
+			}
+			require.Equal(t, tc.want, got)
+			if tc.name == "scoped" {
+				require.NotEmpty(t, events)
+				require.True(t, strings.HasPrefix(events[0].Type, "project."))
+			}
+		})
+	}
 }
