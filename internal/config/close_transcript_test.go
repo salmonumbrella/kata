@@ -9,6 +9,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"pgregory.net/rapid"
 )
 
 func TestReadCloseTranscriptConfig_InvalidAgentNamesKey(t *testing.T) {
@@ -106,4 +107,72 @@ pi = "PI_SESSION_ID"
 `), 0600))
 	_, err := ReadDaemonConfig()
 	require.NoError(t, err)
+}
+
+func TestReadCloseTranscriptProjectTargets(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("KATA_HOME", home)
+	require.NoError(t, os.WriteFile(filepath.Join(home, "config.toml"), []byte(`[close.transcript]
+enabled = true
+agentsview_url = "https://default.example"
+[close.transcript.project."team-project"]
+agentsview_url = "https://team.example/archive"
+push = true
+token_env = "MISSING_TRANSCRIPT_TOKEN"
+[close.transcript.project."disabled-project"]
+enabled = false
+`), 0600))
+	cfg, err := ReadCloseTranscriptConfig()
+	require.NoError(t, err)
+	target := cfg.Target("team-project")
+	require.NotNil(t, target.Enabled)
+	assert.True(t, *target.Enabled)
+	assert.Equal(t, "https://team.example/archive", target.AgentsViewURL)
+	assert.True(t, target.Push)
+	assert.Equal(t, "MISSING_TRANSCRIPT_TOKEN", target.TokenEnv)
+	assert.False(t, *cfg.Target("disabled-project").Enabled)
+	assert.Empty(t, cfg.Target("disabled-project").AgentsViewURL)
+	assert.Equal(t, "https://default.example", cfg.Target("other-project").AgentsViewURL)
+	_, err = ReadDaemonConfig()
+	require.NoError(t, err, "client preferences must not resolve AgentsView secrets at daemon startup")
+}
+
+func TestCloseTranscriptTargetURLIsolation(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		name := rapid.String().Draw(rt, "project name")
+		globalURL := rapid.String().Draw(rt, "global URL")
+		targetURL := rapid.String().Draw(rt, "project URL")
+		push := rapid.Bool().Draw(rt, "push enabled")
+		cfg := CloseTranscriptConfig{AgentsViewURL: globalURL, Project: map[string]CloseTranscriptTarget{
+			name: {AgentsViewURL: targetURL, Push: push, TokenEnv: "SELECTED_TOKEN"},
+		}}
+		got := cfg.Target(name)
+		if got.AgentsViewURL != targetURL || got.Push != push || got.TokenEnv != "SELECTED_TOKEN" {
+			rt.Fatalf("selected target changed: %#v", got)
+		}
+		other := cfg.Target(name + "\x00")
+		if other.AgentsViewURL != globalURL || other.Push || other.TokenEnv != "" {
+			rt.Fatalf("unmatched project inherited another project's upload authority: %#v", other)
+		}
+	})
+}
+
+func TestCloseTranscriptTargetEnabledInheritance(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		global := rapid.Bool().Draw(rt, "global enabled")
+		override := rapid.Bool().Draw(rt, "project override")
+		present := rapid.Bool().Draw(rt, "override present")
+		name := rapid.String().Draw(rt, "project name")
+		target := CloseTranscriptTarget{}
+		want := global
+		if present {
+			target.Enabled = &override
+			want = override
+		}
+		cfg := CloseTranscriptConfig{Enabled: global, Project: map[string]CloseTranscriptTarget{name: target}}
+		got := cfg.Target(name)
+		if got.Enabled == nil || *got.Enabled != want || cfg.Project[name].Enabled != target.Enabled {
+			rt.Fatalf("enabled inheritance mutated configuration or changed the selected value")
+		}
+	})
 }

@@ -100,6 +100,20 @@ func registerActionsHandlers(humaAPI huma.API, cfg ServerConfig) {
 		if err != nil {
 			return nil, err
 		}
+		fingerprintForEvent := func(event db.Event) string {
+			requestTranscript := in.Body.Transcript
+			if originalTranscript, ok := closeEventTranscript(event); ok &&
+				((originalTranscript == nil) != (requestTranscript == nil)) {
+				// Transcript presence can change with the current project target or
+				// an optional lookup failure. Preserve the original receipt's
+				// presence; if both requests carry a transcript, the session still
+				// participates in the fingerprint below.
+				requestTranscript = originalTranscript
+			}
+			return closeIdempotencyFingerprint(
+				issue.UID, in.Ref, actor, in.Body.Reason, in.Body.Message, in.Body.Source,
+				in.Body.Evidence, in.Body.DryRun, ifMatchRev, requestTranscript, association)
+		}
 		if in.IdempotencyKey != "" {
 			// A close key keeps one lock across project moves and still
 			// serializes project-key collisions with another issue. Receipt
@@ -114,9 +128,7 @@ func registerActionsHandlers(humaAPI huma.API, cfg ServerConfig) {
 				return nil, err
 			}
 			if match != nil {
-				idempotencyFingerprint = closeIdempotencyFingerprint(
-					issue.UID, in.Ref, actor, in.Body.Reason, in.Body.Message, in.Body.Source,
-					in.Body.Evidence, in.Body.DryRun, ifMatchRev, in.Body.Transcript, association)
+				idempotencyFingerprint = fingerprintForEvent(match.Event)
 				return closeIdempotencyResponse(ctx, cfg, match, idempotencyFingerprint)
 			}
 		}
@@ -282,7 +294,7 @@ func registerActionsHandlers(humaAPI huma.API, cfg ServerConfig) {
 						cfg.Publish().EventsByProject(events)
 						captureCoreAction(ctx, cfg, "issue_closed", in.Surface)
 					}
-					return closeIdempotencyResponse(ctx, cfg, match, idempotencyFingerprint)
+					return closeIdempotencyResponse(ctx, cfg, match, fingerprintForEvent(match.Event))
 				}
 			}
 			if errors.Is(err, db.ErrAgentsViewRouteChanged) {
@@ -331,7 +343,7 @@ func registerActionsHandlers(humaAPI huma.API, cfg ServerConfig) {
 		// before returning a plain no-op response.
 		if !changed && in.IdempotencyKey != "" {
 			reuse, err := tryCloseIdempotencyMatch(
-				ctx, cfg, issue, in.IdempotencyKey, idempotencyFingerprint)
+				ctx, cfg, issue, in.IdempotencyKey, fingerprintForEvent)
 			if err != nil {
 				return nil, err
 			}
@@ -407,7 +419,8 @@ func tryCloseIdempotencyMatch(
 	ctx context.Context,
 	cfg ServerConfig,
 	issue db.Issue,
-	key, fingerprint string,
+	key string,
+	fingerprintForEvent func(db.Event) string,
 ) (*api.MutationResponse, error) {
 	match, err := lookupCloseIdempotencyMatchForIssue(ctx, cfg, issue, key)
 	if err != nil {
@@ -416,7 +429,7 @@ func tryCloseIdempotencyMatch(
 	if match == nil {
 		return nil, nil
 	}
-	return closeIdempotencyResponse(ctx, cfg, match, fingerprint)
+	return closeIdempotencyResponse(ctx, cfg, match, fingerprintForEvent(match.Event))
 }
 
 // lookupCloseIdempotencyMatchForIssue prioritizes this issue's stable receipt,
@@ -660,6 +673,16 @@ func closeIdempotencyFingerprint(
 	})
 	sum := sha256.Sum256(encoded)
 	return hex.EncodeToString(sum[:])
+}
+
+func closeEventTranscript(event db.Event) (*transcript.Transcript, bool) {
+	var payload struct {
+		Transcript *transcript.Transcript `json:"transcript"`
+	}
+	if err := json.Unmarshal([]byte(event.Payload), &payload); err != nil {
+		return nil, false
+	}
+	return payload.Transcript, true
 }
 
 // resolveEvidenceTargets resolves duplicate-of and superseded-by issue
