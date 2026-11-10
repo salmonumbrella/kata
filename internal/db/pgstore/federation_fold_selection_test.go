@@ -50,7 +50,7 @@ func TestFederationFoldSelection(t *testing.T) {
 			query, args := pgstore.FederationFoldEventsQueryForTest(dst.ID, tc.types)
 			rows, err := store.QueryContext(t.Context(), query, args...)
 			require.NoError(t, err)
-			defer rows.Close()
+			defer func() { require.NoError(t, rows.Close()) }()
 			var got []string
 			for rows.Next() {
 				var uid string
