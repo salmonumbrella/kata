@@ -1690,6 +1690,7 @@ func runDaemonProcess(
 		Embedder:               embedder,
 		Docbank:                docbankClient,
 		DocbankFolder:          dcfg.Docbank.Folder,
+		AgentsView:             dcfg.AgentsView,
 		VectorIndex:            vectorIndex,
 		ReconcilerHealth:       reconcilerHealth,
 		FederationConfigHealth: federationConfigHealth,

@@ -163,6 +163,10 @@ type ServerConfig struct {
 	Embedder      *embedding.Client
 	Docbank       *docbank.Client
 	DocbankFolder string
+	AgentsView    config.AgentsViewConfig
+	// AgentsViewHubClient supplies an uncredentialed base transport for tests;
+	// Kata applies the selected enrollment, signature policy and response bounds.
+	AgentsViewHubClient func(context.Context, config.FederationCredential) (*http.Client, error)
 
 	// VectorIndex is the semantic-search sidecar index. Nil means semantic and
 	// hybrid search are unavailable, exactly like a nil Embedder.
@@ -442,7 +446,7 @@ func (s *Server) HandlerFor(policy ListenerPolicy) (http.Handler, error) {
 		base := s.withFederationSigning(s.baseHandler, true)
 		base = withProjectAuthorization(s.cfg.DB, s.cfg.HostAccess != nil, s.cfg.TrustCallerAuthentication,
 			s.authPolicy.SelfAuthenticatedRoutes, s.noProjectDataRoutes, base)
-		return withAgentsViewRelayBudget(base), nil
+		return withAgentsViewRelayBudget(withAgentsViewDiscoveryBudget(base)), nil
 	}
 	base := s.baseHandler
 	if base == nil {
@@ -471,7 +475,7 @@ func (s *Server) HandlerFor(policy ListenerPolicy) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return withAgentsViewRelayBudget(handler), nil
+	return withAgentsViewRelayBudget(withAgentsViewDiscoveryBudget(handler)), nil
 }
 
 // API returns the underlying huma.API for handler registration in tests.
@@ -747,6 +751,7 @@ func registerRoutes(humaAPI huma.API, mux *http.ServeMux, cfg ServerConfig) {
 	registerDestructive(humaAPI, cfg)
 	registerRecurrences(humaAPI, cfg)
 	registerMetadata(humaAPI, cfg)
+	registerAgentsViewServiceHandlers(humaAPI, cfg)
 	registerAttachmentHandlers(humaAPI, cfg)
 	registerMove(humaAPI, cfg)
 	registerEventsHandlers(humaAPI, mux, cfg)

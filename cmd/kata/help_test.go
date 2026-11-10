@@ -77,6 +77,23 @@ func TestHelpTopLevelCommandsHaveGroups(t *testing.T) {
 	}
 }
 
+func TestAgentsViewCommandHasNoTranscriptAlias(t *testing.T) {
+	root := newRootCmd()
+	cmd, _, err := root.Find([]string{"agentsview", "target"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cmd.Name() != "target" || cmd.Parent().Name() != "agentsview" {
+		t.Fatalf("agentsview target resolved to %s", cmd.CommandPath())
+	}
+	for _, args := range [][]string{{"transcript"}, {"transcript", "target", "abc4"}} {
+		_, _, err := executeRootCapture(t, t.Context(), args...)
+		if err == nil || !strings.Contains(err.Error(), `unknown command "transcript"`) {
+			t.Errorf("kata %s: got error %v, want unknown transcript command", strings.Join(args, " "), err)
+		}
+	}
+}
+
 func TestKataGlobalFlags(t *testing.T) {
 	root := &cobra.Command{Use: "kata"}
 	root.PersistentFlags().Bool("agent", false, "")
