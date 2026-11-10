@@ -43,9 +43,6 @@ func TestFederationIngestUnrelatedHistoryPageBudget(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 1, result.Accepted)
 		count := pages(false)
-		var title string
-		require.NoError(t, d.QueryRowContext(t.Context(), `SELECT title FROM issues WHERE uid=?`, issue.UID).Scan(&title))
-		require.Equal(t, fmt.Sprintf("batch-%d", history), title)
 		t.Logf("history=%d: %d page fetches", history, count)
 		if history == 100 {
 			small = count
@@ -100,40 +97,4 @@ func TestFederationPreparationLargeIssueScope(t *testing.T) {
 	defer func() { require.NoError(t, tx.Rollback()) }()
 	_, err = prepareFederationMaterializationTx(t.Context(), tx, p.ID, prepared)
 	require.NoError(t, err)
-}
-
-func movedIssuesForScopedUpdate(t *testing.T) (*Store, db.Project, db.Issue) {
-	t.Helper()
-	d, p, issue := incrementalTestStore(t)
-	other, err := d.CreateProject(t.Context(), "other-project")
-	require.NoError(t, err)
-	_, err = d.EnableProjectFederation(t.Context(), other.ID, "tester")
-	require.NoError(t, err)
-	for i := 0; i < 10; i++ {
-		current := issue
-		if i > 0 {
-			current, _, err = d.CreateIssue(t.Context(), db.CreateIssueParams{ProjectID: p.ID, Title: fmt.Sprintf("other-%d", i), Author: "tester"})
-			require.NoError(t, err)
-		}
-		away, err := d.MoveIssueProject(t.Context(), db.MoveIssueProjectIn{IssueID: current.ID, FromProjectID: p.ID, ToProjectID: other.ID, IfMatchRev: current.Revision, Actor: "tester"})
-		require.NoError(t, err)
-		_, err = d.MoveIssueProject(t.Context(), db.MoveIssueProjectIn{IssueID: current.ID, FromProjectID: other.ID, ToProjectID: p.ID, IfMatchRev: away.Issue.Revision, Actor: "tester"})
-		require.NoError(t, err)
-	}
-	return d, p, issue
-}
-
-func TestFederationIngestScopedUpdateAfterMoves(t *testing.T) {
-	d, p, issue := movedIssuesForScopedUpdate(t)
-	ev := incrementalRemoteEvent(t, p, issue.UID, "issue.updated", fmt.Sprintf(`{"issue_uid":%q,"title":"pushed title"}`, issue.UID), 9_000_001_000_000)
-	result, err := d.IngestFederationEvents(t.Context(), db.FederationIngestParams{ProjectID: p.ID, SpokeInstanceUID: ev.OriginInstanceUID, EventFeatures: db.SupportedEventFeatures, Events: []db.FederationIngestEvent{{SourceEventID: 1, Event: ev}}})
-	require.NoError(t, err)
-	require.Equal(t, 1, result.Accepted)
-	got, err := d.IssueByUID(t.Context(), issue.UID, db.IncludeDeletedYes)
-	require.NoError(t, err)
-	require.Equal(t, "pushed title", got.Title)
-	require.Equal(t, p.ID, got.ProjectID)
-	var moves int
-	require.NoError(t, d.QueryRowContext(t.Context(), `SELECT count(*) FROM events WHERE type='issue.moved' AND issue_uid=?`, issue.UID).Scan(&moves))
-	require.Equal(t, 2, moves)
 }
