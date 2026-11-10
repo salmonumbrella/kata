@@ -58,8 +58,9 @@ func TestFederationFoldQueryUsesHistoryIndexes(t *testing.T) {
 			require.NoError(t, rows.Err())
 			require.NoError(t, rows.Close())
 			joined := strings.Join(plan, "\n")
-			require.NotRegexp(t, `SCAN (e|x|m)(\s|$)`, joined, "analyzed=%t: %s", analyzed, joined)
-			require.Contains(t, joined, "idx_events_resolved_issue_uid", "analyzed=%t", analyzed)
+			require.NotRegexp(t, `SCAN (e|x)(\s|$)`, joined, "analyzed=%t: %s", analyzed, joined)
+			require.Regexp(t, `SCAN m USING (COVERING )?INDEX idx_events_moved_`, joined, "move subjects must read only the move index: %s", joined)
+			require.Regexp(t, `SEARCH x USING (COVERING )?INDEX idx_events_resolved_issue_uid`, joined, "analyzed=%t: %s", analyzed, joined)
 		}
 	}
 }

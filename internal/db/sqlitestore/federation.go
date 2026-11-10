@@ -1841,8 +1841,9 @@ func federationFoldEventsScoped(ctx context.Context, tx *sql.Tx, projectID int64
 }
 
 func federationFoldEventsQuery(projectID int64, eventTypes, issueScope []string) (string, []any) {
-	// Keep the complete expression so both move and history lookups can use
-	// idx_events_resolved_issue_uid without scanning all moves per event.
+	// Keep the complete expression so history lookups use the resolved UID
+	// index. Read move subjects once instead of probing every issue's history
+	// to establish that it has no move events.
 	issueUID := func(alias string) string {
 		// Replace column references without changing the 'issue.%' pattern.
 		return strings.NewReplacer(
@@ -1863,8 +1864,7 @@ func federationFoldEventsQuery(projectID int64, eventTypes, issueScope []string)
      SELECT s.uid FROM (
        SELECT ` + historyIssueUID + ` AS uid FROM events h WHERE h.project_id=$1
        UNION SELECT uid FROM issues WHERE project_id=$1) s
-     WHERE EXISTS(SELECT 1 FROM events m WHERE m.type='issue.moved' AND
-       ` + moveIssueUID + ` = s.uid)))`
+     WHERE s.uid IN (SELECT ` + moveIssueUID + ` FROM events m WHERE m.type='issue.moved')))`
 	args := []any{projectID}
 	if len(eventTypes) > 0 {
 		placeholders := make([]string, 0, len(eventTypes))
