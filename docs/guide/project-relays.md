@@ -261,3 +261,6 @@ as a routine sync repair.
 The [operator reference](../operations/federation.md) owns the full credential,
 retention, reset and signing rules. The [technical notes](../design/federation.md)
 explain the protocol and its trust boundaries.
+
+For the draft explicit snapshot workflow and its integration limits, see
+[Share a frozen AgentsView snapshot](agentsview-sharing.md).
