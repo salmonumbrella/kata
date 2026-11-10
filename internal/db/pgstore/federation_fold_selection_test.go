@@ -32,7 +32,7 @@ func TestFederationFoldSelection(t *testing.T) {
 		{1, src.ID, nil, "issue.updated", `{"issue_uid":"` + subject + `"}`},
 		{2, src.ID, "", "issue.updated", `{"uid":"` + subject + `"}`},
 		{3, src.ID, nil, "project.updated", `{"issue_uid":"` + subject + `"}`},
-		{4, dst.ID, subject, "issue.moved", `{}`},
+		{4, dst.ID, subject, "issue.moved", fmt.Sprintf(`{"issue_uid":%q,"from_project_uid":%q,"from_short_id":"00000100","to_project_uid":%q,"to_short_id":"00000100","updated_at":"2026-05-23T12:00:00.000Z"}`, subject, src.UID, dst.UID)},
 		{5, dst.ID, nil, "project.updated", `{}`},
 	} {
 		_, err = store.ExecContext(t.Context(), `INSERT INTO events(uid,origin_instance_uid,project_id,project_name,issue_uid,type,actor,payload,hlc_physical_ms,hlc_counter,content_hash) VALUES($1,$2,$3,'test-project',$4,$5,'tester',$6,$7,0,repeat('a',64))`, fmt.Sprintf("%026d", e.n), store.InstanceUID(), e.project, e.envelope, e.typ, e.payload, e.n)

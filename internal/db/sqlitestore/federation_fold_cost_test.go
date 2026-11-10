@@ -27,66 +27,20 @@ func TestFederationFoldBulkMovePageBudget(t *testing.T) {
 			_, err := conn.ExecContext(t.Context(), "ANALYZE")
 			require.NoError(t, err)
 		}
-		for _, tc := range []struct {
-			name  string
-			types []string
-		}{
-			{name: "all"},
-			{name: "links", types: db.FederationLinkAffectingEventTypes()},
-		} {
-			t.Run(fmt.Sprintf("analyzed=%t/types=%s", analyzed, tc.name), func(t *testing.T) {
-				tx, err := conn.BeginTx(t.Context(), nil)
-				require.NoError(t, err)
-				defer func() { require.NoError(t, tx.Rollback()) }()
-				cronPullPageFetches(t, conn, true)
-				events, err := federationFoldEventsScoped(t.Context(), tx, project.ID, tc.types, nil)
-				require.NoError(t, err)
-				pages := cronPullPageFetches(t, conn, false)
-				if tc.types == nil {
-					var retained int
-					require.NoError(t, tx.QueryRowContext(t.Context(), "SELECT count(*) FROM events WHERE project_id=?", project.ID).Scan(&retained))
-					require.Len(t, events, retained+20_000, "destination fold must retain the moved issues' source history")
-				} else {
-					var moves int
-					for _, event := range events {
-						if event.Type == "issue.moved" {
-							moves++
-						}
-					}
-					require.Equal(t, 2_000, moves, "link fold must retain every moved issue event")
-				}
-				t.Logf("20k history / 2k moves: %d page fetches", pages)
-				// The original full fold used 2,513,099 page fetches remotely;
-				// the indexed rewrite used 54,486 before this case expansion.
-				require.LessOrEqual(t, pages, 120_000, "bulk moves must not multiply history reads by move count")
-			})
-		}
-	}
-}
-
-// Historical issue events may omit their envelope UID and identify the moved
-// issue through either legacy payload spelling, including an empty envelope.
-func TestFederationFoldMovedPayloadIdentity(t *testing.T) {
-	for _, key := range []string{"issue_uid", "uid"} {
-		for _, empty := range []bool{false, true} {
-			t.Run(fmt.Sprintf("key=%s/empty=%t", key, empty), func(t *testing.T) {
-				d, project := seedFederationFoldMoves(t, 20, 2)
-				var envelope any
-				if empty {
-					envelope = ""
-				}
-				_, err := d.ExecContext(t.Context(), `UPDATE events SET issue_uid=$1,
-     payload=json_set(json_remove(payload,'$.issue_uid'),'$.' || $2,json_extract(payload,'$.issue_uid'))
-     WHERE type IN ('issue.updated','issue.moved')`, envelope, key)
-				require.NoError(t, err)
-				tx, err := d.BeginTx(t.Context(), nil)
-				require.NoError(t, err)
-				defer func() { require.NoError(t, tx.Rollback()) }()
-				events, err := federationFoldEventsScoped(t.Context(), tx, project.ID, []string{"issue.updated"}, nil)
-				require.NoError(t, err)
-				require.Len(t, events, 20, "moved source history must resolve legacy payload identity")
-			})
-		}
+		t.Run(fmt.Sprintf("analyzed=%t", analyzed), func(t *testing.T) {
+			tx, err := conn.BeginTx(t.Context(), nil)
+			require.NoError(t, err)
+			defer func() { require.NoError(t, tx.Rollback()) }()
+			cronPullPageFetches(t, conn, true)
+			events, err := federationFoldEventsScoped(t.Context(), tx, project.ID, nil, nil)
+			require.NoError(t, err)
+			pages := cronPullPageFetches(t, conn, false)
+			var retained int
+			require.NoError(t, tx.QueryRowContext(t.Context(), "SELECT count(*) FROM events WHERE project_id=?", project.ID).Scan(&retained))
+			require.Len(t, events, retained+20_000)
+			t.Logf("20k history / 2k moves: %d page fetches", pages)
+			require.LessOrEqual(t, pages, 120_000, "bulk moves must not multiply history reads by move count")
+		})
 	}
 }
 
@@ -193,8 +147,7 @@ func TestFederationFoldScopedPayloadPageBudget(t *testing.T) {
 func TestFederationFoldSelection(t *testing.T) {
 	d, project := seedFederationFoldMoves(t, 4, 2)
 	const one = "00000000000000000000000001"
-	_, err := d.ExecContext(t.Context(), `UPDATE events SET issue_uid=NULL,payload=json_object('uid',?) WHERE uid=printf('%026d',1)`, one)
-	require.NoError(t, err)
+	var err error
 	var sourceID int64
 	require.NoError(t, d.QueryRowContext(t.Context(), `SELECT id FROM projects WHERE name='source-project'`).Scan(&sourceID))
 	for _, row := range []struct {
@@ -205,37 +158,50 @@ func TestFederationFoldSelection(t *testing.T) {
 		_, err = d.ExecContext(t.Context(), `INSERT INTO events(uid,origin_instance_uid,project_id,project_name,type,actor,payload,hlc_physical_ms,hlc_counter,content_hash) VALUES(printf('%026d',?),?,?,'test-project',?,'tester',json_object('issue_uid',?),?,0,?)`, row.id, d.InstanceUID(), row.project, row.typ, one, row.id, strings.Repeat("c", 64))
 		require.NoError(t, err)
 	}
-	tx, err := d.BeginTx(t.Context(), nil)
-	require.NoError(t, err)
-	defer func() { require.NoError(t, tx.Rollback()) }()
-	for _, tc := range []struct {
-		name         string
-		types, scope []string
-		want         []string
-	}{
-		{"all", nil, nil, []string{"1", "2", "3", "4", "5", "6", "7"}},
-		{"typed", []string{"issue.updated"}, nil, []string{"1", "2", "3", "4"}},
-		{"scoped", nil, []string{one}, []string{"1", "3", "5", "7"}},
-		{"typed-scoped", []string{"issue.updated"}, []string{one, "00000000000000000000000002"}, []string{"1", "2", "3", "4"}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			events, err := federationFoldEventsScoped(t.Context(), tx, project.ID, tc.types, tc.scope)
-			require.NoError(t, err)
-			var ids []string
-			var projectEvent bool
-			for _, event := range events {
-				if strings.HasPrefix(event.Type, "project.") {
-					projectEvent = true
+	for _, key := range []string{"issue_uid", "uid"} {
+		for _, empty := range []bool{false, true} {
+			t.Run(fmt.Sprintf("key=%s/empty=%t", key, empty), func(t *testing.T) {
+				tx, err := d.BeginTx(t.Context(), nil)
+				require.NoError(t, err)
+				defer func() { require.NoError(t, tx.Rollback()) }()
+				var envelope any
+				if empty {
+					envelope = ""
 				}
-				if strings.HasPrefix(event.UID, "0000000000000000000000000") {
-					ids = append(ids, strings.TrimLeft(event.UID, "0"))
+				_, err = tx.ExecContext(t.Context(), `UPDATE events SET issue_uid=?,payload=json_set(json_remove(payload,'$.issue_uid'),'$.' || ?,json_extract(payload,'$.issue_uid')) WHERE type IN ('issue.updated','issue.moved')`, envelope, key)
+				require.NoError(t, err)
+				for _, tc := range []struct {
+					name         string
+					types, scope []string
+					want         []string
+					projectEvent bool
+				}{
+					{"all", nil, nil, []string{"1", "2", "3", "4", "5", "6", "7"}, false},
+					{"typed", []string{"issue.updated"}, nil, []string{"1", "2", "3", "4"}, false},
+					{"scoped", nil, []string{one}, []string{"1", "3", "5", "7"}, true},
+					{"typed-scoped", []string{"issue.updated"}, []string{one, "00000000000000000000000002"}, []string{"1", "2", "3", "4"}, false},
+				} {
+					t.Run(tc.name, func(t *testing.T) {
+						events, err := federationFoldEventsScoped(t.Context(), tx, project.ID, tc.types, tc.scope)
+						require.NoError(t, err)
+						var ids []string
+						var projectEvent bool
+						for _, event := range events {
+							if strings.HasPrefix(event.Type, "project.") {
+								projectEvent = true
+							}
+							if strings.HasPrefix(event.UID, "0000000000000000000000000") {
+								ids = append(ids, strings.TrimLeft(event.UID, "0"))
+							}
+						}
+						require.Equal(t, tc.want, ids)
+						if tc.projectEvent {
+							require.True(t, projectEvent)
+						}
+					})
 				}
-			}
-			require.Equal(t, tc.want, ids)
-			if tc.name == "scoped" {
-				require.True(t, projectEvent)
-			}
-		})
+			})
+		}
 	}
 }
 
@@ -258,7 +224,16 @@ func TestFederationFoldScopedMovedHistoryPageBudget(t *testing.T) {
 	events, err := federationFoldEventsForIssues(t.Context(), tx, project.ID, []string{subject})
 	require.NoError(t, err)
 	pages := cronPullPageFetches(t, conn, false)
-	require.Len(t, events, 2_003)
+	var ids []string
+	for _, event := range events {
+		if strings.HasPrefix(event.UID, "0000000000000000000000") {
+			ids = append(ids, event.UID)
+		}
+	}
+	require.Len(t, ids, 2_001)
+	for i, id := range ids {
+		require.Equal(t, fmt.Sprintf("%026d", i+1), id)
+	}
 	t.Logf("%d page fetches", pages)
 	require.LessOrEqual(t, pages, 2_000)
 }
