@@ -63,6 +63,14 @@ func TestFederationFoldBulkMovePageBudget(t *testing.T) {
 					var retained int
 					require.NoError(t, tx.QueryRowContext(t.Context(), "SELECT count(*) FROM events WHERE project_id=?", project.ID).Scan(&retained))
 					require.Len(t, events, retained+20_000, "destination fold must retain the moved issues' source history")
+				} else {
+					var moves int
+					for _, event := range events {
+						if event.Type == "issue.moved" {
+							moves++
+						}
+					}
+					require.Equal(t, 2_000, moves, "link fold must retain every moved issue event")
 				}
 				t.Logf("20k history / 2k moves: %d page fetches", pages)
 				// The original full fold used 2,513,099 page fetches remotely;
