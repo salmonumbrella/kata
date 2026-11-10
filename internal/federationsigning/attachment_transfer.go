@@ -22,7 +22,21 @@ const (
 	AttachmentMaxBodyBytes = 256 << 20
 	// AttachmentTransferTimeout is independent of the short signature admission.
 	AttachmentTransferTimeout = 75 * time.Minute
+	agentsViewMaxBodyBytes    = 64 << 20
 )
+
+// isAgentsViewTransfer identifies the federation snapshot upload profile.
+func isAgentsViewTransfer(method, path string) bool {
+	if method != http.MethodPost || !signingpolicy.Unambiguous(&url.URL{Path: path}) || strings.ContainsAny(path, "?#") {
+		return false
+	}
+	p := strings.Split(path, "/")
+	if len(p) != 9 || p[0] != "" || p[1] != "api" || p[2] != "v1" || p[3] != "projects" || p[5] != "federation" || p[6] != "transcript-service" || p[7] != "issues" || p[8] == "" {
+		return false
+	}
+	id, err := strconv.ParseInt(p[4], 10, 64)
+	return err == nil && id > 0 && strconv.FormatInt(id, 10) == p[4]
+}
 
 // IsAttachmentTransfer selects only the two binary federation service routes.
 // Callers pass the unescaped native API path, without any external mount prefix.

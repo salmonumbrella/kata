@@ -45,9 +45,17 @@ var (
 	// ErrHubRejected is a hub's answer to this daemon's own request signature.
 	// It is a signing configuration problem on one of the two daemons, never a
 	// revoked grant, so callers keep the binding and report it as such.
-	ErrHubRejected = errors.New("hub rejected the request signature; configure request signing for this enrollment")
-	components     = []string{"@method", "@target-uri", "content-digest", "content-type", "authorization"}
+	ErrHubRejected       = errors.New("hub rejected the request signature; configure request signing for this enrollment")
+	components           = []string{"@method", "@target-uri", "content-digest", "content-type", "authorization"}
+	agentsViewComponents = []string{"@method", "@target-uri", "content-digest", "content-type", "authorization", "x-kata-transcript-control"}
 )
+
+func signingComponents(method, path string) []string {
+	if isAgentsViewTransfer(method, path) {
+		return agentsViewComponents
+	}
+	return components
+}
 
 // Verifier owns one bounded admission cache and its durable restart barrier.
 type Verifier struct {
@@ -143,10 +151,14 @@ func singleHeaders(r *http.Request) bool {
 			return false
 		}
 	}
+	if isAgentsViewTransfer(r.Method, r.URL.Path) && (len(r.Header.Values("X-Kata-Transcript-Control")) != 1 || r.Header.Get("X-Kata-Transcript-Control") == "") {
+		return false
+	}
 	return true
 }
 
 func profile(r *http.Request) bool {
+	components := signingComponents(r.Method, r.URL.Path)
 	input, err := httpsfv.UnmarshalDictionary(r.Header.Values("Signature-Input"))
 	if err != nil || len(input.Names()) != 1 {
 		return false
@@ -224,11 +236,11 @@ func (v *Verifier) Verify(r *http.Request, enrollmentID int64) error {
 	u.Scheme, u.Host, u.Path = v.base.Scheme, v.base.Host, v.base.Path+r.URL.Path
 	cloned.URL, cloned.Host = &u, v.base.Host
 	vc := httpsign.NewVerifyConfig().SetVerifyCreated(false).SetRejectExpired(false).SetKeyID(k.KeyID)
-	verifier, err := httpsign.NewHMACSHA256Verifier(secret, vc, httpsign.Headers(components...))
+	verifier, err := httpsign.NewHMACSHA256Verifier(secret, vc, httpsign.Headers(signingComponents(r.Method, r.URL.Path)...))
 	if err != nil || httpsign.VerifyRequest("sig1", *verifier, cloned) != nil {
 		return signingpolicy.ErrInvalid
 	}
-	if IsAttachmentTransfer(r.Method, r.URL.Path) {
+	if IsAttachmentTransfer(r.Method, r.URL.Path) || isAgentsViewTransfer(r.Method, r.URL.Path) {
 		digestHeader := r.Header.Get("Content-Digest")
 		encoded := strings.TrimSuffix(strings.TrimPrefix(digestHeader, "sha-256=:"), ":")
 		digestBytes, err := base64.StdEncoding.DecodeString(encoded)
@@ -241,6 +253,9 @@ func (v *Verifier) Verify(r *http.Request, enrollmentID int64) error {
 		bodyLimit := int64(MaxBodyBytes)
 		if r.Method == http.MethodPost {
 			bodyLimit = AttachmentMaxBodyBytes
+		}
+		if isAgentsViewTransfer(r.Method, r.URL.Path) {
+			bodyLimit = agentsViewMaxBodyBytes
 		}
 		body, digest, err := spoolBody(r.Context(), r.Body, r.ContentLength, bodyLimit)
 		if err != nil {
@@ -390,7 +405,11 @@ func Sign(r *http.Request, source signingpolicy.Source) error {
 		}
 		path = strings.TrimPrefix(path, base.Path)
 	}
-	transfer := IsAttachmentTransfer(r.Method, path)
+	agentsView := isAgentsViewTransfer(r.Method, path)
+	transfer := IsAttachmentTransfer(r.Method, path) || agentsView
+	if agentsView && (len(r.Header.Values("X-Kata-Transcript-Control")) != 1 || r.Header.Get("X-Kata-Transcript-Control") == "") {
+		return signingpolicy.ErrInvalid
+	}
 	if !transfer || r.Method != http.MethodPost {
 		r.Header.Set("Content-Type", "application/json")
 	}
@@ -406,7 +425,7 @@ func Sign(r *http.Request, source signingpolicy.Source) error {
 		return signingpolicy.ErrKey
 	}
 	sc := httpsign.NewSignConfig().SetKeyID(source.KeyID).SetExpiresAfter(int64(Lifetime / time.Second)).SetNonce(base64.RawURLEncoding.EncodeToString(nonce[:]))
-	signer, err := httpsign.NewHMACSHA256Signer(key, sc, httpsign.Headers(components...))
+	signer, err := httpsign.NewHMACSHA256Signer(key, sc, httpsign.Headers(signingComponents(r.Method, path)...))
 	if err != nil {
 		return signingpolicy.ErrKey
 	}
@@ -419,7 +438,11 @@ func Sign(r *http.Request, source signingpolicy.Source) error {
 		if length == 0 && r.Body != nil && r.Body != http.NoBody {
 			length = -1
 		}
-		spool, digest, err = spoolBody(r.Context(), r.Body, length, AttachmentMaxBodyBytes)
+		bodyLimit := int64(AttachmentMaxBodyBytes)
+		if agentsView {
+			bodyLimit = agentsViewMaxBodyBytes
+		}
+		spool, digest, err = spoolBody(r.Context(), r.Body, length, bodyLimit)
 		if err == nil {
 			r.Body = spool
 			var info os.FileInfo
@@ -485,7 +508,8 @@ func (t transport) RoundTrip(r *http.Request) (*http.Response, error) {
 	if err := Sign(cloned, source); err != nil {
 		return nil, err
 	}
-	if IsAttachmentTransfer(cloned.Method, strings.TrimPrefix(cloned.URL.Path, t.base.Path)) && cloned.Method == http.MethodPost {
+	path := strings.TrimPrefix(cloned.URL.Path, t.base.Path)
+	if (IsAttachmentTransfer(cloned.Method, path) || isAgentsViewTransfer(cloned.Method, path)) && cloned.Method == http.MethodPost {
 		defer func() { _ = cloned.Body.Close() }()
 	}
 	// The underlying Transport must not transparently resend a nonce after
