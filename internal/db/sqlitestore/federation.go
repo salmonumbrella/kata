@@ -1832,20 +1832,39 @@ func federationFoldEventsForIssues(ctx context.Context, tx *sql.Tx, projectID in
 }
 
 func federationFoldEventsScoped(ctx context.Context, tx *sql.Tx, projectID int64, eventTypes, issueScope []string) ([]db.FoldEvent, error) {
-	// Only issue events use payload fields as issue identity. Other event
-	// payloads can reference an issue without becoming part of its history.
-	eventIssueUID := `CASE WHEN e.type LIKE 'issue.%' THEN COALESCE(NULLIF(e.issue_uid,''),json_extract(e.payload,'$.issue_uid'),json_extract(e.payload,'$.uid')) ELSE NULLIF(e.issue_uid,'') END`
-	historyIssueUID := `CASE WHEN h.type LIKE 'issue.%' THEN COALESCE(NULLIF(h.issue_uid,''),json_extract(h.payload,'$.issue_uid'),json_extract(h.payload,'$.uid')) ELSE NULLIF(h.issue_uid,'') END`
-	moveIssueUID := `COALESCE(NULLIF(m.issue_uid,''),json_extract(m.payload,'$.issue_uid'),json_extract(m.payload,'$.uid'))`
+	query, args := federationFoldEventsQuery(projectID, eventTypes, issueScope)
+	rows, err := tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list federated events: %w", err)
+	}
+	return scanFederationFoldEvents(rows, issueScope)
+}
+
+func federationFoldEventsQuery(projectID int64, eventTypes, issueScope []string) (string, []any) {
+	// Keep the complete expression so both move and history lookups can use
+	// idx_events_resolved_issue_uid without scanning all moves per event.
+	issueUID := func(alias string) string {
+		// Replace column references without changing the 'issue.%' pattern.
+		return strings.NewReplacer(
+			"e.type", alias+".type", "e.issue_uid", alias+".issue_uid", "e.payload", alias+".payload",
+		).Replace(db.FederationReadIssueUIDExpr(false))
+	}
+	historyIssueUID := issueUID("h")
+	moveIssueUID := issueUID("m")
+	candidateIssueUID := issueUID("x")
 	query := `
 		SELECT e.uid, e.origin_instance_uid, p.uid, e.issue_uid, e.related_issue_uid,
 		       e.type, e.actor, e.payload, e.hlc_physical_ms, e.hlc_counter, e.created_at
 		  FROM events e JOIN projects p ON p.id=e.project_id
- WHERE (e.project_id=$1 OR (` + eventIssueUID + ` IN (
-   SELECT ` + historyIssueUID + ` FROM events h WHERE h.project_id=$1
-   UNION SELECT uid FROM issues WHERE project_id=$1)
- AND EXISTS(SELECT 1 FROM events m WHERE m.type='issue.moved' AND
-   ` + moveIssueUID + ` = ` + eventIssueUID + `)))`
+ WHERE e.id IN (
+   SELECT id FROM events WHERE project_id=$1
+   UNION
+   SELECT x.id FROM events x WHERE ` + candidateIssueUID + ` IN (
+     SELECT s.uid FROM (
+       SELECT ` + historyIssueUID + ` AS uid FROM events h WHERE h.project_id=$1
+       UNION SELECT uid FROM issues WHERE project_id=$1) s
+     WHERE EXISTS(SELECT 1 FROM events m WHERE m.type='issue.moved' AND
+       ` + moveIssueUID + ` = s.uid)))`
 	args := []any{projectID}
 	if len(eventTypes) > 0 {
 		placeholders := make([]string, 0, len(eventTypes))
@@ -1866,11 +1885,7 @@ func federationFoldEventsScoped(ctx context.Context, tx *sql.Tx, projectID int64
 		}
 	}
 	query += " ORDER BY e.id ASC"
-	rows, err := tx.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("list federated events: %w", err)
-	}
-	return scanFederationFoldEvents(rows, issueScope)
+	return query, args
 }
 
 func scanFederationFoldEvents(rows *sql.Rows, issueScope []string) ([]db.FoldEvent, error) {
