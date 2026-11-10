@@ -32,6 +32,7 @@ func newAgentsViewCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE:  runAgentsViewTarget,
 	})
+	cmd.AddCommand(newAgentsViewPrepareCmd(), newAgentsViewShareCmd())
 	return cmd
 }
 

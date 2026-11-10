@@ -37,10 +37,10 @@ var signingCapabilities = map[string][]string{
 	"renewIssueLease":                {"claim"},
 	"releaseIssueLease":              {"claim"},
 	"getIssueLeaseStatus":            {"claim"},
-	"uploadFederatedDocbank":        {"push"},
-	"linkFederatedDocbank":          {"push"},
-	"federatedDocbankCapabilities":  {"pull", "push"},
-	"federatedDocbankContent":       {"pull"},
+	"uploadFederatedDocbank":         {"push"},
+	"linkFederatedDocbank":           {"push"},
+	"federatedDocbankCapabilities":   {"pull", "push"},
+	"federatedDocbankContent":        {"pull"},
 }
 
 func isCronJobWriteOperation(operation string) bool {

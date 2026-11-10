@@ -181,7 +181,6 @@ type TranscriptServiceConfig = config.TranscriptServiceConfig
 // Deprecated: use AgentsViewTarget.
 type TranscriptServiceTarget = config.TranscriptServiceTarget
 
-
 // Config contains the process-neutral inputs needed to construct a Service.
 type Config struct {
 	// AgentsViewRelay supplies explicit project service adapters. Nil disables sharing.

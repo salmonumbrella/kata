@@ -135,7 +135,6 @@ func newRootCmd() *cobra.Command {
 		newMoveCmd(),
 		newCommentCmd(),
 		newCloseCmd(),
-		newAgentsViewCmd(),
 		newReopenCmd(),
 		newDeleteCmd(),
 		newRestoreCmd(),

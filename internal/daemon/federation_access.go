@@ -31,10 +31,10 @@ var federationTransportOperations = map[string]HostFederationOperation{
 	"replaceCronJob":                 {ID: "replaceCronJob", Mutation: true},
 	"archiveCronJob":                 {ID: "archiveCronJob", Mutation: true},
 	"restoreCronJob":                 {ID: "restoreCronJob", Mutation: true},
-	"federatedDocbankCapabilities": {ID: "federatedDocbankCapabilities"},
-	"uploadFederatedDocbank":       {ID: "uploadFederatedDocbank", Mutation: true},
-	"linkFederatedDocbank":         {ID: "linkFederatedDocbank", Mutation: true},
-	"federatedDocbankContent":      {ID: "federatedDocbankContent"},
+	"federatedDocbankCapabilities":   {ID: "federatedDocbankCapabilities"},
+	"uploadFederatedDocbank":         {ID: "uploadFederatedDocbank", Mutation: true},
+	"linkFederatedDocbank":           {ID: "linkFederatedDocbank", Mutation: true},
+	"federatedDocbankContent":        {ID: "federatedDocbankContent"},
 	// Cleanup authenticates its exact secret/project/peer inside the native
 	// revocation transaction; it cannot acquire project data or write authority.
 	"disconnectRelayEnrollment": {ID: "disconnectRelayEnrollment", Mutation: true},

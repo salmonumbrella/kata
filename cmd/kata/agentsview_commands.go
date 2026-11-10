@@ -12,14 +12,6 @@ import (
 	"go.kenn.io/kata/internal/config"
 )
 
-func newAgentsViewCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "agentsview", Short: "prepare and explicitly share a frozen closing-session snapshot"}
-	cmd.AddCommand(newAgentsViewPrepareCmd(), newAgentsViewShareCmd())
-	// The target inspection child is owned by the discovery prerequisite. Combine
-	// constructors when that branch lands; never duplicate its implementation.
-	return cmd
-}
-
 func newAgentsViewPrepareCmd() *cobra.Command {
 	var snapshot, output string
 	cmd := &cobra.Command{
