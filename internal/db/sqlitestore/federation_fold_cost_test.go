@@ -183,6 +183,7 @@ func TestFederationFoldSelection(t *testing.T) {
 		{"all", nil, nil, []string{"1", "2", "3", "4", "5", "6"}},
 		{"typed", []string{"issue.updated"}, nil, []string{"1", "2", "3", "4"}},
 		{"scoped", nil, []string{"00000000000000000000000001"}, []string{"1", "3", "5"}},
+		{"typed-scoped", []string{"issue.updated"}, []string{"00000000000000000000000001", "00000000000000000000000002"}, []string{"1", "2", "3", "4"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			events, err := federationFoldEventsScoped(t.Context(), tx, project.ID, tc.types, tc.scope)
@@ -200,4 +201,79 @@ func TestFederationFoldSelection(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFederationFoldScopedPayloadPageBudget(t *testing.T) {
+	d, project := seedFederationFoldMoves(t, 20_000, 2_000)
+	_, err := d.ExecContext(t.Context(), `UPDATE events SET issue_uid=CASE WHEN id % 2=0 THEN '' ELSE NULL END WHERE type='issue.updated'`)
+	require.NoError(t, err)
+	raw, err := sql.Open("sqlite", d.Path())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, raw.Close()) })
+	raw.SetMaxOpenConns(1)
+	conn, err := raw.Conn(t.Context())
+	require.NoError(t, err)
+	defer func() { require.NoError(t, conn.Close()) }()
+	for _, analyzed := range []bool{false, true} {
+		if analyzed {
+			_, err = conn.ExecContext(t.Context(), "ANALYZE")
+			require.NoError(t, err)
+		}
+		t.Run(fmt.Sprintf("analyzed=%t", analyzed), func(t *testing.T) {
+			tx, err := conn.BeginTx(t.Context(), nil)
+			require.NoError(t, err)
+			defer func() { require.NoError(t, tx.Rollback()) }()
+			cronPullPageFetches(t, conn, true)
+			events, err := federationFoldEventsForIssues(t.Context(), tx, project.ID, []string{"00000000000000000000000001"})
+			require.NoError(t, err)
+			pages := cronPullPageFetches(t, conn, false)
+			var ids []string
+			for _, event := range events {
+				if strings.HasPrefix(event.UID, "000000000000000000000") {
+					ids = append(ids, strings.TrimLeft(event.UID, "0"))
+				}
+			}
+			require.Equal(t, []string{"1", "2001", "4001", "6001", "8001", "10001", "12001", "14001", "16001", "18001", "20001"}, ids)
+			require.Len(t, events, 13)
+			t.Logf("%d page fetches", pages)
+			require.LessOrEqual(t, pages, 120_000)
+		})
+	}
+}
+
+func TestFederationFoldScopedIdentity(t *testing.T) {
+	d, project := seedFederationFoldMoves(t, 4, 2)
+	const one = "00000000000000000000000001"
+	const two = "00000000000000000000000002"
+	_, err := d.ExecContext(t.Context(), `UPDATE events SET issue_uid=NULL,payload=json_object('uid',?) WHERE uid=printf('%026d',1)`, one)
+	require.NoError(t, err)
+	_, err = d.ExecContext(t.Context(), `UPDATE events SET issue_uid=?,payload=json_object('issue_uid',?) WHERE uid=printf('%026d',2)`, one, two)
+	require.NoError(t, err)
+	var sourceID int64
+	require.NoError(t, d.QueryRowContext(t.Context(), `SELECT id FROM projects WHERE name='source-project'`).Scan(&sourceID))
+	for _, row := range []struct {
+		id      int
+		project int64
+		typ     string
+	}{{7, project.ID, "cron.observed"}, {8, sourceID, "cron.observed"}} {
+		_, err = d.ExecContext(t.Context(), `INSERT INTO events(uid,origin_instance_uid,project_id,project_name,type,actor,payload,hlc_physical_ms,hlc_counter,content_hash) VALUES(printf('%026d',?),?,?,'test-project',?,'tester',json_object('issue_uid',?),?,0,?)`, row.id, d.InstanceUID(), row.project, row.typ, one, row.id, strings.Repeat("c", 64))
+		require.NoError(t, err)
+	}
+	tx, err := d.BeginTx(t.Context(), nil)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, tx.Rollback()) }()
+	events, err := federationFoldEventsForIssues(t.Context(), tx, project.ID, []string{one})
+	require.NoError(t, err)
+	var ids []string
+	var projectEvent bool
+	for _, event := range events {
+		if strings.HasPrefix(event.Type, "project.") {
+			projectEvent = true
+		}
+		if strings.HasPrefix(event.UID, "0000000000000000000000000") {
+			ids = append(ids, strings.TrimLeft(event.UID, "0"))
+		}
+	}
+	require.Equal(t, []string{"1", "2", "3", "5", "7"}, ids)
+	require.True(t, projectEvent)
 }

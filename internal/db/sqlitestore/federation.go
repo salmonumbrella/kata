@@ -1854,47 +1854,50 @@ func federationFoldEventsQuery(projectID int64, eventTypes, issueScope []string)
 	moveIssueUID := issueUID("m")
 	candidateIssueUID := issueUID("x")
 	subjects := `SELECT s.uid FROM (
-       SELECT ` + historyIssueUID + ` AS uid FROM events h WHERE h.project_id=$1
-       UNION SELECT uid FROM issues WHERE project_id=$1) s
+       SELECT ` + historyIssueUID + ` AS uid FROM events h WHERE h.project_id=?1
+       UNION SELECT uid FROM issues WHERE project_id=?1) s
      WHERE s.uid IN (SELECT ` + moveIssueUID + ` FROM events m WHERE m.type='issue.moved')`
 	selector := `e.id IN (
-   SELECT id FROM events WHERE project_id=$1
+   SELECT id FROM events WHERE project_id=?1
    UNION
    SELECT x.id FROM events x WHERE ` + candidateIssueUID + ` IN (
      ` + subjects + `))`
+	args := []any{projectID}
 	if len(issueScope) > 0 {
 		// Scoped pushes can short-circuit project rows without building the
 		// project-wide moved-subject set.
 		eventIssueUID := db.FederationReadIssueUIDExpr(false)
-		selector = `(e.project_id=$1 OR (` + eventIssueUID + ` IN (
-   SELECT ` + historyIssueUID + ` FROM events h WHERE h.project_id=$1
-   UNION SELECT uid FROM issues WHERE project_id=$1)
+		selector = `(e.project_id=?1 OR (` + eventIssueUID + ` IN (
+   SELECT ` + historyIssueUID + ` FROM events h WHERE h.project_id=?1
+   UNION SELECT uid FROM issues WHERE project_id=?1)
  AND EXISTS(SELECT 1 FROM events m WHERE m.type='issue.moved' AND
    ` + moveIssueUID + ` = ` + eventIssueUID + `)))`
+		// CASE evaluates the scope before the correlated move lookup. Scope
+		// identity follows the scanner even for non-issue event payloads.
+		scopeUID := `CASE WHEN e.issue_uid IS NOT NULL AND e.issue_uid<>'' THEN e.issue_uid
+ WHEN json_type(e.payload,'$.issue_uid')='text' THEN json_extract(e.payload,'$.issue_uid')
+ WHEN json_type(e.payload,'$.uid')='text' THEN json_extract(e.payload,'$.uid') END`
+		placeholders := make([]string, 0, len(issueScope))
+		for _, uid := range issueScope {
+			placeholders = append(placeholders, fmt.Sprintf("?%d", len(args)+1))
+			args = append(args, uid)
+		}
+		//nolint:gosec // G202: generated placeholders only; issue UIDs are bound separately.
+		selector = `CASE WHEN e.type LIKE 'project.%' OR ` + scopeUID + ` IN (` + strings.Join(placeholders, ",") + `) THEN ` + selector + ` ELSE 0 END`
 	}
 	query := `
 		SELECT e.uid, e.origin_instance_uid, p.uid, e.issue_uid, e.related_issue_uid,
 		       e.type, e.actor, e.payload, e.hlc_physical_ms, e.hlc_counter, e.created_at
 		  FROM events e JOIN projects p ON p.id=e.project_id
  WHERE ` + selector
-	args := []any{projectID}
 	if len(eventTypes) > 0 {
 		placeholders := make([]string, 0, len(eventTypes))
 		for _, eventType := range eventTypes {
-			placeholders = append(placeholders, fmt.Sprintf("$%d", len(args)+1))
+			placeholders = append(placeholders, fmt.Sprintf("?%d", len(args)+1))
 			args = append(args, eventType)
 		}
 		//nolint:gosec // G202: generated ? placeholders only; values are bound separately.
 		query += " AND e.type IN (" + strings.Join(placeholders, ",") + ")"
-	}
-	if len(issueScope) > 0 {
-		// NULL envelopes may carry issue identity in payloads. Historical project
-		// events (notably author rewrites) also participate in each issue's fold.
-		//nolint:gosec // G202: generated ? placeholders only; issue UIDs are bound separately.
-		query += " AND (e.issue_uid IN (?" + strings.Repeat(",?", len(issueScope)-1) + ") OR e.issue_uid IS NULL OR e.issue_uid = '' OR e.type LIKE 'project.%')"
-		for _, uid := range issueScope {
-			args = append(args, uid)
-		}
 	}
 	query += " ORDER BY e.id ASC"
 	return query, args

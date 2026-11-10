@@ -455,3 +455,18 @@ func TestFullPulledMaterializationLockedFallback(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "new", got.Title)
 }
+
+func TestPulledScopedUpdateAfterMoves(t *testing.T) {
+	d, p, issue := movedIssuesForScopedUpdate(t)
+	ev := incrementalRemoteEvent(t, p, issue.UID, "issue.updated", fmt.Sprintf(`{"issue_uid":%q,"title":"pulled title"}`, issue.UID), 9_000_001_000_000)
+	_, err := d.InsertRemoteEvents(t.Context(), p.ID, []db.RemoteEvent{ev})
+	require.NoError(t, err)
+	require.NoError(t, d.MaterializeFederatedEvents(t.Context(), p.ID, []string{ev.EventUID}))
+	got, err := d.IssueByUID(t.Context(), issue.UID, db.IncludeDeletedYes)
+	require.NoError(t, err)
+	require.Equal(t, "pulled title", got.Title)
+	require.Equal(t, p.ID, got.ProjectID)
+	var moves int
+	require.NoError(t, d.QueryRowContext(t.Context(), `SELECT count(*) FROM events WHERE type='issue.moved' AND issue_uid=?`, issue.UID).Scan(&moves))
+	require.Equal(t, 2, moves)
+}
