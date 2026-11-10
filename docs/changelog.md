@@ -1,7 +1,7 @@
 ---
 title: Changelog
 description: Release history for kata
-last_edited: 2026-11-09
+last_edited: 2026-11-10
 ---
 
 All notable changes to kata, grouped by release. Versioned releases start with
@@ -10,7 +10,10 @@ All notable changes to kata, grouped by release. Versioned releases start with
 ## Unreleased
 
 - Rebuild federated histories faster after bulk issue moves on SQLite and PostgreSQL.
-
+- Keep a daemon catalog credential in an owner-only device file with
+  `token_file`. Catalog entries use `token` > `token_file` > `token_env` and
+  stop on a failed selected source without fallback. See
+  [catalog credentials](reference/configuration.md#daemon-config).
 - Keep search focus and text when keyboard selection opens task detail.
 - Keep local writes responsive while a federation pull updates projects with long histories.
 - See why Docbank attachments fail when the daemon cannot read its own key.
