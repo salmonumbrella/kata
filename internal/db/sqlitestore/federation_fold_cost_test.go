@@ -260,5 +260,5 @@ func TestFederationFoldScopedMovedHistoryPageBudget(t *testing.T) {
 	pages := cronPullPageFetches(t, conn, false)
 	require.Len(t, events, 2_003)
 	t.Logf("%d page fetches", pages)
-	require.LessOrEqual(t, pages, 120_000)
+	require.LessOrEqual(t, pages, 2_000)
 }
