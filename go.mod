@@ -48,6 +48,7 @@ require (
 	golang.org/x/text v0.43.0
 	golang.org/x/time v0.16.0
 	gopkg.in/yaml.v3 v3.0.1
+	hegel.dev/go/hegel v0.9.30
 	modernc.org/sqlite v1.61.0
 	pgregory.net/rapid v1.3.0
 )
@@ -196,7 +197,6 @@ require (
 	golang.org/x/oauth2 v0.37.0 // indirect
 	golang.org/x/tools v0.52.0 // indirect
 	gotest.tools/gotestsum v1.13.0 // indirect
-	hegel.dev/go/hegel v0.9.30
 	modernc.org/libc v1.79.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect

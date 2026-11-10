@@ -87,14 +87,20 @@ func (c *featureProbeConn) QueryContext(_ context.Context, query string, _ []dri
 		c.state.probeQueries++
 		return &featureProbeRows{}, nil
 	}
+	if strings.Contains(query, "SELECT i.metadata") {
+		return &featureProbeRows{seen: true, empty: true}, nil
+	}
 	return nil, errors.New("unexpected feature probe query")
 }
 
 type featureProbeRows struct {
-	presence, seen, payloadQuery, eventType bool
+	presence, seen, payloadQuery, eventType, empty bool
 }
 
 func (r *featureProbeRows) Columns() []string {
+	if r.empty {
+		return []string{"metadata"}
+	}
 	if r.payloadQuery {
 		if r.eventType {
 			return []string{"payload", "type"}
@@ -108,7 +114,7 @@ func (r *featureProbeRows) Columns() []string {
 }
 func (*featureProbeRows) Close() error { return nil }
 func (r *featureProbeRows) Next(values []driver.Value) error {
-	if r.payloadQuery {
+	if r.payloadQuery || r.empty {
 		return io.EOF
 	}
 	if r.seen {
