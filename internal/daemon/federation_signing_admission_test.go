@@ -66,6 +66,45 @@ func TestFederationIngressAlwaysRequiresSigning(t *testing.T) {
 	})
 }
 
+// A modified consent control must be rejected before reading snapshot bytes.
+func TestAgentsViewIngressRejectsChangedSignedControl(t *testing.T) {
+	t.Setenv("TEST_AGENTS_VIEW_CONTROL_KEY", strings.Repeat("k", 64))
+	source := signingpolicy.Source{KeyID: "key-a", KeyEnv: "TEST_AGENTS_VIEW_CONTROL_KEY"}
+	env := testenv.New(t)
+	project := createFederatedHubProject(t, env, "hub-project")
+	enrollment, err := env.DB.CreateFederationEnrollment(t.Context(), db.CreateFederationEnrollmentParams{
+		Token: "enrollment", SpokeInstanceUID: federationTestSpokeUID,
+		ProjectID: &project.ID, Capabilities: "push", Actor: "example-actor",
+	})
+	require.NoError(t, err)
+	synctest.Test(t, func(t *testing.T) {
+		state := filepath.Join(t.TempDir(), "replay.state")
+		require.NoError(t, federationsigning.InitializeReplayState(state))
+		verifier, err := federationsigning.NewVerifier("https://hub.example", []signingpolicy.Key{{Source: source, EnrollmentID: enrollment.Enrollment.ID}}, state)
+		require.NoError(t, err)
+		defer func() { require.NoError(t, verifier.Close()) }()
+		time.Sleep(federationsigning.Quarantine)
+		srv := daemon.NewServer(daemon.ServerConfig{DB: env.DB, FederationSigning: verifier})
+		t.Cleanup(func() { require.NoError(t, srv.Close()) })
+		ingress, err := srv.HandlerFor(daemon.ListenerPolicy{Kind: daemon.ListenerFederation})
+		require.NoError(t, err)
+		raw := []byte("snapshot")
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, fmt.Sprintf("https://hub.example/api/v1/projects/%d/federation/transcript-service/issues/example", project.ID), bytes.NewReader(raw))
+		req.Header.Set("Authorization", "Bearer "+enrollment.Token)
+		req.Header.Set("Content-Type", "application/octet-stream")
+		req.Header.Set("X-Kata-Transcript-Control", "original-control")
+		require.NoError(t, federationsigning.Sign(req, source))
+		require.NoError(t, req.Body.Close())
+		req.Header.Set("X-Kata-Transcript-Control", "changed-control")
+		body := &relayCountingBody{reader: bytes.NewReader(raw)}
+		req.Body = body
+		w := httptest.NewRecorder()
+		ingress.ServeHTTP(w, req)
+		require.Equal(t, http.StatusUnauthorized, w.Code, w.Body.String())
+		require.Zero(t, body.reads)
+	})
+}
+
 // Two real ingest handlers wait for upload bytes while metadata and leases use
 // the same daemon's other admission pool. Channels control upload progress.
 func TestFederationSigningUploadAdmissionPreservesControlRequests(t *testing.T) {
