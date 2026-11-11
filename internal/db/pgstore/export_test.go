@@ -2,6 +2,7 @@ package pgstore
 
 import (
 	"context"
+	"testing"
 	"time"
 )
 
@@ -46,3 +47,12 @@ const EventSelectForTest = eventSelect
 var ScanEventForTest = scanEvent
 
 var FederationFoldEventsQueryForTest = federationFoldEventsQuery
+
+// SetStatementTimeoutForTest shortens the per-statement limit for connections
+// opened after the call. A test that calls it must not run in parallel.
+func SetStatementTimeoutForTest(t testing.TB, timeout string) {
+	t.Helper()
+	old := statementTimeout
+	statementTimeout = timeout
+	t.Cleanup(func() { statementTimeout = old })
+}
