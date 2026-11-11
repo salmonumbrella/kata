@@ -245,7 +245,10 @@ func TestFederationAgentsViewUnavailableBeforeReadingBody(t *testing.T) {
 			raw := bytes.Repeat([]byte("x"), size)
 			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, fmt.Sprintf("https://hub.example/api/v1/projects/%d/federation/transcript-service/issues/example", project.ID), bytes.NewReader(raw))
 			req.Header.Set("Authorization", "Bearer "+enrollment.Token)
+			req.Header.Set("Content-Type", "application/octet-stream")
+			req.Header.Set("X-Kata-Transcript-Control", "fixture-control")
 			require.NoError(t, federationsigning.Sign(req, source))
+			require.NoError(t, req.Body.Close())
 			body := &relayCountingBody{reader: bytes.NewReader(raw)}
 			req.Body = body
 			w := httptest.NewRecorder()
