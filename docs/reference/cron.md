@@ -293,9 +293,10 @@ cause another execution.
 
 Run requests may supply `--input name=value` repeatedly. When the declaration
 is readable, the CLI parses each value using its declared type and refuses
-unknown names. A string or enum value beginning with `"` must be a complete
-JSON string; use JSON quoting to send a string that begins with a quote. If the
-declaration is unavailable, the CLI sends JSON numbers and booleans as scalars,
+unknown names. A value beginning with `"` must be a complete JSON string when
+the type is string or enum, or when the declaration is unavailable. Use JSON
+quoting to send a string that begins with a quote. If the declaration is
+unavailable, the CLI sends JSON numbers and booleans as scalars,
 rejects `null`, and otherwise sends a string. For a retained request UID, it
 uses the retained scalar kinds to parse retries. The hub compares the submitted
 values with the retained values. The hub validates

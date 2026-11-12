@@ -2456,8 +2456,8 @@ kata show <issue-ref> --planning-dates --json
 ```
 
 For `request-run`, the CLI parses each `--input name=value` using the readable
-declared type and rejects unknown names. For strings and enums, a value beginning
-with `"` must be a complete JSON string; JSON quoting also lets you send a
+declared type and rejects unknown names. For strings and enums, or when the declaration is unavailable, a value beginning
+with `"` must be a complete JSON string. JSON quoting also lets you send a
 leading quote. If the declaration is unavailable, JSON numbers and booleans are
 sent as scalars, `null` is rejected, and other values are sent as strings. A
 retained request UID uses its retained scalar kinds for retry parsing; the hub
