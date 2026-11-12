@@ -75,12 +75,12 @@ func serveMCPTestHealth(writer http.ResponseWriter, request *http.Request) bool 
 
 func startMCPHTTPTestServer(t *testing.T, daemonURL string, extraArgs ...string) string {
 	t.Helper()
-	return startMCPHTTPTestServerWithScope(t, daemonURL, []string{"--all"}, extraArgs...)
+	return startMCPHTTPTestServerWithScope(t, daemonURL, []string{"--all"}, nil, extraArgs...)
 }
 
 // startMCPHTTPTestServerWithScope runs `kata mcp serve --http` with the given
 // project-scope flags and returns its MCP endpoint.
-func startMCPHTTPTestServerWithScope(t *testing.T, daemonURL string, scopeArgs []string, extraArgs ...string) string {
+func startMCPHTTPTestServerWithScope(t *testing.T, daemonURL string, scopeArgs []string, startupLines *[]string, extraArgs ...string) string {
 	t.Helper()
 	t.Setenv("KATA_MCP_TEST_TOKEN", "test-mcp-token")
 	command := newRootCmd()
@@ -101,26 +101,34 @@ func startMCPHTTPTestServerWithScope(t *testing.T, daemonURL string, scopeArgs [
 		_ = stderrWriter.Close()
 	}()
 
-	firstLine := make(chan string, 1)
+	const prefix = "kata mcp: listening on "
+	type listenerOutput struct {
+		endpoint string
+		lines    []string
+	}
+	listening := make(chan listenerOutput, 1)
 	go func() {
 		scanner := bufio.NewScanner(stderrReader)
-		if scanner.Scan() {
-			firstLine <- scanner.Text()
-		}
+		var lines []string
 		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.HasPrefix(line, prefix) {
+				listening <- listenerOutput{endpoint: strings.TrimPrefix(line, prefix), lines: lines}
+				for scanner.Scan() {
+				}
+				return
+			}
+			lines = append(lines, line)
 		}
 	}()
 
-	const prefix = "kata mcp: listening on "
 	var endpoint string
 	select {
-	case line := <-firstLine:
-		if !strings.HasPrefix(line, prefix) {
-			cancel()
-			<-done
-			t.Fatalf("unexpected MCP listener output %q", line)
+	case output := <-listening:
+		endpoint = output.endpoint
+		if startupLines != nil {
+			*startupLines = output.lines
 		}
-		endpoint = strings.TrimPrefix(line, prefix)
 	case err := <-done:
 		cancel()
 		require.NoError(t, err, "MCP HTTP server exited before listening")
@@ -963,25 +971,47 @@ func TestMCPServeBindsProjectAndUsesStdoutOnlyForProtocol(t *testing.T) {
 
 // The standalone server exposes usage only for the advertised source.
 func TestMCPCronUsage(t *testing.T) {
-	for _, source := range []string{"agentsview", "none"} {
-		t.Run(source, func(t *testing.T) {
+	for _, tc := range []struct {
+		name, source                                   string
+		catalogFailure, capabilityFailure, empty, warn bool
+	}{
+		{name: "agentsview", source: "agentsview"},
+		{name: "none", source: "none"},
+		{name: "empty scope", empty: true},
+		{name: "catalog failure", catalogFailure: true, warn: true},
+		{name: "capability failure", capabilityFailure: true, warn: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			setupKataEnv(t)
 			t.Setenv("KATA_AUTHOR", "example-agent")
+			const secret = "fixture-secret-do-not-log"
+			t.Setenv("KATA_AUTH_TOKEN", secret)
 			daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				switch r.URL.Path {
 				case "/api/v1/health":
 					_, _ = fmt.Fprintf(w, `{"ok":true,"api_schema_version":%q}`, mcpserver.CronUsageAPIFloor)
 				case "/api/v1/projects":
-					_, _ = io.WriteString(w, `{"projects":[{"id":42,"uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","name":"spoke-project","metadata":{},"revision":1,"created_at":"2026-08-11T00:00:00Z"}]}`)
+					if tc.catalogFailure {
+						http.Error(w, secret, http.StatusInternalServerError)
+					} else if tc.empty {
+						_, _ = io.WriteString(w, `{"projects":[]}`)
+					} else {
+						_, _ = io.WriteString(w, `{"projects":[{"id":42,"uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","name":"spoke-project","metadata":{},"revision":1,"created_at":"2026-08-11T00:00:00Z"}]}`)
+					}
 				case "/api/v1/projects/42/cron/capabilities":
-					_, _ = fmt.Fprintf(w, `{"project_uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","event_features":[],"usage":{"source":%q}}`, source)
+					if tc.capabilityFailure {
+						http.Error(w, secret, http.StatusForbidden)
+					} else {
+						_, _ = fmt.Fprintf(w, `{"project_uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","event_features":[],"usage":{"source":%q}}`, tc.source)
+					}
 				default:
 					http.NotFound(w, r)
 				}
 			}))
 			t.Cleanup(daemon.Close)
-			endpoint := startMCPHTTPTestServer(t, daemon.URL)
+			var lines []string
+			endpoint := startMCPHTTPTestServerWithScope(t, daemon.URL, []string{"--all"}, &lines)
 			session, err := newMCPHTTPTestClient().Connect(t.Context(), newAuthenticatedMCPHTTPTestTransport(endpoint), nil)
 			require.NoError(t, err)
 			defer func() { _ = session.Close() }()
@@ -991,7 +1021,17 @@ func TestMCPCronUsage(t *testing.T) {
 			tools, err := session.ListTools(t.Context(), nil)
 			require.NoError(t, err)
 			found := slices.ContainsFunc(tools.Tools, func(tool *sdkmcp.Tool) bool { return tool.Name == "kata.cron_run_usage" })
-			require.Equal(t, source == "agentsview", found)
+			require.Equal(t, tc.source == "agentsview", found)
+			require.True(t, slices.ContainsFunc(tools.Tools, func(tool *sdkmcp.Tool) bool { return tool.Name == "kata.cron_runs" }))
+			diagnostic := strings.ToLower(strings.Join(lines, "\n"))
+			require.NotContains(t, diagnostic, secret)
+			require.NotContains(t, diagnostic, strings.ToLower(daemon.URL))
+			if tc.warn {
+				require.Contains(t, diagnostic, "cron")
+				require.Contains(t, diagnostic, "usage")
+			} else {
+				require.NotContains(t, diagnostic, "usage")
+			}
 		})
 	}
 }
