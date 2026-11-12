@@ -2435,7 +2435,7 @@ kata cron new-uid --json
 kata cron job create --uid <job-uid> --file job.json --json
 kata cron job list [--include-deleted] --json
 kata cron job show <job-uid> --json
-kata cron job inputs <job-uid> --json
+kata cron job inputs <job-uid> [--request-uid <request-uid>] --json
 kata cron job edit <job-uid>
 kata cron workflow edit <workflow-uid>
 kata cron job update <job-uid> --expected-event-uid <event-uid> --file replacement.json --json
@@ -2449,7 +2449,7 @@ kata cron resume [--discard-missed] --json
 kata cron run observe <run-uid> --json-input observation.json --json
 kata cron run list [--limit 100] [--before-uid <uid>] [--job-uid <job-uid>] --json
 kata cron run show <run-uid> --json
-kata cron job request-run <job-uid> --request-uid <fresh-request-ulid> [--ttl 600] --json
+kata cron job request-run <job-uid> --request-uid <fresh-request-ulid> [--ttl 600] [--input name=value]... --json
 kata cron run request-cancel <run-uid> --request-uid <fresh-request-ulid> [--ttl 600] --json
 kata cron request list [--state pending|answered|expired] --json
 kata show <issue-ref> --planning-dates --json

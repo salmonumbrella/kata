@@ -492,7 +492,9 @@ for adapter behavior and upgrade requirements.
 
 `kata.cron_job_request_run` and `kata.cron_run_request_cancel` require the
 job or run `uid` and a freshly generated `request_uid`; optional `ttl_seconds`
-defaults to 600. Generate with `kata.cron_new_uid` immediately before submitting,
+defaults to 600. Run requests also accept a typed `inputs` object; retain its
+values along with the UID for retries. `kata.cron_job_inputs` accepts an optional
+`request_uid` to resolve retained values. Generate with `kata.cron_new_uid` immediately before submitting,
 and retain the UID and TTL for an uncertain-response retry. Both tools submit
 at the owning hub and use the configured actor. `kata.cron_request_list` can
 filter `state` (`pending`, `answered`, or `expired`). See

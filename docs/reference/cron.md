@@ -261,7 +261,7 @@ request for a currently running run, at the project's owning hub:
 
 ```sh
 kata cron new-uid --json
-kata cron job request-run <job-uid> --request-uid <fresh-request-ulid> --ttl 600 --json
+kata cron job request-run <job-uid> --request-uid <fresh-request-ulid> --ttl 600 --input batch_size=5 --json
 kata cron run request-cancel <run-uid> --request-uid <fresh-request-ulid> --ttl 600 --json
 kata cron request list --state pending --json
 ```
@@ -275,7 +275,7 @@ federation is disabled; they can read locally replicated requests.
 
 Run `kata cron new-uid --json` locally and use its `uid` field just before first
 submission. It needs no daemon, project, or workspace. Retain that UID, the
-target, actor, and TTL after an uncertain response; never generate another UID
+target, actor, TTL, and inputs after an uncertain response; never generate another UID
 for the same uncertain action. The UID's millisecond time
 becomes `requested_at`. New admission accepts a UID at most 30 seconds old or
 5 seconds in the future. Keep client and hub clocks aligned. `--ttl` defaults
@@ -285,11 +285,27 @@ project, including answered requests.
 
 An exact retry returns the original request with `replayed: true` and no new
 event while its key remains. This holds after expiry, project pause, a job edit,
-or a run status change. Reusing the UID with a different target, actor, or TTL
+or a run status change. Reusing the UID with a different target, actor, TTL, or inputs
 returns 409 `request_conflict`. The root collects expired requests; afterward,
 the old UID returns 410 `request_expired` and cannot recreate the request.
 Check the known outcome before choosing a new UID, since a new request may
 cause another execution.
+
+Run requests may supply `--input name=value` repeatedly. The hub validates
+values against the job's current declaration in the admission transaction;
+unknown, invalid, and missing required values are refused. Request values
+override defaults and fixed job values. Inspect the result with `kata cron job
+inputs <job-uid> --request-uid <request-uid> --json`. Resolution uses the
+current job and workflow definitions and returns their revision UIDs. A missing,
+collected, cancel, or different job request returns 404 `request_not_found`.
+Request inputs require daemon API 0.49.0; ordinary resolution requires 0.48.0.
+
+Values are stored in plaintext under the reserved project metadata key
+`cron.request_inputs.<request_uid>`. They replicate with project metadata and
+remain in event history and backups. Do not put secrets in inputs. The root
+writes and collects the sibling with its request; generic metadata writes cannot
+change it. Project merges preserve target metadata rather than importing source
+request keys.
 
 The root also collects malformed legacy values under `cron.request.` and reports
 them with the cleanup event. Until cleanup, those values block request reads and
@@ -310,7 +326,10 @@ after an uncertain response. Job and run details list retained requests.
 
 REST uses POST `/api/v1/projects/{project_id}/cron/jobs/{cron_uid}/requests`
 and POST `/api/v1/projects/{project_id}/cron/runs/{run_uid}/cancel-request`.
-Both accept exactly `{uid, actor?, ttl_seconds?}`. The response contains
+Run requests accept `{uid, actor?, ttl_seconds?, inputs?}`; cancellation accepts
+`{uid, actor?, ttl_seconds?}`. Inputs contain at most 32 scalar values and 4 KiB
+of canonical JSON. Empty inputs and omitted inputs have the same retry identity.
+The response contains
 `request`, `replayed`, and the committed `event` when changed. GET
 `/api/v1/projects/{project_id}/cron/requests` accepts an optional `state`
 query (`pending`, `answered`, or `expired`). MCP exposes
