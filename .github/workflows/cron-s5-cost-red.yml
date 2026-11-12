@@ -1,7 +1,7 @@
 name: Cron request resolution cost red
 on:
   push:
-    branches: [proof/cron-s5-cost-red-20261112]
+    branches: [proof/cron-s5-cost-red2-20261112]
 permissions:
   contents: read
 env:
