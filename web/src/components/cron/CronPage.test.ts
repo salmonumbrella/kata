@@ -322,7 +322,8 @@ describe('CronPage', () => {
 
     expect(await screen.findByText(`Run ${runC}`)).not.toBeNull()
     expect(await screen.findByRole('heading', { name: 'Cost' })).not.toBeNull()
-    expect(screen.getByText('$2.41')).not.toBeNull()
+    // The heading shows while the usage read is pending; the amount follows it.
+    expect(await screen.findByText('$2.41')).not.toBeNull()
     const usage = requested(fetcher, cronPath(exampleProject, `runs/${runC}/usage`))
     expect(usage.map((url) => url.searchParams.get('refresh'))).toEqual(['false'])
   })

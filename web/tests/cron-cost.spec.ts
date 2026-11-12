@@ -143,8 +143,12 @@ test('shows live run cost from each daemon without exposing its AgentsView token
     page.on('request', (request) => {
       browserTraffic.push(Promise.resolve(JSON.stringify(request.headers())))
     })
-    page.on('response', (response) => {
-      if (response.url().includes('/cron/')) browserTraffic.push(response.text().catch(() => ''))
+    // Only finished requests have a body to read; reading the body of one a
+    // navigation or abort cancelled would wait forever.
+    page.on('requestfinished', (request) => {
+      if (!request.url().includes('/cron/')) return
+      const body = request.response().then((response) => response?.text() ?? '')
+      browserTraffic.push(body.catch(() => ''))
     })
     const usageRequests: string[] = []
     page.on('request', (request) => {
