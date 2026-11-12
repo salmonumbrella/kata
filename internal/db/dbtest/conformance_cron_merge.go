@@ -48,6 +48,16 @@ func checkCronProjectMergeRestore(t *testing.T, source db.Storage, backend Backe
 	})
 	require.NoError(t, err)
 
+	// A backup taken before the merge retains the source request inputs.
+	beforeMerge, err := CollectImportRecords(ctx, source, db.ExportFilter{IncludeDeleted: true})
+	require.NoError(t, err)
+	backup := backend.Open(t)
+	t.Cleanup(func() { require.NoError(t, backup.Close()) })
+	require.NoError(t, backup.ImportReplay(ctx, beforeMerge, db.ImportOptions{}))
+	backedUpSource, err := backup.ProjectByUID(ctx, sourceProject.UID)
+	require.NoError(t, err)
+	require.Contains(t, string(backedUpSource.Metadata), "cron.request_inputs."+sourceRequest)
+
 	_, err = source.MergeProjects(ctx, db.MergeProjectsParams{
 		SourceProjectID: sourceProject.ID, TargetProjectID: targetProject.ID, Actor: "worker",
 	})
@@ -56,12 +66,17 @@ func checkCronProjectMergeRestore(t *testing.T, source db.Storage, backend Backe
 	require.NoError(t, err)
 
 	var cronEventUIDs []string
+	var sourceInputsInHistory bool
 	for _, record := range records {
 		event, ok := record.(*db.EventExport)
 		if ok && strings.HasPrefix(event.Type, "cron.") {
 			cronEventUIDs = append(cronEventUIDs, event.UID)
 		}
+		if ok && event.Type == "project.metadata_updated" && strings.Contains(string(event.Payload), "cron.request_inputs."+sourceRequest) {
+			sourceInputsInHistory = true
+		}
 	}
+	require.True(t, sourceInputsInHistory, "merge export retains source request inputs in event history")
 	require.NotEmpty(t, cronEventUIDs)
 	mergedEvents, err := source.EventsByUIDs(ctx, targetProject.ID, cronEventUIDs)
 	require.NoError(t, err)
@@ -81,9 +96,8 @@ func checkCronProjectMergeRestore(t *testing.T, source db.Storage, backend Backe
 	require.NoError(t, err)
 	require.Contains(t, string(target.Metadata), "cron.request_inputs."+targetRequest)
 	require.NotContains(t, string(target.Metadata), "cron.request_inputs."+sourceRequest)
-	retainedSource, err := restored.ProjectByUID(ctx, sourceProject.UID)
-	require.NoError(t, err)
-	require.Contains(t, string(retainedSource.Metadata), "cron.request_inputs."+sourceRequest)
+	_, err = restored.ProjectByUID(ctx, sourceProject.UID)
+	require.ErrorIs(t, err, db.ErrNotFound, "merge removes the source project")
 	restoredJob, err := restored.CronJob(ctx, target.ID, job.UID)
 	require.NoError(t, err)
 	require.Equal(t, job.UID, restoredJob.UID)
