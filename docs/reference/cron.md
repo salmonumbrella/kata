@@ -333,19 +333,24 @@ focused field shows its type, limits, value source and description.
 
 - `Tab` and `Shift+Tab` move between fields. `←`/`→` choose a boolean or enum
   value. Text and whole numbers are typed in place; `Ctrl+e` edits multiline
-  text in `$VISUAL` or `$EDITOR`.
+  text in `$VISUAL` or `$EDITOR`, and the saved file's bytes become the value,
+  including a final newline the editor writes.
 - `Ctrl+r` restores the focused field's resolved value. Only an input the
   resolution left unset can return to `(unset)`; an emptied text field sends
   `""`.
-- `Ctrl+o` submits the request. Only fields you changed are sent, so the rest
+- `Ctrl+o` (or `Ctrl+s`) submits the request. Only fields you changed are sent, so the rest
   keep their job or default source. Invalid values are refused before anything
   is sent. `Esc` cancels without a request.
 - A refusal from the hub shows its message and keeps the draft editable; the
-  next submit uses a new UID. After an uncertain response the values lock, and
-  `Ctrl+o` retries the same UID with the same values; `Esc` abandons it.
+  next submit uses a new UID. After an uncertain response to a sent request the
+  UID and values lock, and `Ctrl+o` retries them unchanged; `Esc` abandons it.
+- A choice too long for the value column is shown in full below the field.
+- Before sending, the TUI rereads the job. If that read fails without a 4xx
+  answer (no connection, an unreadable reply, or a 5xx error), nothing is sent
+  and the draft stays editable with the error shown. A 4xx answer, including a
+  changed job, drops the draft; press `R` again.
 - A declaration error, an undeclared fixed value, or an unnamed invalid value
-  opens no form and names the problem. If the job changes before submit, the
-  draft is dropped; press `R` again.
+  opens no form and names the problem.
 
 Jobs without input keys, and daemons older than API 0.49.0, keep the `y`/`n`
 dialog. Input values are stored in plaintext, as described above.
