@@ -219,3 +219,18 @@ func TestInputLegacyOverLimitDiagnostics(t *testing.T) {
 	require.Equal(t, "item_00", r.Errors[1].Name)
 	require.Equal(t, "declaration_invalid", r.Errors[1].Code)
 }
+
+// Contract: request values override fixed values and satisfy required inputs.
+func TestRequestInputResolution(t *testing.T) {
+	job := JobDefinition{Action: Action{Prompt: "hello"}, Options: jsontext.Value(`{"inputs":{"count":{"type":"int","default":2},"needed":{"type":"bool","required":true}},"input_values":{"count":4}}`)}
+	result := ResolveInputs(job, nil, map[string]jsontext.Value{"count": jsontext.Value("9007199254740993"), "needed": jsontext.Value("false")})
+	require.Empty(t, result.Errors)
+	require.Equal(t, "request", result.Inputs[0].Source)
+	require.Equal(t, jsontext.Value("9007199254740993"), result.Inputs[0].Value)
+	require.Equal(t, "request", result.Inputs[1].Source)
+	require.Equal(t, false, result.Inputs[1].Value)
+	result = ResolveInputs(job, nil, map[string]jsontext.Value{"unknown": jsontext.Value("true")})
+	require.Len(t, result.Errors, 2)
+	require.Equal(t, "missing_required", result.Errors[0].Code)
+	require.Equal(t, "unknown", result.Errors[1].Name)
+}

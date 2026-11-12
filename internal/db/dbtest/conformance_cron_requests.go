@@ -103,6 +103,30 @@ func checkCronRequests(t *testing.T, s db.Storage, b Backend) error {
 		_, e = s.RequestCron(ctx, in)
 		require.ErrorIs(t, e, db.ErrCronRequestExpired)
 	})
+	t.Run("request inputs", func(t *testing.T) {
+		p, job, _ := requestJobFixture(t, s, "inputs-project")
+		job.Definition.Action.WorkflowUID = ""
+		job.Definition.Action.Prompt = "Inspect"
+		job.Definition.Options = []byte(`{"inputs":{"batch":{"type":"int","required":true}}}`)
+		job, _, e := s.PutCronJob(ctx, db.PutCronJob{ProjectID: p.ID, UID: job.UID, Name: job.Name, Definition: job.Definition, ExpectedEventUID: job.DefinitionEventUID, Actor: "operator"})
+		require.NoError(t, e)
+		in := db.RequestCronIn{ProjectID: p.ID, UID: requestUIDAt(t, now), Kind: "run", TargetUID: job.UID, Actor: "operator", TTLSeconds: 60, Now: now, Inputs: map[string]jsontext.Value{"batch": jsontext.Value("9007199254740993")}}
+		first, e := s.RequestCron(ctx, in)
+		require.NoError(t, e)
+		require.Contains(t, first.Event.Payload, "cron.request_inputs."+in.UID)
+		rows, e := s.ListCronRequests(ctx, db.CronRequestList{ProjectID: p.ID, Now: now})
+		require.NoError(t, e)
+		require.Equal(t, jsontext.Value("9007199254740993"), rows[0].Inputs["batch"])
+		in.Inputs = map[string]jsontext.Value{"batch": jsontext.Value("3")}
+		_, e = s.RequestCron(ctx, in)
+		require.ErrorIs(t, e, db.ErrCronRequestConflict)
+		event, e := s.SweepCronRequests(ctx, p.ID, now.Add(time.Minute))
+		require.NoError(t, e)
+		require.Contains(t, event.Payload, "cron.request_inputs."+in.UID)
+		project, e := s.ProjectByID(ctx, p.ID)
+		require.NoError(t, e)
+		require.NotContains(t, string(project.Metadata), "cron.request_inputs."+in.UID)
+	})
 	t.Run("cancel while paused", func(t *testing.T) {
 		p, job, wf := requestJobFixture(t, s, "cancel-project")
 		_, e := s.SetCronProjectPause(ctx, db.SetCronProjectPauseIn{ProjectID: p.ID, Actor: "operator", Paused: true})

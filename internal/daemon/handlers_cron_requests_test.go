@@ -146,3 +146,53 @@ func TestCronRequestInputsAdmission(t *testing.T) {
 	require.Equal(t, 200, status, string(raw))
 	require.Contains(t, string(raw), `"inputs":{"batch":3}`)
 }
+
+// Contract: request values are validated at admission, and replay compares
+// the retained values even after the job definition has changed.
+func TestCronRequestInputsValidationAndReplay(t *testing.T) {
+	env := testenv.New(t, testenv.WithAuthToken("tok"))
+	p := seedProject(t, env, "request-project")
+	definition := cronHTTPDefinition(t)
+	definition.Options = []byte(`{"inputs":{"batch":{"type":"int","required":true}}}`)
+	job, _, err := env.DB.PutCronJob(t.Context(), db.PutCronJob{ProjectID: p.ID, Actor: "operator", Name: "Execute review", Definition: definition})
+	require.NoError(t, err)
+	path := fmt.Sprintf("/api/v1/projects/%d/cron/jobs/%s/requests", p.ID, job.UID)
+	for _, values := range []map[string]any{nil, {"other": 1}, {"batch": "wrong"}, {"batch": nil}} {
+		status, raw := cronHTTP(t, env, http.MethodPost, path, map[string]any{"uid": cronHTTPUID(t), "actor": "operator", "inputs": values})
+		require.Equal(t, 400, status, string(raw))
+	}
+	requestUID := cronHTTPUID(t)
+	body := map[string]any{"uid": requestUID, "actor": "operator", "inputs": map[string]any{"batch": 3}}
+	status, raw := cronHTTP(t, env, http.MethodPost, path, body)
+	require.Equal(t, 200, status, string(raw))
+	definition.Options = []byte(`{"inputs":{"batch":{"type":"int","max":1}}}`)
+	_, _, err = env.DB.PutCronJob(t.Context(), db.PutCronJob{ProjectID: p.ID, UID: job.UID, Actor: "operator", Name: job.Name, Definition: definition, ExpectedEventUID: job.DefinitionEventUID})
+	require.NoError(t, err)
+	status, raw = cronHTTP(t, env, http.MethodPost, path, body)
+	require.Equal(t, 200, status, string(raw))
+	require.Contains(t, string(raw), `"replayed":true`)
+	body["inputs"] = map[string]any{"batch": 4}
+	status, raw = cronHTTP(t, env, http.MethodPost, path, body)
+	require.Equal(t, 409, status, string(raw))
+}
+
+// Contract: public input scalars retain signed 64-bit integer precision.
+func TestCronRequestInputsIntegerPrecision(t *testing.T) {
+	env := testenv.New(t, testenv.WithAuthToken("tok"))
+	p := seedProject(t, env, "request-project")
+	definition := cronHTTPDefinition(t)
+	definition.Options = []byte(`{"inputs":{"batch":{"type":"int"}}}`)
+	job, _, err := env.DB.PutCronJob(t.Context(), db.PutCronJob{ProjectID: p.ID, Actor: "operator", Name: "Execute review", Definition: definition})
+	require.NoError(t, err)
+	base := fmt.Sprintf("/api/v1/projects/%d/cron", p.ID)
+	id := cronHTTPUID(t)
+	body := fmt.Sprintf(`{"uid":%q,"actor":"operator","inputs":{"batch":9007199254740993}}`, id)
+	response := doReqEnv(t, env, http.MethodPost, env.URL+base+"/jobs/"+job.UID+"/requests", body, "")
+	raw := readClose(t, response)
+	require.Equal(t, 200, response.StatusCode, string(raw))
+	require.Contains(t, string(raw), `9007199254740993`)
+	status, raw := cronHTTP(t, env, http.MethodGet, base+"/jobs/"+job.UID+"/inputs?request_uid="+id, nil)
+	require.Equal(t, 200, status, string(raw))
+	require.Contains(t, string(raw), `9007199254740993`)
+	require.Contains(t, string(raw), `"source":"request"`)
+}
