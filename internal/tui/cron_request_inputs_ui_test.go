@@ -2,6 +2,9 @@ package tui
 
 import (
 	"encoding/json/jsontext"
+	"errors"
+	"fmt"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -44,4 +47,37 @@ func TestCronRequestInputsRenderForm(t *testing.T) {
 	require.Contains(t, view, "Rows imported per transaction")
 	require.Contains(t, view, "ctrl+o request run")
 	require.NotContains(t, view, "/ search")
+}
+
+// One frame per request form state; the no-input confirmation keeps its own goldens.
+func TestSnapshot_CronRequestInputs(t *testing.T) {
+	defer snapshotInit(t)()
+	for _, tc := range []struct {
+		state string
+		width int
+	}{{"loading", 80}, {"form", 80}, {"form", 60}, {"refused", 80}, {"retry", 80}} {
+		t.Run(fmt.Sprintf("%s-%d", tc.state, tc.width), func(t *testing.T) {
+			var m Model
+			if tc.state == "loading" {
+				m, _ = runtimeFixture(t, false)
+				m.width, m.height = tc.width, 24
+				m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": true}
+				m, _ = press(m, keyRune('R'))
+			} else {
+				var api *cronRuntimeTestAPI
+				m, api = inputsFormFixture(t, tc.width)
+				if tc.state != "form" {
+					m, _ = press(m, keyRune('5'))
+					m, _ = press(m, keyRune('0'))
+					api.errs = []error{&APIError{Status: http.StatusBadRequest, Code: "validation", Message: "batch_size: invalid input value"}}
+					if tc.state == "retry" {
+						api.errs = []error{errors.New("connection interrupted")}
+					}
+					next, cmd := press(m, ctrlKey('o'))
+					m = runtimeDone(t, next, cmd)
+				}
+			}
+			assertGolden(t, fmt.Sprintf("cron-request-inputs-%s-%d", tc.state, tc.width), m.View().Content)
+		})
+	}
 }
