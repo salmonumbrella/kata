@@ -372,7 +372,8 @@ test('shows live run cost from each daemon without exposing its AgentsView token
     await page.goto(runRoute(completeRunUID))
     await expect(cost.getByText('$2.41', { exact: true })).toBeVisible()
     // The daemon built a session address the drawer accepts as safe.
-    await expect(cost.getByRole('link', { name: 'Open in AgentsView' })).toBeVisible()
+    // The link's accessible name adds the session; its visible text stays fixed.
+    await expect(cost.getByRole('link').filter({ hasText: 'Open in AgentsView' })).toBeVisible()
     await capture(page, testInfo, 'cost-desktop-complete')
 
     const refreshed = page.waitForResponse((response) =>
