@@ -314,7 +314,9 @@ func registerCronJobHandlers(h huma.API, cfg ServerConfig) {
 			return put(ctx, in.ProjectID, in.UID, api.PutCronJobBody{Actor: actor, Name: value.Name, Definition: api.CronJobDefinitionFrom(value.Definition), ExpectedEventUID: in.Body.ExpectedEventUID}, action.deleted, enrollment, false)
 		})
 	}
-	registerCronJobEnabledHandlers(h, cfg, put)
+	registerCronJobEnabledHandlers(h, cfg, func(ctx context.Context, projectID int64, id string, body api.PutCronJobBody, deleted, enrollment bool) (*api.CronJobResponse, error) {
+		return put(ctx, projectID, id, body, deleted, enrollment, false)
+	})
 }
 
 func registerCronWorkflowHandlers(h huma.API, cfg ServerConfig) {
