@@ -9,6 +9,8 @@ All notable changes to kata, grouped by release. Versioned releases start with
 
 ## Unreleased
 
+- Supply typed input values with cron run requests and resolve them for adapters using daemon API 0.49.0. See [run requests](reference/cron.md#ask-a-runtime-to-run-or-cancel).
+
 - Restart a local daemon from Settings after turning on search by meaning. Confirm the interruption for every project and client, then reopen `kata ui` if the browser address changes. The API reports the `restart` job state and `restart_in_progress` during the handoff.
 
 - Use `kata daemon status` in scripts to check the selected daemon's readiness.

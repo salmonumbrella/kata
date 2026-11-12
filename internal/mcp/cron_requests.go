@@ -29,7 +29,7 @@ type CronRequestListInput struct {
 }
 
 func registerCronRequestTools(server *sdkmcp.Server, h toolHandlers) {
-	addCronTool(server, "kata.cron_job_request_run", "Request cron job run", "Ask an optional runtime to run an enabled adapter execute job now. Root-only; requires an unpaused project. Retain request_uid and TTL for retry. Admission launches nothing itself.", toolHints(false, false, false), h.cronJobRequestRun)
+	addCronTool(server, "kata.cron_job_request_run", "Request cron job run", "Ask an optional runtime to run an enabled adapter execute job now. Root-only; requires an unpaused project. Retain request_uid, TTL and inputs for retry. Admission launches nothing itself.", toolHints(false, false, false), h.cronJobRequestRun)
 	addCronTool(server, "kata.cron_run_request_cancel", "Request cron run cancellation", "Ask optional runtimes to cancel a currently running run. Root-only; allowed while cron is paused. Retain request_uid and TTL for retry. Admission does not itself terminate anything.", toolHints(false, false, false), h.cronRunRequestCancel)
 	addCronTool(server, "kata.cron_request_list", "List cron requests", "Read locally retained advisory requests and their current answer state. State may change with run evidence; expired requests disappear after collection.", toolHints(true, false, false), h.cronRequestList)
 }
