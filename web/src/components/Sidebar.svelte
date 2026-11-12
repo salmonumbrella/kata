@@ -4,6 +4,7 @@
   import KeyRoundIcon from '@lucide/svelte/icons/key-round'
   import PlusIcon from '@lucide/svelte/icons/plus'
   import StarIcon from '@lucide/svelte/icons/star'
+  import TimerIcon from '@lucide/svelte/icons/timer'
   import UsersIcon from '@lucide/svelte/icons/users'
   import { ScrollBox, showFlash, Tooltip } from '@kenn-io/kit-ui'
 
@@ -26,10 +27,13 @@
     draftFenceGeneration?: number | undefined
     credentialAuditAvailable?: boolean | undefined
     credentialAuditActive?: boolean | undefined
+    cronAvailable?: boolean | undefined
+    cronActive?: boolean | undefined
     onOpenView: (name: KataTaskViewName) => void | Promise<void>
     onOpenProject: (projectUID: string) => void | Promise<void>
     onCreateProject: (name: string) => Promise<KataTaskMutationResponse>
     onOpenCredentials?: (() => void | Promise<void>) | undefined
+    onOpenCron?: (() => void | Promise<void>) | undefined
   }
 
   let {
@@ -41,10 +45,13 @@
     draftFenceGeneration = 0,
     credentialAuditAvailable = false,
     credentialAuditActive = false,
+    cronAvailable = false,
+    cronActive = false,
     onOpenView,
     onOpenProject,
     onCreateProject,
     onOpenCredentials = () => {},
+    onOpenCron = () => {},
   }: Props = $props()
 
   const controlID = $props.id()
@@ -172,6 +179,17 @@
           {/if}
         </button>
       {/each}
+      {#if cronAvailable}
+        <button
+          type="button"
+          class:active={cronActive}
+          aria-label="Cron"
+          onclick={() => void onOpenCron()}
+        >
+          <span class="nav-icon"><TimerIcon size={14} strokeWidth={1.75} /></span>
+          <span class="nav-label">Cron</span>
+        </button>
+      {/if}
       {#if credentialAuditAvailable}
         <button
           type="button"

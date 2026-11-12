@@ -53,6 +53,8 @@ export interface KataFixture {
     credentials: BrowserCredentials,
     input: Record<string, unknown> & { title: string },
   ): Promise<SeededIssue>
+  // Runs the kata CLI against this fixture's daemon from its workspace.
+  cli(args: string[], input?: string): string
   restart(): Promise<void>
   restartReadonly(): Promise<void>
   restartIdentity(enabled?: boolean): Promise<void>
@@ -239,6 +241,9 @@ listen = "127.0.0.1:${port}"
       if (!response.ok()) throw new Error(`issue seed failed with status ${response.status()}`)
       return ((await response.json()) as { issue: SeededIssue }).issue
     },
+    cli(args, input) {
+      return run(binary, args, workspace, environment, input)
+    },
     async restart() {
       await stopDaemon(daemon)
       daemon = startDaemon(binary, workspace, environment)
@@ -275,8 +280,19 @@ listen = "127.0.0.1:${port}"
   }
 }
 
-function run(command: string, args: string[], cwd: string, env: NodeJS.ProcessEnv): string {
-  const result = spawnSync(command, args, { cwd, env, encoding: 'utf8' })
+function run(
+  command: string,
+  args: string[],
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+  input?: string,
+): string {
+  const result = spawnSync(command, args, {
+    cwd,
+    env,
+    encoding: 'utf8',
+    ...(input === undefined ? {} : { input }),
+  })
   if (result.status !== 0) {
     throw new Error(`${command} failed with status ${result.status}: ${result.stderr}`)
   }

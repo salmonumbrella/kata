@@ -1,7 +1,7 @@
 ---
 title: Cron
 description: Recurring child issues, shared job definitions, and attributed run evidence.
-last_edited: 2026-11-03
+last_edited: 2026-11-12
 ---
 
 Kata creates recurring child issues and inbox requests from enabled native
@@ -14,6 +14,8 @@ configuration, create or update ordinary issues, deliver notifications, and laun
 An observation records evidence; its status does not control whether anything runs.
 
 Browse jobs, runs, and workflows in `kata tui` with the `2`, `3`, and `4` tabs for the current project. On the Jobs and Workflows tabs, create and edit jobs and workflows; see the [`kata tui` keys](cli.md#daemon-and-diagnostics).
+The Web UI's **Cron** page reads the same records across every readable project;
+see [Browse cron jobs, runs, and workflows](../guide/web-ui.md#browse-cron-jobs-runs-and-workflows).
 
 For a run organized as dependent issues with human approval, see
 [Gated workflows](../workflows/gated-workflows.md).
@@ -840,12 +842,14 @@ entries follow `kata.`. CLI and MCP create definitions through stable-UID
 | HTTP `listCronRuns` (omitted `limit`) | 100 | 100 |
 | CLI `kata cron run list` | 100 | 100 |
 | TUI Runs tab | Newest 100 (fixed) | 100 |
+| Web UI Runs tab | 50 per project, then **Load older runs** | 50 |
 | MCP `kata.cron_runs` | 20 | 100 |
 
 CLI `--limit` and MCP `limit` accept 1–100. MCP uses the shared default for
 paginated results. HTTP, CLI and MCP return `next_before_uid`; pass it as
 `before_uid` (CLI `--before-uid`) for the next page. The TUI loads only the
-newest page.
+newest page. The Web UI reads each project's pages on request, and its run
+filters apply only to the runs it has loaded.
 
 ### Events and records
 

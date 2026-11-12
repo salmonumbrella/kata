@@ -1,7 +1,7 @@
 ---
 title: Web UI
 description: Browse and manage Kata projects and issues in the daemon-served browser application.
-last_edited: 2026-11-06
+last_edited: 2026-11-12
 ---
 
 # Web UI
@@ -178,6 +178,50 @@ Use `kata ui --daemon <name>` when you want to open one configured target
 directly instead. See [Configuration](../reference/configuration.md#daemon-config)
 for catalog settings and [Remote daemon](../operations/remote-daemon.md) for
 network, authentication, and proxy setup.
+
+## Browse cron jobs, runs, and workflows
+
+Open **Cron** in the navigation to read the jobs, run history, and workflows
+of every project the current connection can read. The page only reads; create
+and change definitions with `kata cron` or the TUI. See [Cron](../reference/cron.md)
+for what jobs, workflows, and runs mean.
+
+- **Jobs** lists each job's project, trigger, and whether it is enabled.
+- **Runs** lists recorded runs, newest first, with their status, job, project,
+  and creation time.
+- **Workflows** lists each workflow's project and number of steps.
+
+The Project filter narrows every tab. On Runs, the Status filter keeps runs with
+the chosen statuses. Each filter appears as a chip; select a chip to remove it.
+The tab, filters, and open record are part of the address, so a copied link
+reopens the same view.
+
+Runs load 50 at a time for each project. Filters apply only to runs already
+loaded, so a filtered list is not a complete count. **Load older runs** reads
+that project's next page; if a page fails, the button asks you to try again
+from the same place. **Refresh** reads every project again, and the page also
+refreshes when Kata reports new changes.
+
+Select a record to open its details beside the page:
+
+- A run shows its summary, status, times, executor, teammate, and token counts
+  when they were recorded. **Open issue** opens its linked issue in the
+  ordinary issue view, which finds the issue even if it moved to another
+  project. A run without an issue says so.
+- A job shows its trigger, action, and settings, and reads its five newest runs
+  so **Latest recorded run** reflects that job's own history.
+- A workflow shows its description, input, and steps.
+
+A link to a run that is older than the loaded history still opens it. A run
+that no longer exists shows **Run not found**, and a record in a project the
+connection cannot read says so without reading it.
+
+When one project's records cannot be read, the page names that project and
+keeps showing the others. A project the connection is not allowed to read says
+so; any other failure offers **Try again**. An issue-scoped credential cannot
+read Cron, so the page makes no requests and explains why. Switching daemons,
+signing out, or losing the connection clears the page; it reads again once Kata
+reconnects.
 
 ## Check the current connection
 

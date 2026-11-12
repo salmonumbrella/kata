@@ -22,7 +22,13 @@
 
   import type { TokenOut, UIIssueReference } from '../lib/api/generated'
   import type { WebDaemonInfo } from '../lib/daemons/client'
-  import type { KataRoute, ShareableFilters, SystemView } from '../lib/router'
+  import {
+    defaultCronRoute,
+    type CronRoute,
+    type KataRoute,
+    type ShareableFilters,
+    type SystemView,
+  } from '../lib/router'
   import {
     deriveKataAreas,
     defaultKataTaskSearchFilters,
@@ -49,6 +55,7 @@
   import AccessManagement from './AccessManagement.svelte'
   import type { MutationContext, MutationResult } from '../lib/mutations/controller'
   import CredentialAudit from './CredentialAudit.svelte'
+  import CronPage from './cron/CronPage.svelte'
   import ProjectSyncStatus from './ProjectSyncStatus.svelte'
   import IssueCollection from './IssueCollection.svelte'
   import IssueDetail from './IssueDetail.svelte'
@@ -199,8 +206,10 @@
     if (
       requestedRoute.view === 'settings' ||
       requestedRoute.view === 'credentials' ||
+      requestedRoute.view === 'cron' ||
       acceptedRoute.view === 'settings' ||
-      acceptedRoute.view === 'credentials'
+      acceptedRoute.view === 'credentials' ||
+      acceptedRoute.view === 'cron'
     ) {
       return undefined
     }
@@ -274,6 +283,7 @@
   let credentialRoute = $derived(route.view === 'credentials')
   let settingsRoute = $derived(route.view === 'settings')
   let daemonRoute = $derived(credentialRoute || settingsRoute)
+  let cronRoute = $derived(route.view === 'cron')
   let settingsHost = $derived.by(() => {
     const remote = activeConnection && !activeConnection.local ? activeConnection.url : undefined
     const host = remote ? new URL(remote).hostname : globalThis.location?.hostname
@@ -302,6 +312,7 @@
     requestedRoute &&
       requestedRoute.view !== 'settings' &&
       requestedRoute.view !== 'credentials' &&
+      requestedRoute.view !== 'cron' &&
       viewNameForRoute(requestedRoute) === viewName &&
       requestedRoute.projectUID === route.projectUID
       ? requestedRoute
@@ -346,6 +357,20 @@
   let returnComment = $state<{ issueUID: string; commentUID: string } | undefined>()
   let selectedIssueUID = $derived(route.issueUID ?? null)
   let scopedAuthority = $derived(snapshot.capabilities.scope !== undefined)
+  // Cron reads stop, and their results unmount, whenever the shell cannot vouch
+  // for the authority that would make them. An issue-scoped credential has no
+  // cron routes, so the page asks for nothing.
+  let cronPausedReason = $derived(
+    scopedAuthority
+      ? 'This credential is limited to one task, so it cannot read Cron.'
+      : connectionStatus === 'Authentication required' || credentialExpired
+        ? 'Sign in again to read Cron.'
+        : daemonSwitching
+          ? 'Connecting to the selected daemon.'
+          : stale || daemonError
+            ? 'Cron is paused until Kata reconnects.'
+            : undefined,
+  )
   let projectWideMutationAllowed = $derived(canMutate && !scopedAuthority)
   let childParent = $derived.by<ChildParent | undefined>(() => {
     const issue = projection.selected_detail?.issue
@@ -425,6 +450,19 @@
       graph: false,
       filters: emptyShareableFilters(),
     })
+  }
+
+  function openCron(): void {
+    closeNavigation()
+    openCronRoute(defaultCronRoute())
+  }
+
+  function openCronRoute(cron: CronRoute): void {
+    navigate({ kind: 'kata', view: 'cron', graph: false, filters: emptyShareableFilters(), cron })
+  }
+
+  function openIssue(issueUID: string): void {
+    navigate({ kind: 'kata', issueUID, graph: false, filters: emptyShareableFilters() })
   }
 
   function openSettings(): void {
@@ -548,7 +586,9 @@
   }
 
   function viewNameForRoute(current: AppRoute): KataTaskViewName {
-    if (current.view === 'credentials' || current.view === 'settings') return 'all'
+    if (current.view === 'credentials' || current.view === 'settings' || current.view === 'cron') {
+      return 'all'
+    }
     if (current.view) return current.view === 'all-open' ? 'all' : current.view
     return current.projectUID || current.issueUID ? 'all' : 'inbox'
   }
@@ -690,6 +730,9 @@
     {draftFenceGeneration}
     credentialAuditAvailable={snapshot.capabilities.token_audit_read === true}
     credentialAuditActive={credentialRoute}
+    cronAvailable={!scopedAuthority}
+    cronActive={cronRoute}
+    onOpenCron={openCron}
     onOpenView={openView}
     onOpenProject={openProject}
     onCreateProject={createProject}
@@ -759,7 +802,7 @@
         <IconButton ariaLabel="Settings" title="Settings" onclick={openSettings}>
           <SettingsIcon size={15} strokeWidth={1.8} aria-hidden="true" />
         </IconButton>
-        {#if !daemonRoute}
+        {#if !daemonRoute && !cronRoute}
           <IconButton
             ariaLabel={preferences.splitDirection === 'vertical'
               ? 'Switch to side-by-side layout'
@@ -834,6 +877,22 @@
             remoteHost={settingsHost}
           />
         {/key}
+      {:else if cronRoute}
+        {#if cronPausedReason}
+          <div class="cron-paused">
+            <EmptyState title="Cron is unavailable" description={cronPausedReason} />
+          </div>
+        {:else}
+          {#key `${activeDaemonID ?? 'direct'}:${draftFenceGeneration}`}
+            <CronPage
+              route={route.cron ?? defaultCronRoute()}
+              projects={projection.projects}
+              cursor={snapshot.cursor}
+              onNavigate={openCronRoute}
+              onOpenIssue={openIssue}
+            />
+          {/key}
+        {/if}
       {:else}
         {#if mutationMessage}
           <p class="mutation-message" role="alert">{mutationMessage}</p>
@@ -1101,6 +1160,14 @@
     display: flex;
     position: relative;
     overflow: hidden;
+  }
+
+  .cron-paused {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-5);
   }
 
   .credential-scene {

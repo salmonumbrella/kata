@@ -234,7 +234,7 @@ describe('snapshotIntentForRoute', () => {
     expect(intent.localDate).toBe('2026-08-31')
   })
 
-  it.each(['credentials', 'settings'])(
+  it.each(['credentials', 'settings', 'cron'])(
     'maps the %s screen to an unselected ordinary authority snapshot',
     (view) => {
       const route = parseRoute(

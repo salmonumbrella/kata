@@ -89,6 +89,59 @@ describe('canonical Kata routes', () => {
     expect(serialized.searchParams.has('label')).toBe(false)
   })
 
+  it('round-trips Cron tabs, filters and selection in a stable order', () => {
+    const projectA = '01J00000000000000000000002'
+    const projectB = '01J00000000000000000000003'
+    const runUID = '01K00000000000000000000001'
+    const route = parseRoute(
+      new URL(
+        `https://daemon.example/kata?view=cron&cron_tab=runs&cron_project=${projectB}` +
+          `&cron_project=${projectA}&cron_project=not-a-uid&cron_status=failed` +
+          `&cron_status=bogus&cron_status=cancelled&cron_kind=run&cron_scope=${projectA}` +
+          `&cron_uid=${runUID}`,
+      ),
+    )
+
+    expect(route).toEqual({
+      kind: 'kata',
+      view: 'cron',
+      graph: false,
+      filters: { status: [], owner: [], label: [], relationship: [] },
+      cron: {
+        tab: 'runs',
+        projectUIDs: [projectA, projectB],
+        statuses: ['cancelled', 'failed'],
+        selection: { kind: 'run', projectUID: projectA, uid: runUID },
+      },
+    })
+    expect(serializeRoute(route)).toBe(
+      `/kata?view=cron&cron_tab=runs&cron_project=${projectA}&cron_project=${projectB}` +
+        `&cron_status=cancelled&cron_status=failed&cron_kind=run&cron_scope=${projectA}` +
+        `&cron_uid=${runUID}`,
+    )
+    expect(parseRoute(new URL(serializeRoute(route), 'https://daemon.example'))).toEqual(route)
+  })
+
+  it.each([
+    ['an unknown tab', 'cron_tab=history'],
+    ['statuses outside the Runs tab', 'cron_status=failed'],
+    [
+      'an unknown selection kind',
+      `cron_kind=step&cron_scope=${issueUID}&cron_uid=${issueUID}`,
+    ],
+    ['a selection without its project', `cron_kind=run&cron_uid=${issueUID}`],
+    ['a selection with an invalid UID', `cron_kind=job&cron_scope=${issueUID}&cron_uid=abc4`],
+  ])('drops %s from a Cron route', (_name, query) => {
+    const route = parseRoute(new URL(`https://daemon.example/kata?view=cron&${query}`))
+
+    expect(route).toMatchObject({
+      kind: 'kata',
+      view: 'cron',
+      cron: { tab: 'jobs', projectUIDs: [], statuses: [] },
+    })
+    expect(serializeRoute(route)).toBe('/kata?view=cron')
+  })
+
   it('keeps invalid issue UIDs routed and gives short refs one search action', () => {
     expect(parseRoute(new URL('https://daemon.example/kata?issue=abc4'))).toEqual({
       kind: 'route-error',
@@ -141,6 +194,7 @@ describe('screen names', () => {
     [`?issue=${issueUID}&graph=1`, 'graph'],
     [`?view=credentials&issue=${issueUID}`, 'credentials'],
     [`?view=settings&issue=${issueUID}`, 'settings'],
+    [`?view=cron&issue=${issueUID}`, 'cron'],
     ['?view=unknown', undefined],
   ])('maps %s to %s', (query, screen) => {
     expect(screenNameForRoute(parseRoute(new URL(`https://daemon.example/kata${query}`)))).toBe(

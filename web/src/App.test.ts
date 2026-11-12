@@ -1744,6 +1744,132 @@ describe('App', () => {
     expect(snapshotViews.every((view) => view === 'all-open')).toBe(true)
   })
 
+  it('reads no Cron records for an issue-scoped credential', async () => {
+    const projectUID = '01J00000000000000000000002'
+    const issueUID = '01J00000000000000000000001'
+    history.replaceState(null, '', '/kata?view=cron')
+    sessionStorage.setItem(
+      'kata.web.session.v1',
+      JSON.stringify({ session: 'tab-session', csrf: 'tab-csrf' }),
+    )
+    const scoped = {
+      ...snapshot(),
+      capabilities: {
+        writable: true,
+        updates: 'poll',
+        actor_policy: 'token',
+        token_audit_read: false,
+        scope: { kind: 'issue_subtree', project_uid: projectUID, root_issue_uid: issueUID },
+      },
+    }
+    const cronReads: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const target = new URL(requestOf(input, init).url)
+        if (target.pathname === '/api/v1/ui/daemons') return Response.json(daemonRoster())
+        if (target.pathname === '/api/v1/ui/telemetry') return telemetryAccepted()
+        if (target.pathname === '/api/v1/ui/references') {
+          return Response.json({ issues: [], labels: [], owners: [], projects: [] })
+        }
+        if (target.pathname === '/api/v1/ui/snapshot') {
+          return Response.json(scoped, { headers: { ETag: '"snapshot-1"' } })
+        }
+        if (target.pathname.includes('/cron/')) cronReads.push(target.pathname)
+        return Response.json({ error: { code: 'not_found' } }, { status: 404 })
+      }),
+    )
+
+    render(App)
+
+    expect(
+      await screen.findByText('This credential is limited to one task, so it cannot read Cron.'),
+    ).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'Cron' })).toBeNull()
+    await tick()
+    expect(cronReads).toEqual([])
+  })
+
+  it('opens a run from a Cron link and follows its issue through the ordinary issue route', async () => {
+    const projectUID = '01J00000000000000000000002'
+    const issueUID = '01J00000000000000000000001'
+    const runUID = '01K00000000000000000000001'
+    history.replaceState(
+      null,
+      '',
+      `/kata?view=cron&cron_tab=runs&cron_kind=run&cron_scope=${projectUID}&cron_uid=${runUID}`,
+    )
+    sessionStorage.setItem(
+      'kata.web.session.v1',
+      JSON.stringify({ session: 'tab-session', csrf: 'tab-csrf' }),
+    )
+    const run = {
+      id: 1,
+      uid: runUID,
+      project_id: 7,
+      revision: 1,
+      actor: 'worker',
+      status: 'failed',
+      summary: { version: 1, message: 'Review stopped at the first failing check' },
+      issue_uid: issueUID,
+      created_at: '2026-10-01T09:00:00Z',
+      updated_at: '2026-10-01T09:05:00Z',
+    }
+    const selectedSnapshots: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const target = new URL(requestOf(input, init).url)
+        if (target.pathname === '/api/v1/ui/daemons') return Response.json(daemonRoster())
+        if (target.pathname === '/api/v1/ui/telemetry') return telemetryAccepted()
+        if (target.pathname === '/api/v1/ui/references') {
+          return Response.json({ issues: [], labels: [], owners: [], projects: [] })
+        }
+        if (target.pathname === '/api/v1/ui/snapshot') {
+          const selected = target.searchParams.get('selected_issue_uid')
+          if (!selected) return Response.json(snapshot(), { headers: { ETag: '"snapshot-1"' } })
+          selectedSnapshots.push(selected)
+          const body = snapshot()
+          return Response.json(
+            {
+              ...body,
+              selected: {
+                state: 'available',
+                issue: body.collection[0],
+                comments: [],
+                labels: [],
+                links: [],
+                recurrences: [],
+                history: [],
+              },
+            },
+            { headers: { ETag: '"snapshot-selected"' } },
+          )
+        }
+        if (target.pathname === '/api/v1/projects/7/cron/jobs') return Response.json({ jobs: [] })
+        if (target.pathname === '/api/v1/projects/7/cron/workflows') {
+          return Response.json({ workflows: [] })
+        }
+        if (target.pathname === '/api/v1/projects/7/cron/runs') {
+          return Response.json({ runs: [run] })
+        }
+        if (target.pathname === `/api/v1/projects/7/cron/runs/${runUID}`) {
+          return Response.json({ run })
+        }
+        return Response.json({ error: { code: 'not_found' } }, { status: 404 })
+      }),
+    )
+
+    render(App)
+
+    expect(await screen.findByText('Review stopped at the first failing check')).not.toBeNull()
+    await fireEvent.click(screen.getByRole('button', { name: 'Open issue' }))
+
+    await waitFor(() => expect(window.location.search).toBe(`?issue=${issueUID}`))
+    await waitFor(() => expect(selectedSnapshots).toContain(issueUID))
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Cron' })).toBeNull())
+  })
+
   it('loads credential audit metadata without sending the credential route to snapshots and returns to the issue route', async () => {
     history.replaceState(null, '', '/kata?issue=01J00000000000000000000001&graph=1#direct=1')
     sessionStorage.setItem(

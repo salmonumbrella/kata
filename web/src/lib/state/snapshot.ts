@@ -234,7 +234,7 @@ export function snapshotIntentForRoute(
   now: Date = new Date(),
   timeZone: string = Intl.DateTimeFormat().resolvedOptions().timeZone,
 ): UISnapshotIntent {
-  if (route.view === 'credentials' || route.view === 'settings') {
+  if (route.view === 'credentials' || route.view === 'settings' || route.view === 'cron') {
     return {
       view: 'all-open',
       statuses: [],
