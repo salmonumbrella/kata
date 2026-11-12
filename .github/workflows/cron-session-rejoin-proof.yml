@@ -54,3 +54,5 @@ jobs:
         run: go test -p 1 -v ./internal/db/sqlitestore ./internal/db/pgstore -run '^TestStorageConformance$/^adoption_session_features$' -count=1
       - if: always()
         run: go test -p 1 ./internal/federation -run '^TestFederationClientSignsRelayBatchAbovePreviousBodyLimit$' -count=1
+      - if: always()
+        run: go test -p 1 ./internal/daemon -run '^TestAPISchemaVersionMatchesRecordedContract$' -count=1
