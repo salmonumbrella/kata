@@ -29,14 +29,11 @@ jobs:
       - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
-      - name: Cron GETs reach the handler for the local-web principal
-        run: env -u KATA_AUTH_TOKEN go test -p 1 -v ./internal/daemon -run '^TestWebLocalSessionAdmitsCronReads$' -count=1
-      - name: Existing local-web allowlist stays intact
-        if: always()
+      - name: Local-web allowlist admits exact cron reads and keeps its other rows
         run: env -u KATA_AUTH_TOKEN go test -p 1 -v ./internal/daemon -run '^TestWebLocalSessionIsLimitedToSPAOperations$' -count=1
-      - name: Gateway forwards only cron reads with the target credential
+      - name: Gateway pins the target credential and strips browser credentials
         if: always()
-        run: env -u KATA_AUTH_TOKEN go test -p 1 -v ./internal/daemon -run '^TestWebDaemonGatewayForwardsOnlyCronReadsWithTargetCredential$' -count=1
+        run: env -u KATA_AUTH_TOKEN go test -p 1 -v ./internal/daemon -run '^TestWebDaemonProxyPinsTargetAndStripsBrowserCredentials$' -count=1
       - name: Issue-scoped browser allowlist stays intact
         if: always()
         run: env -u KATA_AUTH_TOKEN go test -p 1 -v ./internal/daemon -run '^TestIssueScopedBrowserSession' -count=1
