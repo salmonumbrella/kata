@@ -37,4 +37,12 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - run: go test -p 1 ./internal/daemon ./internal/federation -run '^Test(Rejoin|Adoption|FederationAdoption|RebindFederation|FederationRebind|EnsureFederationReplica(RekeysCredentialBeforeAdoption|RejectsDistinctCredentialAtAdoptionSource|CredentialWriteFailureRetriesAdoption)|ReconcileMappingManualH2JoinWinsBeforeH1ReservationWithoutEnrollment)' -count=1
+      - run: go test -p 1 ./internal/daemon ./internal/federation -run '^Test(Rejoin|Adoption|FederationAdoption|RebindFederation|FederationRebind|CronAdmissionOutlivesProbeDeadlineAcrossPostgresStores|CronSessionObservation|EnsureFederationReplica(RekeysCredentialBeforeAdoption|RejectsDistinctCredentialAtAdoptionSource|CredentialWriteFailureRetriesAdoption)|ReconcileMappingManualH2JoinWinsBeforeH1ReservationWithoutEnrollment)' -count=1
+      - if: always()
+        run: go test -p 1 ./internal/cron ./internal/db -run '^Test(SummarySessionsContract|RecurringFeaturesCachePositiveProject)$' -count=1
+      - if: always()
+        run: go test -p 1 ./internal/db/sqlitestore ./internal/db/pgstore -run '^TestStorageConformance$/^recurring_feature_probe_candidates$' -count=1
+      - if: always()
+        run: go test -p 1 ./internal/daemon -run '^TestOpenAPICronSummaryIncompleteOnlyAcceptsTrue$' -count=1
+      - if: always()
+        run: go test -p 1 ./cmd/kata -run '^TestCronCLIObservationSessionsRoundTrip$' -count=1
