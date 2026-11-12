@@ -2,6 +2,8 @@ package dbtest
 
 import (
 	"strings"
+	"encoding/json/jsontext"
+	"time"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -18,6 +20,24 @@ func checkCronProjectMergeRestore(t *testing.T, source db.Storage, backend Backe
 	require.NoError(t, err)
 
 	job, workflow := nativeFederationDefinitions(t, source, sourceProject)
+	job.Definition.Enabled = true
+	job.Definition.Action.WorkflowUID = ""
+	job.Definition.Action.Prompt = "Inspect"
+	job.Definition.Options = []byte(`{"inputs":{"flag":{"type":"bool"}}}`)
+	job, _, err = source.PutCronJob(ctx, db.PutCronJob{ProjectID: sourceProject.ID, UID: job.UID, Name: job.Name, Definition: job.Definition, ExpectedEventUID: job.DefinitionEventUID, Actor: "worker"})
+	require.NoError(t, err)
+	targetJob, _, err := source.PutCronJob(ctx, db.PutCronJob{ProjectID: targetProject.ID, Name: "Inspect", Definition: job.Definition, Actor: "worker"})
+	require.NoError(t, err)
+	now := time.Now().UTC()
+	sourceRequest := requestUIDAt(t, now)
+	targetRequest := requestUIDAt(t, now)
+	for _, in := range []db.RequestCronIn{
+		{ProjectID: sourceProject.ID, UID: sourceRequest, Kind: "run", TargetUID: job.UID, Actor: "worker", Now: now, Inputs: map[string]jsontext.Value{"flag": jsontext.Value("true")}},
+		{ProjectID: targetProject.ID, UID: targetRequest, Kind: "run", TargetUID: targetJob.UID, Actor: "worker", Now: now, Inputs: map[string]jsontext.Value{"flag": jsontext.Value("false")}},
+	} {
+		_, err = source.RequestCron(ctx, in)
+		require.NoError(t, err)
+	}
 	runUID, err := uid.New()
 	require.NoError(t, err)
 	_, err = source.ObserveCronRun(ctx, db.ObserveCronRun{
@@ -59,6 +79,11 @@ func checkCronProjectMergeRestore(t *testing.T, source db.Storage, backend Backe
 
 	target, err := restored.ProjectByUID(ctx, targetProject.UID)
 	require.NoError(t, err)
+	require.Contains(t, string(target.Metadata), "cron.request_inputs."+targetRequest)
+	require.NotContains(t, string(target.Metadata), "cron.request_inputs."+sourceRequest)
+	retainedSource, err := restored.ProjectByUID(ctx, sourceProject.UID)
+	require.NoError(t, err)
+	require.Contains(t, string(retainedSource.Metadata), "cron.request_inputs."+sourceRequest)
 	restoredJob, err := restored.CronJob(ctx, target.ID, job.UID)
 	require.NoError(t, err)
 	require.Equal(t, job.UID, restoredJob.UID)
