@@ -376,7 +376,7 @@ func convertAndReflowHelpRows(
 
 func (m Model) activeModalHelpRows() [][]helplayout.HelpItem {
 	if m.modal != modalCronAction {
-		return modalHelpRows(m.modal)
+		return modalHelpRows(m.modal, m.move.step())
 	}
 	switch a := m.cron.action; {
 	case a.request():
