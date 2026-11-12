@@ -305,16 +305,21 @@ func TestCronRunUsageStates(t *testing.T) {
 				require.Contains(t, body(), "Cost:       $2.41")
 				m, cmd = updateModel(m, keyRune('r'))
 				require.Contains(t, body(), "Cost:       $2.41 · refreshing…")
+				// r again while the refresh is pending starts another refresh;
+				// the displaced answer is dropped and the newer one lands.
 				var again tea.Cmd
 				m, again = updateModel(m, keyRune('r'))
-				require.Empty(t, cronUsageRead(again), "a pending refresh absorbs repeated r")
+				displaced := cronUsageRead(cmd)
+				require.Len(t, displaced, 1)
 				a.usageErr = errors.New("daemon busy")
-				refreshed := cronUsageRead(cmd)
+				refreshed := cronUsageRead(again)
 				require.Len(t, refreshed, 1)
+				m, _ = updateModel(m, displaced[0])
+				require.Contains(t, body(), "Cost:       $2.41 · refreshing…")
 				m, _ = updateModel(m, refreshed[0])
 				require.Contains(t, body(), "Cost:       unavailable: daemon busy · r: refresh")
 				require.NotContains(t, body(), "$2.41")
-				require.Equal(t, []string{"01ARZ3NDEKTSV4RRFFQ69G5FAY false", "01ARZ3NDEKTSV4RRFFQ69G5FAY true"}, a.usageReads)
+				require.Equal(t, []string{"01ARZ3NDEKTSV4RRFFQ69G5FAY false", "01ARZ3NDEKTSV4RRFFQ69G5FAY true", "01ARZ3NDEKTSV4RRFFQ69G5FAY true"}, a.usageReads)
 			case "newer state":
 				m, _ = updateModel(m, first[0])
 				require.Contains(t, body(), "Cost:       unavailable: unsupported usage state · r: refresh")
@@ -347,7 +352,7 @@ func TestCronRunUsageStates(t *testing.T) {
 				require.Len(t, other, 1)
 				m, _ = updateModel(m, first[0])
 				require.Contains(t, body(), "runs / 01ARZ3NDEKTSV4RRFFQ69G5FAZ")
-				require.Contains(t, body(), "Cost:       loading… · press r after it loads")
+				require.Contains(t, body(), "Cost:       loading…")
 				m, _ = updateModel(m, other[0])
 				require.Contains(t, body(), "Cost:       $2.41")
 				m = sendRune(m, 'h')
@@ -355,14 +360,22 @@ func TestCronRunUsageStates(t *testing.T) {
 				m, cmd = updateModel(m, tea.KeyPressMsg{Code: tea.KeyEnter})
 				m, _ = updateModel(m, first[0])
 				require.Contains(t, body(), "runs / 01ARZ3NDEKTSV4RRFFQ69G5FAY")
-				require.Contains(t, body(), "Cost:       loading… · press r after it loads")
-				var again tea.Cmd
-				m, again = updateModel(m, keyRune('r'))
-				require.Empty(t, cronUsageRead(again), "r waits for the first read")
+				require.Contains(t, body(), "Cost:       loading…")
+				require.NotContains(t, body(), "press r after it loads")
+				// r while the first read is pending starts a refresh at once;
+				// the first answer is then dropped and the refreshed one lands.
 				latest := cronUsageRead(cmd)
 				require.Len(t, latest, 1)
+				var again tea.Cmd
+				m, again = updateModel(m, keyRune('r'))
+				refreshed := cronUsageRead(again)
+				require.Len(t, refreshed, 1)
 				m, _ = updateModel(m, latest[0])
+				require.Contains(t, body(), "Cost:       loading…")
+				require.NotContains(t, body(), "$2.41")
+				m, _ = updateModel(m, refreshed[0])
 				require.Contains(t, body(), "Cost:       $2.41")
+				require.Equal(t, []string{"01ARZ3NDEKTSV4RRFFQ69G5FAY false", "01ARZ3NDEKTSV4RRFFQ69G5FAZ false", "01ARZ3NDEKTSV4RRFFQ69G5FAY false", "01ARZ3NDEKTSV4RRFFQ69G5FAY true"}, a.usageReads)
 			case "project", "daemon":
 				data := *m.cron.data
 				if name == "daemon" {
@@ -381,7 +394,7 @@ func TestCronRunUsageStates(t *testing.T) {
 				reopened := cronUsageRead(cmd)
 				require.Len(t, reopened, 1)
 				m, _ = updateModel(m, first[0])
-				require.Contains(t, body(), "Cost:       loading… · press r after it loads")
+				require.Contains(t, body(), "Cost:       loading…")
 				m, _ = updateModel(m, reopened[0])
 				require.Contains(t, body(), "Cost:       $2.41")
 			case "row removed":
