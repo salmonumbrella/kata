@@ -131,5 +131,12 @@ func TestCronRunUsageCatalogs(t *testing.T) {
 		tools, err := session.ListTools(t.Context(), nil)
 		require.NoError(t, err)
 		require.Equal(t, enabled, slices.Contains(toolNames(tools.Tools), "kata.cron_run_usage"))
+		for _, tool := range tools.Tools {
+			if tool.Name == "kata.cron_run_usage" {
+				require.NotNil(t, tool.Annotations)
+				require.NotNil(t, tool.Annotations.OpenWorldHint)
+				require.True(t, *tool.Annotations.OpenWorldHint, "usage reaches the external AgentsView system")
+			}
+		}
 	}
 }
