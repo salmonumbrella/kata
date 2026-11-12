@@ -31,11 +31,17 @@ jobs:
           go-version-file: go.mod
       - name: Local-web allowlist admits exact cron capabilities and usage reads
         run: env -u KATA_AUTH_TOKEN go test -p 1 -v ./internal/daemon -run '^TestWebLocalSessionIsLimitedToSPAOperations$' -count=1
+      - name: Issue-scoped browser sessions stay denied cron usage
+        if: always()
+        run: env -u KATA_AUTH_TOKEN go test -p 1 -v ./internal/daemon -run '^TestIssueScopedBrowserSession' -count=1
+      - name: Gateway pins the target credential and strips browser credentials
+        if: always()
+        run: env -u KATA_AUTH_TOKEN go test -p 1 -v ./internal/daemon -run '^TestWebDaemonProxyPinsTargetAndStripsBrowserCredentials$' -count=1
 
   web:
-    name: Web run drawer cost
+    name: Web run cost unit and static checks
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -50,14 +56,109 @@ jobs:
       - name: Install frozen web dependencies
         id: install
         run: kit-retry 3 5 make web-install
-      - name: Open run shows its cost when usage is on
+      - name: Cost amounts and state text match the CLI
         working-directory: web
-        run: bun x vp test src/components/cron/CronPage.test.ts -t 'shows the cost of an open run with one usage read when usage is on'
-      - name: Open run shows no cost and reads no usage when usage is off
+        run: bun x vp test src/lib/cron/usage.test.ts
+      - name: Session links stay safe
         if: always() && steps.install.outcome == 'success'
         working-directory: web
-        run: bun x vp test src/components/cron/CronPage.test.ts -t 'shows no cost and reads no usage when usage is off'
-      - name: New tests type-check
+        run: bun x vp test src/lib/history/sessionLink.test.ts src/components/IssueHistory.test.ts
+      - name: Run drawer cost reads, refresh, states and fences
         if: always() && steps.install.outcome == 'success'
         working-directory: web
-        run: bun run typecheck
+        run: bun x vp test src/components/cron/CronPage.test.ts
+      - name: App Cron routes stay intact
+        if: always() && steps.install.outcome == 'success'
+        working-directory: web
+        run: bun x vp test src/App.test.ts -t 'Cron'
+      - name: Full web unit suite
+        if: always() && steps.install.outcome == 'success'
+        working-directory: web
+        run: bun run test
+      - name: Web static checks
+        if: always() && steps.install.outcome == 'success'
+        run: make web-check
+
+  browser:
+    name: Cron run cost real-daemon browser evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 26.12.1
+      - uses: step-security/setup-bun@v2.1.3
+        with:
+          bun-version: 1.4.4
+      - uses: kenn-io/kit/.github/actions/kit-retry@v0.47.3
+      - name: Install frozen web dependencies
+        run: kit-retry 3 5 make web-install
+      - name: Start browser server
+        id: browser-server
+        timeout-minutes: 10
+        working-directory: web
+        env:
+          PLAYWRIGHT_IMAGE: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
+        run: |
+          version=$(node -p "require('@playwright/test/package.json').version")
+          image_version=${PLAYWRIGHT_IMAGE#*:v}
+          image_version=${image_version%%-noble@*}
+          if [ "$version" != "$image_version" ]; then
+            echo "Installed @playwright/test $version does not match $PLAYWRIGHT_IMAGE." >&2
+            exit 1
+          fi
+          cli=$(node -p "require.resolve('@playwright/test/cli')")
+          kit-retry 3 5 docker pull "$PLAYWRIGHT_IMAGE"
+          container_id=$(docker run --detach --interactive --init --network host --ipc host \
+            --volume "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE:ro" \
+            --workdir "$GITHUB_WORKSPACE/web" \
+            "$PLAYWRIGHT_IMAGE" node "$cli" run-server --host 127.0.0.1 --port 3000)
+          echo "container_id=$container_id" >> "$GITHUB_OUTPUT"
+          for _ in {1..30}; do
+            if [ "$(docker inspect --format '{{.State.Running}}' "$container_id")" != true ]; then
+              echo 'Browser server container exited before becoming ready.' >&2
+              exit 1
+            fi
+            if curl --fail --silent --output /dev/null --max-time 2 http://127.0.0.1:3000/json; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo 'Browser server did not become ready within 30 attempts.' >&2
+          exit 1
+      # Default Chromium only; this proof runs no Firefox suite, so nothing
+      # clears web/test-results before the upload below.
+      - name: Run isolated Cron and run cost browser tests
+        env:
+          PW_TEST_CONNECT_WS_ENDPOINT: ws://127.0.0.1:3000/
+          KATA_HOME: ${{ runner.temp }}/kata-web-browser/home
+          KATA_DB: ${{ runner.temp }}/kata-web-browser/home/kata.db
+          KATA_WORKSPACE: ${{ runner.temp }}/kata-web-browser/workspace
+          KATA_PLAYWRIGHT_SUITE: cron-run-cost-web
+        working-directory: web
+        run: |
+          mkdir -p "$KATA_HOME" "$KATA_WORKSPACE"
+          bun run test:e2e -- tests/cron-cost.spec.ts tests/cron.spec.ts
+      - name: Upload Cron browser evidence and report
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: cron-run-cost-web-evidence-attempt-${{ github.run_attempt }}
+          path: web/test-results/
+          retention-days: 14
+          if-no-files-found: warn
+      - name: Stop browser server
+        if: always() && steps.browser-server.outputs.container_id != ''
+        env:
+          CONTAINER_ID: ${{ steps.browser-server.outputs.container_id }}
+        run: |
+          docker logs "$CONTAINER_ID" || true
+          docker stop "$CONTAINER_ID" || true
+          docker rm --force "$CONTAINER_ID"
