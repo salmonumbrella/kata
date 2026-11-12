@@ -262,3 +262,22 @@ func TestCronClientRequestInputsExactLiterals(t *testing.T) {
 	require.NoError(t, c.RequestCron(t.Context(), 7, "01ARZ3NDEKTSV4RRFFQ69G5FAV", db.CronRequestKindRun, "job", "operator", map[string]jsontext.Value{"count": []byte("9007199254740993")}))
 	require.Contains(t, body, `"count":9007199254740993`)
 }
+
+func TestCronClientRequestInputsVersionAndNotFound(t *testing.T) {
+	for _, tc := range []struct{ version string; unsupported bool }{{"0.48.0", true}, {"0.49.0", false}} {
+		t.Run(tc.version, func(t *testing.T) {
+			calls := 0
+			hc := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				calls++
+				status, body := http.StatusOK, `{"api_schema_version":"`+tc.version+`"}`
+				if calls > 1 { status, body = http.StatusNotFound, `{}` }
+				return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
+			})}
+			c := NewClient("https://daemon.example", hc)
+			_, err := c.CronJobInputs(t.Context(), 7, "job")
+			require.Error(t, err)
+			require.Equal(t, tc.unsupported, errors.Is(err, errCronInputsUnsupported))
+			if tc.unsupported { require.Equal(t, 1, calls) } else { require.Equal(t, 2, calls) }
+		})
+	}
+}
