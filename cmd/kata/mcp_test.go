@@ -24,7 +24,9 @@ import (
 
 	internalclient "go.kenn.io/kata/internal/client"
 	"go.kenn.io/kata/internal/daemon"
+	mcpserver "go.kenn.io/kata/internal/mcp"
 	"go.kenn.io/kata/internal/version"
+	kataclient "go.kenn.io/kata/pkg/client"
 )
 
 func TestMCPServeProjectModesRejectFlagConflicts(t *testing.T) {
@@ -59,14 +61,13 @@ func TestMCPServeTokenAdminRequiresAllProjects(t *testing.T) {
 	}
 }
 
-// serveMCPTestHealth answers the startup API version handshake as a current
-// daemon so tests can exercise the rest of the fake daemon.
+// serveMCPTestHealth reports the pre-usage API for unrelated fake daemons.
 func serveMCPTestHealth(writer http.ResponseWriter, request *http.Request) bool {
 	if request.URL.Path != "/api/v1/health" {
 		return false
 	}
 	writer.Header().Set("Content-Type", "application/json")
-	_, _ = fmt.Fprintf(writer, `{"ok":true,"api_schema_version":%q}`, daemon.APISchemaVersion)
+	_, _ = fmt.Fprintf(writer, `{"ok":true,"api_schema_version":%q}`, "0.45.0")
 	return true
 }
 
@@ -497,7 +498,7 @@ func TestMCPServeRenewsAdvertisedAutostartDaemon(t *testing.T) {
 			writer.Header().Set("Content-Type", "application/json")
 			_, _ = fmt.Fprintf(writer,
 				`{"ok":true,"api_schema_version":%q,"idle_shutdown":{"timeout":"15m0s","state":"armed"}}`,
-				daemon.APISchemaVersion,
+				"0.45.0",
 			)
 		case "/api/v1/ping":
 			assert.Equal(t, "1", request.Header.Get(daemon.IdleKeepaliveHeader))
@@ -1031,7 +1032,14 @@ func TestMCPCronUsage(t *testing.T) {
 			result, err := session.CallTool(t.Context(), &sdkmcp.CallToolParams{Name: "kata.cron_run_usage", Arguments: map[string]any{"project": "spoke-project", "uid": runUID, "refresh": true}})
 			require.NoError(t, err)
 			require.False(t, result.IsError)
-			require.Equal(t, "refresh=true", <-usageRequests)
+			select {
+			case query := <-usageRequests:
+				require.Equal(t, "refresh=true", query)
+			case <-time.After(5 * time.Second):
+				t.Fatal("usage request was not received")
+			case <-t.Context().Done():
+				t.Fatal("context canceled waiting for usage request")
+			}
 			structured, err := json.Marshal(result.StructuredContent)
 			require.NoError(t, err)
 			// Compare the endpoint body in both MCP representations.
@@ -1051,6 +1059,55 @@ func TestMCPCronUsage(t *testing.T) {
 			decoder.UseNumber()
 			require.NoError(t, decoder.Decode(&actual))
 			require.Equal(t, expected, actual)
+		})
+	}
+}
+
+func TestMCPCronUsageStartupDiscovery(t *testing.T) {
+	for _, tc := range []struct {
+		name, version, projects, capabilities string
+		status                                int
+		want                                  bool
+		wantError                             bool
+	}{
+		{name: "enabled", version: "0.46.0", projects: `{"projects":[{"id":42,"uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","name":"spoke-project","metadata":{},"revision":1,"created_at":"2026-08-11T00:00:00Z"}]}`, capabilities: `{"project_uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","event_features":[],"usage":{"source":"agentsview"}}`, want: true},
+		{name: "disabled", version: "0.46.0", projects: `{"projects":[{"id":42,"uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","name":"spoke-project","metadata":{},"revision":1,"created_at":"2026-08-11T00:00:00Z"}]}`, capabilities: `{"project_uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","event_features":[],"usage":{"source":"none"}}`},
+		{name: "no projects", version: "0.46.0", projects: `{"projects":[]}`},
+		{name: "old API", version: "0.45.0"},
+		{name: "capability failure", version: "0.46.0", projects: `{"projects":[{"id":42,"uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","name":"spoke-project","metadata":{},"revision":1,"created_at":"2026-08-11T00:00:00Z"}]}`, status: http.StatusForbidden, wantError: true},
+		{name: "catalog failure", version: "0.46.0", status: http.StatusInternalServerError, wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			requests := 0
+			daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests++
+				w.Header().Set("Content-Type", "application/json")
+				if r.URL.Path == "/api/v1/projects" && tc.projects != "" {
+					_, _ = io.WriteString(w, tc.projects)
+					return
+				}
+				if r.URL.Path == "/api/v1/projects/42/cron/capabilities" && tc.capabilities != "" {
+					_, _ = io.WriteString(w, tc.capabilities)
+					return
+				}
+				http.Error(w, `{"error":{"code":"forbidden","message":"fixture failure"}}`, tc.status)
+			}))
+			t.Cleanup(daemon.Close)
+			client, err := kataclient.NewWithHTTPClient(daemon.URL, daemon.Client())
+			require.NoError(t, err)
+			got, err := resolveMCPCronUsage(t.Context(), tc.version, mcpserver.NewAllScope(), client)
+			if tc.wantError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.want, got)
+			}
+			if tc.name == "old API" {
+				require.Zero(t, requests)
+			}
+			if tc.name == "no projects" {
+				require.Equal(t, 1, requests)
+			}
 		})
 	}
 }

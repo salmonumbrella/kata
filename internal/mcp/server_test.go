@@ -70,7 +70,7 @@ func TestServerPublishesStartupSectionsInitially(t *testing.T) {
 	admin, err := storageadmin.New(storageadmin.Config{Root: t.TempDir(), SourceDSN: "source.db"})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, admin.Close()) })
-	for _, section := range toolSections(true, true) {
+	for _, section := range toolSections(true, true, false) {
 		t.Run(section.section, func(t *testing.T) {
 			options := Options{
 				Client: inertTestClient(t), Scope: NewAllScope(), Actor: "example-agent", Version: "test-version",

@@ -57,7 +57,9 @@ func TestToolCatalogStaysWithinBudget(t *testing.T) {
 		{"every section loaded", loadedCatalogBudget, connectTestServerWithOptions},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			session := test.connect(t, defaultCatalogOptions(inertTestClient(t)))
+			options := defaultCatalogOptions(inertTestClient(t))
+			options.CronUsage = true
+			session := test.connect(t, options)
 			result, err := session.ListTools(t.Context(), nil)
 			require.NoError(t, err)
 			require.Empty(t, catalogOverBudget(result, test.budget))
@@ -89,7 +91,7 @@ func TestToolCatalogBudgetUsesWireEncoding(t *testing.T) {
 }
 
 func TestToolCatalogBudgetFailsOneByteOver(t *testing.T) {
-	fixture := toolSections(false, false)[1]
+	fixture := toolSections(false, false, false)[1]
 	catalog := func(padding int) *sdkmcp.ListToolsResult {
 		server, err := New(defaultCatalogOptions(inertTestClient(t)))
 		require.NoError(t, err)
