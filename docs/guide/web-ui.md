@@ -198,9 +198,12 @@ reopens the same view.
 
 Runs shows each project's newest 50 runs. Filters apply only to those loaded
 runs, so a filtered list is not a complete count, and the Jobs tab makes no
-claim about a job's latest result or failure totals. The lists and the open
-record are read when the page or record opens; **Refresh** reads them again.
-Each project's records appear as soon as that project answers.
+claim about a job's latest result or failure totals. Opening the page reads
+three lists for each readable project (its jobs, its workflows, and its newest
+50 runs), with at most four reads in flight; opening a run reads that run.
+**Refresh** reads them again. Each project's records appear as soon as that
+project answers, and a tab with nothing to show yet says it is still loading
+until every project has answered.
 
 The page shows job definitions, including prompts, to anyone whose browser
 session can read the project, as it shows issues.
@@ -212,13 +215,12 @@ Select a record to open its details beside the page:
   **Recorded by adapter**; they are not the live cost. **Open issue** opens
   its linked issue in the ordinary issue view, which finds the issue even if
   it moved to another project. A run without an issue says so. A run whose
-  job was deleted is listed as **Deleted job**, and its drawer keeps the job's
-  UID. A run with recorded sessions lists each one by agent and short session
-  ID. When the serving daemon is configured for
+  job was deleted is listed as **Deleted job**, and its drawer shows the job's
+  UID as text. A run with recorded sessions lists each one by agent and short
+  session ID. When the serving daemon is configured for
   [AgentsView usage](../reference/configuration.md#agentsview-usage), the drawer
   also shows the run's live **Cost**, described below.
-- A job shows its trigger, action, and settings, and reads its five newest runs
-  so **Latest recorded run** reflects that job's own history.
+- A job shows its trigger, action, and settings from the loaded list.
 - A workflow shows its description, input, and steps.
 
 The **Cost** section reads the run's cost from the daemon when the drawer
@@ -248,10 +250,10 @@ When one project's records cannot be read, the page names that project and
 keeps showing the others. A project the connection is not allowed to read, or
 one that no longer exists, says so and shows none of its records. After any
 other failure, **Refresh** tries again; if the project was read before, its
-last records stay on the page and the notice says they are from the last read. An issue-scoped credential cannot
-read Cron, so the page makes no requests and explains why. Switching daemons,
-signing out, or losing the connection clears the page; it reads again once Kata
-reconnects.
+last records stay on the page and the notice says they are from the last read.
+An issue-scoped credential cannot read Cron, so the page makes no requests and
+explains why. Switching daemons, signing out, or losing the connection clears
+the page; it reads again once Kata reconnects.
 
 ## Check the current connection
 

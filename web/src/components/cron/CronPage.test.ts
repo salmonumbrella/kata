@@ -68,10 +68,6 @@ function urlOf(input: RequestInfo | URL): URL {
   return new URL(String(input), 'http://127.0.0.1')
 }
 
-function jobRead(url: URL): boolean {
-  return url.searchParams.get('job_uid') === jobUID
-}
-
 function serve(handler: Handler) {
   const fetcher = vi.fn<typeof fetch>(async (input) => handler(urlOf(input)))
   setGeneratedFetch(fetcher)
@@ -266,15 +262,22 @@ describe('CronPage', () => {
     expect(screen.getByRole('button', { name: 'Review example-project-1' })).not.toBeNull()
   })
 
-  it('shows only the newest bounded page of runs per project', async () => {
+  it('shows only the newest bounded page of runs per project in the daemon order', async () => {
+    // Imported runs can differ by nanoseconds within one millisecond. The
+    // daemon orders them by the full time, which here opposes their UIDs.
+    const newer = '2026-10-01T09:03:00.000000002Z'
+    const older = '2026-10-01T09:03:00.000000001Z'
     const fetcher = serve((url) => {
       if (url.pathname === cronPath(exampleProject, 'jobs')) {
         return Response.json({ jobs: [job(exampleProject, 'Daily review')] })
       }
       if (url.pathname === cronPath(exampleProject, 'runs')) {
         return Response.json({
-          runs: [run(exampleProject, runA, 3), run(exampleProject, runB, 2)],
-          next_before_uid: runB,
+          runs: [
+            run(exampleProject, runC, 3, { status: 'failed', created_at: newer }),
+            run(exampleProject, runA, 3, { created_at: older }),
+          ],
+          next_before_uid: runA,
         })
       }
       return emptyCatalog(url) ?? notFound()
@@ -288,6 +291,8 @@ describe('CronPage', () => {
       ),
     ).not.toBeNull()
     expect(screen.getAllByRole('button', { name: 'Daily review' })).toHaveLength(2)
+    const rows = screen.getByRole('table', { name: 'Cron runs' }).querySelectorAll('tbody tr')
+    expect(Array.from(rows, (row) => /failed/.test(row.textContent ?? ''))).toEqual([true, false])
     const runsPath = cronPath(exampleProject, 'runs')
     expect(requested(fetcher, runsPath).map((url) => url.searchParams.toString())).toEqual([
       'limit=50',
@@ -316,12 +321,43 @@ describe('CronPage', () => {
     serve((url) => emptyCatalog(url) ?? notFound())
     render(CronPage, { props: props({ tab: 'runs' }, [exampleProject]) })
     expect(await screen.findByText('No runs recorded yet')).not.toBeNull()
+
+    // An empty project that answered first does not make the page empty while
+    // another project's read is still pending.
+    cleanup()
+    let releaseSpoke: () => void = () => {}
+    const spoke = new Promise<void>((resolve) => (releaseSpoke = resolve))
+    serve(async (url) => {
+      if (url.pathname === cronPath(spokeProject, 'jobs')) {
+        return Response.json({ jobs: [job(spokeProject, 'Spoke review')] })
+      }
+      if (url.pathname === cronPath(spokeProject, 'runs')) {
+        await spoke
+        return Response.json({ runs: [run(spokeProject, runA, 3)] })
+      }
+      return emptyCatalog(url) ?? notFound()
+    })
+    render(CronPage, { props: props({ tab: 'runs' }, [exampleProject, spokeProject]) })
+    // Refresh shows busy only once a project's records are on the page.
+    const refresh = screen.getByRole('button', { name: 'Refresh' })
+    await waitFor(() => expect(refresh.getAttribute('aria-busy')).not.toBeNull())
+    expect(screen.getByText('Loading cron records…')).not.toBeNull()
+    expect(screen.queryByText('No runs recorded yet')).toBeNull()
+    releaseSpoke()
+    expect(await screen.findByRole('button', { name: 'Spoke review' })).not.toBeNull()
   })
 
   it('opens a run older than the loaded history by UID and names a missing run', async () => {
     const issueUID = '01J00000000000000000000001'
+    const deletedJobUID = '01K0000000000000000000000D'
     let detailReads = 0
     const fetcher = serve((url) => {
+      if (url.pathname === cronPath(exampleProject, 'jobs')) {
+        return Response.json({ jobs: [job(exampleProject, 'Daily review')] })
+      }
+      if (url.pathname === cronPath(exampleProject, `runs/${runA}`)) {
+        return Response.json({ run: run(exampleProject, runA, 3, { job_uid: deletedJobUID }) })
+      }
       if (url.pathname === cronPath(exampleProject, `runs/${runC}`)) {
         detailReads += 1
         if (detailReads === 1) {
@@ -343,6 +379,28 @@ describe('CronPage', () => {
     expect(await screen.findByText(`Run ${runC}`)).not.toBeNull()
     await fireEvent.click(screen.getByRole('button', { name: 'Open issue' }))
     expect(current.onOpenIssue).toHaveBeenCalledWith(issueUID)
+    // A job still in the catalog opens from the run. Refresh is disabled until
+    // a project's records arrive and busy until every read settles, so the
+    // catalog has settled once it is neither.
+    const refresh = screen.getByRole('button', { name: 'Refresh' })
+    await waitFor(() => {
+      expect(refresh.hasAttribute('disabled')).toBe(false)
+      expect(refresh.getAttribute('aria-busy')).toBeNull()
+    })
+    await fireEvent.click(screen.getByRole('button', { name: 'Daily review' }))
+    const jobSelection = { kind: 'job', projectUID: exampleProject.uid, uid: jobUID }
+    expect(current.onNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({ selection: jobSelection }),
+    )
+
+    // A deleted job keeps its UID as text, with nothing to open.
+    await view.rerender({
+      ...current,
+      route: { ...current.route, selection: { ...selection, uid: runA } },
+    })
+    expect(await screen.findByText(`Run ${runA}`)).not.toBeNull()
+    expect(screen.getByText(deletedJobUID)).not.toBeNull()
+    expect(screen.queryByRole('button', { name: deletedJobUID })).toBeNull()
 
     await view.rerender({
       ...current,
@@ -585,33 +643,27 @@ describe('CronPage', () => {
     expect(screen.queryByText('example-project: cron records could not be loaded.')).toBeNull()
   })
 
-  it('reads the catalog and the open job again on Refresh', async () => {
+  it('reads the catalog again on Refresh and keeps the open job', async () => {
     let jobsReads = 0
-    const fetcher = serve((url) => {
+    serve((url) => {
       if (url.pathname === cronPath(exampleProject, 'jobs')) {
         jobsReads += 1
         return Response.json({ jobs: [job(exampleProject, `Daily review ${jobsReads}`)] })
-      }
-      if (url.pathname === cronPath(exampleProject, 'runs') && url.searchParams.has('job_uid')) {
-        return Response.json({ runs: [run(exampleProject, runA, 1, { status: 'failed' })] })
       }
       return emptyCatalog(url) ?? notFound()
     })
     const selection = { kind: 'job' as const, projectUID: exampleProject.uid, uid: jobUID }
     render(CronPage, { props: props({ selection }, [exampleProject]) })
 
+    // The open job's definition comes from the catalog read.
     expect(await screen.findByRole('button', { name: 'Daily review 1' })).not.toBeNull()
-    await waitFor(() =>
-      expect(screen.getAllByRole('button', { name: /^failed · / })).toHaveLength(1),
-    )
+    expect(screen.getByText('Review open work')).not.toBeNull()
 
     const refresh = screen.getByRole('button', { name: 'Refresh' })
     await waitFor(() => expect(refresh.getAttribute('aria-busy')).toBeNull())
     await fireEvent.click(refresh)
 
     expect(await screen.findByRole('button', { name: 'Daily review 2' })).not.toBeNull()
-    const jobRuns = () => requested(fetcher, cronPath(exampleProject, 'runs')).filter(jobRead)
-    await waitFor(() => expect(jobRuns()).toHaveLength(2))
-    expect(jobRuns().map((url) => url.searchParams.get('limit'))).toEqual(['5', '5'])
+    expect(screen.getByText('Review open work')).not.toBeNull()
   })
 })

@@ -18,12 +18,10 @@
     compareRunsNewestFirst,
     cronReadConcurrency,
     cronReadFailure,
-    cronRecentJobRuns,
     cronRunPageSize,
     mapLimit,
     readCronProject,
     readCronRun,
-    readCronRuns,
     type CronProject,
     type CronReadFailure,
   } from '../../lib/cron/load'
@@ -64,7 +62,6 @@
     | { status: 'loading' }
     | { status: 'failed'; failure: CronReadFailure }
     | { status: 'run'; run: CronRun }
-    | { status: 'job'; runs: CronRun[] }
 
   const tabLabels = { jobs: 'Jobs', runs: 'Runs', workflows: 'Workflows' } as const
 
@@ -172,8 +169,9 @@
     return () => abort.abort()
   })
 
-  // The open detail has its own lifetime: changing the selection stops its
-  // read without touching the catalog read, and Refresh reads it again.
+  // The open run has its own lifetime: changing the selection stops its read
+  // without touching the catalog read, and Refresh reads it again. Jobs and
+  // workflows come from the catalog.
   $effect(() => {
     const key = selectionKey
     const projectID = selectedProjectID
@@ -181,7 +179,7 @@
     void detailGeneration
     const selection = untrack(() => route.selection)
     const abort = new AbortController()
-    if (!selection || projectID === undefined || selection.kind === 'workflow') {
+    if (!selection || projectID === undefined || selection.kind !== 'run') {
       loadedDetail = ''
       detail = { status: 'idle' }
     } else {
@@ -189,7 +187,7 @@
         loadedDetail = key
         detail = { status: 'loading' }
       }
-      void loadDetail(selection, projectID, abort.signal)
+      void loadRun(selection.uid, projectID, abort.signal)
     }
     return () => abort.abort()
   })
@@ -231,22 +229,10 @@
     return { ...previous, failure: 'failed' }
   }
 
-  async function loadDetail(
-    selection: CronSelection,
-    projectID: number,
-    signal: AbortSignal,
-  ): Promise<void> {
+  async function loadRun(runUID: string, projectID: number, signal: AbortSignal): Promise<void> {
     try {
-      if (selection.kind === 'run') {
-        const run = await readCronRun(projectID, selection.uid, signal)
-        if (!signal.aborted) detail = { status: 'run', run }
-        return
-      }
-      const runs = await readCronRuns(projectID, signal, {
-        jobUID: selection.uid,
-        limit: cronRecentJobRuns,
-      })
-      if (!signal.aborted) detail = { status: 'job', runs }
+      const run = await readCronRun(projectID, runUID, signal)
+      if (!signal.aborted) detail = { status: 'run', run }
     } catch (error) {
       if (!signal.aborted) detail = { status: 'failed', failure: cronReadFailure(error) }
     }
@@ -312,10 +298,10 @@
       : `${name}: cron records could not be loaded.`
   }
 
-  function detailFailure(failure: CronReadFailure, kind: CronSelection['kind']): string {
+  function detailFailure(failure: CronReadFailure): string {
     if (failure === 'forbidden') return 'This connection cannot read this project’s cron records.'
-    if (failure === 'not_found' && kind === 'run') return 'Run not found.'
-    return kind === 'run' ? 'The run could not be loaded.' : 'Recent runs could not be loaded.'
+    if (failure === 'not_found') return 'Run not found.'
+    return 'The run could not be loaded.'
   }
 
   function emptyTitle(): string {
@@ -418,7 +404,7 @@
       title="No readable projects"
       description="Cron records belong to projects. This connection cannot read any."
     />
-  {:else if loading && records.length === 0}
+  {:else if loading && tabCount === 0}
     <p class="cron-status" role="status">Loading cron records…</p>
   {:else if tabCount === 0}
     {#if filtered && records.some((entry) => !entry.failure)}
@@ -543,6 +529,10 @@
       </p>
     {:else if selection.kind === 'run'}
       {#if detail.status === 'run' && detail.run.uid === selection.uid}
+        {@const jobName = detail.run.job_uid
+          ? jobNames.get(`${selection.projectUID}:${detail.run.job_uid}`)
+          : undefined}
+        <!-- Only a job the catalog lists opens; a deleted job's UID stays as text. -->
         <CronRunDetail
           run={detail.run}
           projectID={selectedProject.id}
@@ -550,15 +540,13 @@
           projectName={selectedProject.name}
           {readOnly}
           {anonymous}
-          jobName={detail.run.job_uid
-            ? jobNames.get(`${selection.projectUID}:${detail.run.job_uid}`)
-            : undefined}
-          onOpenJob={detail.run.job_uid ? openRunJob : undefined}
+          {jobName}
+          onOpenJob={jobName ? openRunJob : undefined}
           {onOpenIssue}
         />
       {:else if detail.status === 'failed'}
         <div class="cron-drawer-status" role="status">
-          <p>{detailFailure(detail.failure, 'run')}</p>
+          <p>{detailFailure(detail.failure)}</p>
           {#if detail.failure === 'failed'}
             <Button size="sm" label="Try again" onclick={() => detailGeneration++} />
           {/if}
@@ -568,14 +556,7 @@
       {/if}
     {:else if selection.kind === 'job'}
       {#if selectedJob}
-        <CronJobDetail
-          job={selectedJob}
-          projectName={selectedProject.name}
-          recentRuns={detail.status === 'job' ? detail.runs : undefined}
-          recentFailed={detail.status === 'failed'}
-          onOpenRun={(uid) => select({ kind: 'run', projectUID: selection.projectUID, uid })}
-          onRetry={() => detailGeneration++}
-        />
+        <CronJobDetail job={selectedJob} projectName={selectedProject.name} />
       {:else if selectedRecords?.failure}
         <p class="cron-drawer-status" role="status">{failureMessage(selectedRecords)}</p>
       {:else if loading || !selectedRecords}

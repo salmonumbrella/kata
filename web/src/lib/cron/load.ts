@@ -11,7 +11,6 @@ import type { KataProjectSummary } from '../kata/types'
 
 // Run history is one bounded newest page per project.
 export const cronRunPageSize = 50
-export const cronRecentJobRuns = 5
 // Never more reads in flight than this, however many projects are readable.
 export const cronReadConcurrency = 4
 
@@ -50,25 +49,9 @@ export async function readCronProject(
   if (jobs.status !== 200) throw failureFor(jobs.status)
   const workflows = await listCronWorkflows({ projectId: project.id }, undefined, options)
   if (workflows.status !== 200) throw failureFor(workflows.status)
-  const runs = await readCronRuns(project.id, signal)
-  return { jobs: jobs.data.jobs, workflows: workflows.data.workflows, runs }
-}
-
-export async function readCronRuns(
-  projectID: number,
-  signal: AbortSignal,
-  query: { jobUID?: string | undefined; limit?: number } = {},
-): Promise<CronRun[]> {
-  const response = await listCronRuns(
-    { projectId: projectID },
-    {
-      limit: query.limit ?? cronRunPageSize,
-      ...(query.jobUID ? { job_uid: query.jobUID } : {}),
-    },
-    { signal, retry: true },
-  )
-  if (response.status !== 200) throw failureFor(response.status)
-  return response.data.runs
+  const runs = await listCronRuns({ projectId: project.id }, { limit: cronRunPageSize }, options)
+  if (runs.status !== 200) throw failureFor(runs.status)
+  return { jobs: jobs.data.jobs, workflows: workflows.data.workflows, runs: runs.data.runs }
 }
 
 export async function readCronRun(
@@ -102,10 +85,9 @@ export async function mapLimit<T, R>(
   return results
 }
 
-// Newest first across projects. Each project's page already arrives in this
-// order; equal instants fall back to the ULID, which also sorts by time.
+// Newest first across projects. Each project's page already arrives in the
+// daemon's order, which also splits runs within one millisecond, and the sort is
+// stable, so runs that compare equal keep that order.
 export function compareRunsNewestFirst(first: CronRun, second: CronRun): number {
-  const difference = Date.parse(second.created_at) - Date.parse(first.created_at)
-  if (difference) return difference
-  return first.uid < second.uid ? 1 : first.uid > second.uid ? -1 : 0
+  return Date.parse(second.created_at) - Date.parse(first.created_at)
 }
