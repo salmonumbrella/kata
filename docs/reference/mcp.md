@@ -513,7 +513,7 @@ observations. Recording evidence does not launch execution, claim an issue, or
 change its status. The [run evidence contract](cron.md#independent-run-evidence)
 defines session fields, limits, and federation requirements.
 
-`kata.cron_run_usage` returns the daemon endpoint response unchanged for a run
+`kata.cron_run_usage` returns the current typed daemon usage response for a run
 UID. Pass `refresh: true` to bypass cached results older than ten seconds;
 younger results may be reused. The tool requires daemon API 0.46.0 or newer and
 appears when the serving daemon enables AgentsView usage and startup discovery
