@@ -50,3 +50,4 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go test -p 1 ./internal/config ./internal/daemon ./cmd/kata -run 'Test.*(AgentsView|CronUsage|CronRunUsage|CronCapabilities|DoctorReturnsHooks)' -count=1
+      - run: go test -p 1 ./cmd/kata -run '^TestDoctorLocalConfiguration$' -count=1
