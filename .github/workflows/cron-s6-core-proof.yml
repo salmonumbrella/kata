@@ -1,0 +1,40 @@
+name: Cron S6 core checks
+on:
+  push:
+    branches: [proof/cron-s6-core-983344672]
+permissions:
+  contents: read
+env:
+  GOMAXPROCS: '2'
+  GOFLAGS: '-p=1'
+  KATA_HOME: /tmp/kata-proof/home
+  KATA_DB: /tmp/kata-proof/home/kata.db
+  KATA_WORKSPACE: /tmp/kata-proof/workspace
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+      - run: go test ./internal/tui -run '^Test(CronRunRequestOpensInputForm|CronRequestInput|CronRuntimeRequest|CronClientRequestInputs)' -count=1
+      - run: go test ./internal/cron -run 'Input' -count=1
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+      - run: |
+          gofmt -w internal/cron/inputs.go internal/tui/cron_actions.go internal/tui/cron_client.go internal/tui/cron_client_test.go internal/tui/cron_request_inputs.go internal/tui/cron_request_inputs_test.go internal/tui/cron_requests_test.go internal/tui/cron_view.go internal/tui/model.go
+          git diff --binary > /tmp/gofmt-s6.patch
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: gofmt-s6
+          path: /tmp/gofmt-s6.patch
