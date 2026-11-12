@@ -15,7 +15,7 @@ import (
 
 func TestInputResolution(t *testing.T) {
 	job := JobDefinition{Action: Action{Prompt: "hello"}, Options: jsontext.Value(`{"inputs":{"count":{"type":"int","min":1,"max":9,"default":2},"needed":{"type":"bool","required":true}},"input_values":{"count":4}}`)}
-	result := ResolveInputs(job, nil)
+	result := ResolveInputs(job, nil, nil)
 	require.NoError(t, ValidateInputs(job.Options, job.Action.WorkflowUID, nil))
 	require.Equal(t, "job", result.DeclaredBy)
 	require.Equal(t, "count", result.Inputs[0].Name)
@@ -24,14 +24,14 @@ func TestInputResolution(t *testing.T) {
 	require.Equal(t, "missing_required", result.Errors[0].Code)
 	require.Equal(t, "unset", result.Inputs[1].Source)
 	job.Options = jsontext.Value(`{"inputs":{"a":{"type":"string","default":"fallback"},"b":{"type":"bool"}}}`)
-	defaults := ResolveInputs(job, nil)
+	defaults := ResolveInputs(job, nil, nil)
 	require.Len(t, defaults.Inputs, 2)
 	require.Equal(t, "a", defaults.Inputs[0].Name)
 	require.Equal(t, "default", defaults.Inputs[0].Source)
 	require.Equal(t, "fallback", defaults.Inputs[0].Value)
 	require.Equal(t, "unset", defaults.Inputs[1].Source)
 	job.Options = jsontext.Value(`{"inputs":42}`)
-	malformed := ResolveInputs(job, nil)
+	malformed := ResolveInputs(job, nil, nil)
 	require.Len(t, malformed.Errors, 1)
 	require.Equal(t, "declaration_invalid", malformed.Errors[0].Code)
 	require.Error(t, ValidateInputs(job.Options, "", nil))
@@ -99,7 +99,7 @@ func TestInputWorkflowDeclarationAndLegacyValues(t *testing.T) {
 	require.Error(t, ValidateWorkflowInputs([]byte(`{"inputs":{"target":{"type":"int","required":null}}}`)))
 	job := JobDefinition{Action: Action{WorkflowUID: "01J00000000000000000000020"}, Options: jsontext.Value(`{"input_values":{"target":"production"}}`)}
 	workflow := WorkflowDefinition{Options: jsontext.Value(`{"inputs":{"target":{"type":"enum","values":["staging"]}}}`)}
-	result := ResolveInputs(job, &workflow)
+	result := ResolveInputs(job, &workflow, nil)
 	require.Equal(t, "workflow", result.DeclaredBy)
 	require.Equal(t, "invalid_value", result.Errors[0].Code)
 	require.Error(t, ValidateInputs(job.Options, job.Action.WorkflowUID, workflow.Options))
@@ -107,27 +107,27 @@ func TestInputWorkflowDeclarationAndLegacyValues(t *testing.T) {
 
 func TestInputResolutionDiagnosticsContract(t *testing.T) {
 	job := JobDefinition{Action: Action{Prompt: "hello"}, Options: jsontext.Value(`{"inputs":{"bad":{"type":"bad"},"count":{"type":"int"},"needed":{"type":"bool","required":true}},"input_values":{"count":{"bad":true},"extra":1}}`)}
-	r := ResolveInputs(job, nil)
+	r := ResolveInputs(job, nil, nil)
 	require.Len(t, r.Errors, 4)
 	require.Nil(t, r.Inputs[0].Value)
 	job.Options = jsontext.Value(`{"inputs":{"needed":{"type":"bool","required":true}},"input_values":42}`)
-	r = ResolveInputs(job, nil)
+	r = ResolveInputs(job, nil, nil)
 	require.Len(t, r.Errors, 2)
 	require.Len(t, r.Inputs, 1)
 	job.Options = jsontext.Value(`{"inputs":{"first":{"type":"bad"},"second":{"type":"bad"}}}`)
-	r = ResolveInputs(job, nil)
+	r = ResolveInputs(job, nil, nil)
 	require.Len(t, r.Errors, 2)
 	require.Equal(t, "first", r.Errors[0].Name)
 	require.Equal(t, "second", r.Errors[1].Name)
 	job.Action = Action{Kind: "notify"}
-	r = ResolveInputs(job, nil)
+	r = ResolveInputs(job, nil, nil)
 	require.NotEmpty(t, r.Errors)
 	require.Equal(t, "declaration_invalid", r.Errors[0].Code)
 }
 
 func TestInputResolutionLegacyNotifyIndependentDiagnostics(t *testing.T) {
 	job := JobDefinition{Action: Action{Kind: "notify"}, Options: jsontext.Value(`{"inputs":{"bad":{"type":"bad"}},"input_values":42}`)}
-	r := ResolveInputs(job, nil)
+	r := ResolveInputs(job, nil, nil)
 	require.Len(t, r.Errors, 3)
 	var eligibility, declaration, values bool
 	for _, problem := range r.Errors {
@@ -143,7 +143,7 @@ func TestInputResolutionLegacyNotifyIndependentDiagnostics(t *testing.T) {
 func TestInputMissingWorkflowAndUnfixedJob(t *testing.T) {
 	job := JobDefinition{Action: Action{WorkflowUID: "01J00000000000000000000020"}, Options: jsontext.Value(`{}`)}
 	require.NoError(t, ValidateInputs(job.Options, job.Action.WorkflowUID, []byte(`{"inputs":42}`)))
-	require.NotEmpty(t, ResolveInputs(job, nil).Errors)
+	require.NotEmpty(t, ResolveInputs(job, nil, nil).Errors)
 	job.Options = jsontext.Value(`{"input_values":{"x":1}}`)
 	require.Error(t, ValidateInputs(job.Options, job.Action.WorkflowUID, []byte(`{"inputs":42}`)))
 }
@@ -196,7 +196,7 @@ func TestInputNULDeliveryContract(t *testing.T) {
 	valid := []byte(`{"inputs":{"text":{"type":"string","multiline":true}},"input_values":{"text":"\n\t\u0001"}}`)
 	require.NoError(t, ValidateInputs(valid, "", nil))
 	job := JobDefinition{Action: Action{Prompt: "hello"}, Options: jsontext.Value(`{"inputs":{"text":{"type":"string","multiline":true}},"input_values":{"text":"a\u0000b"}}`)}
-	r := ResolveInputs(job, nil)
+	r := ResolveInputs(job, nil, nil)
 	require.Equal(t, "invalid_value", r.Errors[0].Code)
 	require.Equal(t, "job", r.Inputs[0].Source)
 	require.Nil(t, r.Inputs[0].Value)
@@ -211,7 +211,7 @@ func TestInputLegacyOverLimitDiagnostics(t *testing.T) {
 	fields["item_00"] = map[string]any{"type": "invalid"}
 	raw, err := json.Marshal(map[string]any{"inputs": fields, "input_values": map[string]any{"item_00": true, "item_01": true}})
 	require.NoError(t, err)
-	r := ResolveInputs(JobDefinition{Action: Action{Prompt: "hello"}, Options: raw}, nil)
+	r := ResolveInputs(JobDefinition{Action: Action{Prompt: "hello"}, Options: raw}, nil, nil)
 	require.Len(t, r.Inputs, 32)
 	require.Equal(t, "job", r.Inputs[0].Source)
 	require.Len(t, r.Errors, 2)
