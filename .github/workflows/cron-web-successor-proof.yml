@@ -1,0 +1,66 @@
+name: Cron web successor proof
+
+on:
+  push:
+    branches: [proof/cron-web-successor-ci]
+
+permissions:
+  contents: read
+
+env:
+  GOMAXPROCS: '2'
+  GOFLAGS: '-p=1'
+  GOTRACEBACK: all
+  KATA_HOME: /tmp/kata-proof/home
+  KATA_DB: /tmp/kata-proof/home/kata.db
+  KATA_WORKSPACE: /tmp/kata-proof/workspace
+  KATA_TEST_FAST_SQLITE: '1'
+  KATA_TEST_POSTGRES_AUTO_CONTAINER: '0'
+
+jobs:
+  go:
+    name: Go web session cron reads
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Cron GETs reach the handler for the local-web principal
+        run: env -u KATA_AUTH_TOKEN go test -p 1 -v ./internal/daemon -run '^TestWebLocalSessionAdmitsCronReads$' -count=1
+      - name: Existing local-web allowlist stays intact
+        if: always()
+        run: env -u KATA_AUTH_TOKEN go test -p 1 -v ./internal/daemon -run '^TestWebLocalSessionIsLimitedToSPAOperations$' -count=1
+
+  web:
+    name: Web Cron route
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 26.12.1
+      - uses: step-security/setup-bun@v2.1.3
+        with:
+          bun-version: 1.4.4
+      - uses: kenn-io/kit/.github/actions/kit-retry@v0.47.3
+      - name: Install frozen web dependencies
+        id: install
+        run: kit-retry 3 5 make web-install
+      - name: Router admits view=cron
+        working-directory: web
+        run: bun x vp test src/lib/router.test.ts -t 'admits the Cron view without carrying issue workspace state'
+      - name: App renders a direct Cron link as the Cron page
+        if: always() && steps.install.outcome == 'success'
+        working-directory: web
+        run: bun x vp test src/App.test.ts -t 'opens a direct Cron link as the Cron page instead of a route error'
+      - name: New tests type-check
+        if: always() && steps.install.outcome == 'success'
+        working-directory: web
+        run: bun run typecheck
