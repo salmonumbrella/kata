@@ -153,6 +153,10 @@ type ListCronJobsQuery struct {
 	IncludeDeleted *bool `json:"include_deleted,omitempty"`
 }
 
+type GetCronJobInputsQuery struct {
+	RequestUID *string `json:"request_uid,omitempty"`
+}
+
 type ResumeCronProjectQuery struct {
 	DiscardMissed *bool `json:"discard_missed,omitempty"`
 }

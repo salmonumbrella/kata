@@ -3,11 +3,66 @@
 package generated
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/doordash-oss/oapi-codegen-dd/v3/pkg/runtime"
 )
+
+type CronRequest_Inputs_AdditionalProperties struct {
+	CronRequest_Inputs_AdditionalProperties_OneOf *CronRequest_Inputs_AdditionalProperties_OneOf `json:"-"`
+}
+
+func (c CronRequest_Inputs_AdditionalProperties) Validate() error {
+	var errors runtime.ValidationErrors
+	if c.CronRequest_Inputs_AdditionalProperties_OneOf != nil {
+		if v, ok := any(c.CronRequest_Inputs_AdditionalProperties_OneOf).(runtime.Validator); ok {
+			if err := v.Validate(); err != nil {
+				errors = errors.Append("CronRequest_Inputs_AdditionalProperties_OneOf", err)
+			}
+		}
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+	return errors
+}
+
+func (c CronRequest_Inputs_AdditionalProperties) MarshalJSON() ([]byte, error) {
+	var parts []json.RawMessage
+
+	{
+		b, err := runtime.MarshalJSON(c.CronRequest_Inputs_AdditionalProperties_OneOf)
+		if err != nil {
+			return nil, fmt.Errorf("CronRequest_Inputs_AdditionalProperties_OneOf marshal: %w", err)
+		}
+		parts = append(parts, b)
+	}
+
+	return runtime.CoalesceOrMerge(parts...)
+}
+
+func (c *CronRequest_Inputs_AdditionalProperties) UnmarshalJSON(data []byte) error {
+	trim := bytes.TrimSpace(data)
+	if bytes.Equal(trim, []byte("null")) {
+		return nil
+	}
+	if len(trim) == 0 {
+		return fmt.Errorf("empty JSON input")
+	}
+
+	if c.CronRequest_Inputs_AdditionalProperties_OneOf == nil {
+		c.CronRequest_Inputs_AdditionalProperties_OneOf = &CronRequest_Inputs_AdditionalProperties_OneOf{}
+	}
+
+	if err := runtime.UnmarshalJSON(data, c.CronRequest_Inputs_AdditionalProperties_OneOf); err != nil {
+		return fmt.Errorf("CronRequest_Inputs_AdditionalProperties_OneOf unmarshal: %w", err)
+	}
+
+	return nil
+}
 
 type ListCronJobsResponseBody_Passovers_AdditionalProperties struct {
 	Invalid *bool      `json:"invalid,omitempty"`
@@ -46,25 +101,146 @@ func (m MetadataPatchGuard_OneOf_1) Validate() error {
 	return errors
 }
 
-type MetadataPatchGuard_OneOf struct {
-	runtime.Either[MetadataPatchGuard_OneOf_0, MetadataPatchGuard_OneOf_1]
+type CronRequest_Inputs_AdditionalProperties_OneOf struct {
+	union json.RawMessage
 }
 
-func (m *MetadataPatchGuard_OneOf) Validate() error {
-	if m.IsA() {
-		if v, ok := any(m.A).(runtime.Validator); ok {
-			return v.Validate()
-		}
+func (c *CronRequest_Inputs_AdditionalProperties_OneOf) Validate() error {
+	// NOTE: Validation is not supported for unions with more than 2 elements.
+	// Validating would require unmarshaling against each possible type, which is inefficient.
+	// Use AsValidated<Type>() methods to validate after retrieving the specific type.
+	return nil
+}
+
+// Raw returns the union data inside the CronRequest_Inputs_AdditionalProperties_OneOf as bytes
+func (c *CronRequest_Inputs_AdditionalProperties_OneOf) Raw() json.RawMessage {
+	return c.union
+}
+
+// AsString returns the union data inside the CronRequest_Inputs_AdditionalProperties_OneOf as a string
+func (c *CronRequest_Inputs_AdditionalProperties_OneOf) AsString() (string, error) {
+	return runtime.UnmarshalAs[string](c.union)
+}
+
+// AsValidatedString returns the union data inside the CronRequest_Inputs_AdditionalProperties_OneOf as a validated string
+func (c *CronRequest_Inputs_AdditionalProperties_OneOf) AsValidatedString() (string, error) {
+	val, err := c.AsString()
+	if err != nil {
+		var zero string
+		return zero, err
 	}
-	if m.IsB() {
-		if v, ok := any(m.B).(runtime.Validator); ok {
-			return v.Validate()
-		}
+	if err := c.validateString(val); err != nil {
+		var zero string
+		return zero, err
 	}
-	if !m.IsA() && !m.IsB() {
-		return runtime.NewValidationErrorsFromString("oneOf", "must select exactly one alternative")
+	return val, nil
+}
+
+// FromString overwrites any union data inside the CronRequest_Inputs_AdditionalProperties_OneOf as the provided string
+func (c *CronRequest_Inputs_AdditionalProperties_OneOf) FromString(val string) error {
+	// Validate before storing
+	if err := c.validateString(val); err != nil {
+		return err
+	}
+	bts, err := json.Marshal(val)
+	c.union = bts
+	return err
+}
+
+// AsInt64 returns the union data inside the CronRequest_Inputs_AdditionalProperties_OneOf as a int64
+func (c *CronRequest_Inputs_AdditionalProperties_OneOf) AsInt64() (int64, error) {
+	return runtime.UnmarshalAs[int64](c.union)
+}
+
+// AsValidatedInt64 returns the union data inside the CronRequest_Inputs_AdditionalProperties_OneOf as a validated int64
+func (c *CronRequest_Inputs_AdditionalProperties_OneOf) AsValidatedInt64() (int64, error) {
+	val, err := c.AsInt64()
+	if err != nil {
+		var zero int64
+		return zero, err
+	}
+	if err := c.validateInt64(val); err != nil {
+		var zero int64
+		return zero, err
+	}
+	return val, nil
+}
+
+// FromInt64 overwrites any union data inside the CronRequest_Inputs_AdditionalProperties_OneOf as the provided int64
+func (c *CronRequest_Inputs_AdditionalProperties_OneOf) FromInt64(val int64) error {
+	// Validate before storing
+	if err := c.validateInt64(val); err != nil {
+		return err
+	}
+	bts, err := json.Marshal(val)
+	c.union = bts
+	return err
+}
+
+// AsBool returns the union data inside the CronRequest_Inputs_AdditionalProperties_OneOf as a bool
+func (c *CronRequest_Inputs_AdditionalProperties_OneOf) AsBool() (bool, error) {
+	return runtime.UnmarshalAs[bool](c.union)
+}
+
+// AsValidatedBool returns the union data inside the CronRequest_Inputs_AdditionalProperties_OneOf as a validated bool
+func (c *CronRequest_Inputs_AdditionalProperties_OneOf) AsValidatedBool() (bool, error) {
+	val, err := c.AsBool()
+	if err != nil {
+		var zero bool
+		return zero, err
+	}
+	if err := c.validateBool(val); err != nil {
+		var zero bool
+		return zero, err
+	}
+	return val, nil
+}
+
+// FromBool overwrites any union data inside the CronRequest_Inputs_AdditionalProperties_OneOf as the provided bool
+func (c *CronRequest_Inputs_AdditionalProperties_OneOf) FromBool(val bool) error {
+	// Validate before storing
+	if err := c.validateBool(val); err != nil {
+		return err
+	}
+	bts, err := json.Marshal(val)
+	c.union = bts
+	return err
+}
+
+// validateString validates a string value
+func (c *CronRequest_Inputs_AdditionalProperties_OneOf) validateString(val string) error {
+	if v, ok := any(val).(runtime.Validator); ok {
+		return v.Validate()
 	}
 	return nil
+}
+
+// validateInt64 validates a int64 value
+func (c *CronRequest_Inputs_AdditionalProperties_OneOf) validateInt64(val int64) error {
+	if v, ok := any(val).(runtime.Validator); ok {
+		return v.Validate()
+	}
+	return nil
+}
+
+// validateBool validates a bool value
+func (c *CronRequest_Inputs_AdditionalProperties_OneOf) validateBool(val bool) error {
+	if v, ok := any(val).(runtime.Validator); ok {
+		return v.Validate()
+	}
+	return nil
+}
+
+func (c CronRequest_Inputs_AdditionalProperties_OneOf) MarshalJSON() ([]byte, error) {
+	bts, err := c.union.MarshalJSON()
+
+	return bts, err
+}
+
+func (c *CronRequest_Inputs_AdditionalProperties_OneOf) UnmarshalJSON(bts []byte) error {
+	err := c.union.UnmarshalJSON(bts)
+
+	return err
 }
 
 type CronResolvedInput_Value_OneOf struct {
@@ -207,4 +383,25 @@ func (c *CronResolvedInput_Value_OneOf) UnmarshalJSON(bts []byte) error {
 	err := c.union.UnmarshalJSON(bts)
 
 	return err
+}
+
+type MetadataPatchGuard_OneOf struct {
+	runtime.Either[MetadataPatchGuard_OneOf_0, MetadataPatchGuard_OneOf_1]
+}
+
+func (m *MetadataPatchGuard_OneOf) Validate() error {
+	if m.IsA() {
+		if v, ok := any(m.A).(runtime.Validator); ok {
+			return v.Validate()
+		}
+	}
+	if m.IsB() {
+		if v, ok := any(m.B).(runtime.Validator); ok {
+			return v.Validate()
+		}
+	}
+	if !m.IsA() && !m.IsB() {
+		return runtime.NewValidationErrorsFromString("oneOf", "must select exactly one alternative")
+	}
+	return nil
 }

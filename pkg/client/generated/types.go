@@ -1520,6 +1520,64 @@ type CronJobEnabledActionBody struct {
 	ExpectedEventUID *string `json:"expected_event_uid,omitempty"`
 }
 
+type CronJobInputsResponseBody struct {
+	DeclaredBy                 string              `json:"declared_by" validate:"required"`
+	DefinitionEventUID         string              `json:"definition_event_uid" validate:"required"`
+	Errors                     []InputError        `json:"errors" validate:"required"`
+	Inputs                     []CronResolvedInput `json:"inputs" validate:"required"`
+	JobUID                     string              `json:"job_uid" validate:"required"`
+	WorkflowDefinitionEventUID *string             `json:"workflow_definition_event_uid,omitempty"`
+	WorkflowUID                *string             `json:"workflow_uid,omitempty"`
+}
+
+func (c CronJobInputsResponseBody) Validate() error {
+	var errors runtime.ValidationErrors
+	if err := typesValidator.Var(c.DeclaredBy, "required"); err != nil {
+		errors = errors.Append("DeclaredBy", err)
+	}
+	if err := typesValidator.Var(c.DefinitionEventUID, "required"); err != nil {
+		errors = errors.Append("DefinitionEventUID", err)
+	}
+	if err := typesValidator.Var(c.Errors, "required"); err != nil {
+		errors = errors.Append("Errors", err)
+	}
+	for i, item := range c.Errors {
+		if v, ok := any(item).(runtime.Validator); ok {
+			if err := v.Validate(); err != nil {
+				errors = errors.Append(fmt.Sprintf("Errors[%d]", i), err)
+			}
+		}
+	}
+	if err := typesValidator.Var(c.Inputs, "required"); err != nil {
+		errors = errors.Append("Inputs", err)
+	}
+	for i, item := range c.Inputs {
+		if v, ok := any(item).(runtime.Validator); ok {
+			if err := v.Validate(); err != nil {
+				errors = errors.Append(fmt.Sprintf("Inputs[%d]", i), err)
+			}
+		}
+	}
+	if err := typesValidator.Var(c.JobUID, "required"); err != nil {
+		errors = errors.Append("JobUID", err)
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+	return errors
+}
+
+type CronJobRequestRunBody struct {
+	Actor      *string        `json:"actor,omitempty"`
+	Inputs     map[string]any `json:"inputs,omitempty"`
+	TTLSeconds *int64         `json:"ttl_seconds,omitempty" validate:"omitempty,gte=60,lte=86400"`
+	UID        string         `json:"uid" validate:"required,max=26,min=26"`
+}
+
+func (c CronJobRequestRunBody) Validate() error {
+	return runtime.ConvertValidatorError(typesValidator.Struct(c))
+}
+
 type CronJobResponseBody struct {
 	Events   []Event                       `json:"events,omitempty"`
 	Job      CronJob                       `json:"job"`
@@ -1602,19 +1660,46 @@ func (c CronProjectPauseResponseBody_ProjectPause) Validate() error {
 }
 
 type CronRequest struct {
-	DefinitionEventUID *string   `json:"definition_event_uid,omitempty"`
-	ExpiresAt          time.Time `json:"expires_at" validate:"required"`
-	JobUID             *string   `json:"job_uid,omitempty"`
-	Kind               string    `json:"kind" validate:"required"`
-	RequestedAt        time.Time `json:"requested_at" validate:"required"`
-	RequestedBy        string    `json:"requested_by" validate:"required"`
-	RunUID             *string   `json:"run_uid,omitempty"`
-	State              *string   `json:"state,omitempty"`
-	UID                string    `json:"uid" validate:"required"`
+	DefinitionEventUID *string                                            `json:"definition_event_uid,omitempty"`
+	ExpiresAt          time.Time                                          `json:"expires_at" validate:"required"`
+	Inputs             map[string]CronRequest_Inputs_AdditionalProperties `json:"inputs,omitempty"`
+	JobUID             *string                                            `json:"job_uid,omitempty"`
+	Kind               string                                             `json:"kind" validate:"required"`
+	RequestedAt        time.Time                                          `json:"requested_at" validate:"required"`
+	RequestedBy        string                                             `json:"requested_by" validate:"required"`
+	RunUID             *string                                            `json:"run_uid,omitempty"`
+	State              *string                                            `json:"state,omitempty"`
+	UID                string                                             `json:"uid" validate:"required"`
 }
 
 func (c CronRequest) Validate() error {
-	return runtime.ConvertValidatorError(typesValidator.Struct(c))
+	var errors runtime.ValidationErrors
+	if err := typesValidator.Var(c.ExpiresAt, "required"); err != nil {
+		errors = errors.Append("ExpiresAt", err)
+	}
+	for k, v := range c.Inputs {
+		if validator, ok := any(v).(runtime.Validator); ok {
+			if err := validator.Validate(); err != nil {
+				errors = errors.Append(fmt.Sprintf("Inputs[%s]", k), err)
+			}
+		}
+	}
+	if err := typesValidator.Var(c.Kind, "required"); err != nil {
+		errors = errors.Append("Kind", err)
+	}
+	if err := typesValidator.Var(c.RequestedAt, "required"); err != nil {
+		errors = errors.Append("RequestedAt", err)
+	}
+	if err := typesValidator.Var(c.RequestedBy, "required"); err != nil {
+		errors = errors.Append("RequestedBy", err)
+	}
+	if err := typesValidator.Var(c.UID, "required"); err != nil {
+		errors = errors.Append("UID", err)
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+	return errors
 }
 
 type CronRequestBody struct {
@@ -1673,6 +1758,98 @@ func (c CronRequestResponseBody) Validate() error {
 		return nil
 	}
 	return errors
+}
+
+type CronResolvedInput struct {
+	Description *string                  `json:"description,omitempty"`
+	Max         *int64                   `json:"max,omitempty"`
+	MaxLength   *int64                   `json:"max_length,omitempty"`
+	Min         *int64                   `json:"min,omitempty"`
+	Multiline   *bool                    `json:"multiline,omitempty"`
+	Name        string                   `json:"name" validate:"required"`
+	Required    *bool                    `json:"required,omitempty"`
+	Source      string                   `json:"source" validate:"required"`
+	Title       *string                  `json:"title,omitempty"`
+	Type        string                   `json:"type" validate:"required"`
+	Value       *CronResolvedInput_Value `json:"value,omitempty"`
+	Values      []string                 `json:"values,omitempty"`
+}
+
+func (c CronResolvedInput) Validate() error {
+	var errors runtime.ValidationErrors
+	if err := typesValidator.Var(c.Name, "required"); err != nil {
+		errors = errors.Append("Name", err)
+	}
+	if err := typesValidator.Var(c.Source, "required"); err != nil {
+		errors = errors.Append("Source", err)
+	}
+	if err := typesValidator.Var(c.Type, "required"); err != nil {
+		errors = errors.Append("Type", err)
+	}
+	if c.Value != nil {
+		if v, ok := any(c.Value).(runtime.Validator); ok {
+			if err := v.Validate(); err != nil {
+				errors = errors.Append("Value", err)
+			}
+		}
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+	return errors
+}
+
+type CronResolvedInput_Value struct {
+	CronResolvedInput_Value_OneOf *CronResolvedInput_Value_OneOf `json:"-"`
+}
+
+func (c CronResolvedInput_Value) Validate() error {
+	var errors runtime.ValidationErrors
+	if c.CronResolvedInput_Value_OneOf != nil {
+		if v, ok := any(c.CronResolvedInput_Value_OneOf).(runtime.Validator); ok {
+			if err := v.Validate(); err != nil {
+				errors = errors.Append("CronResolvedInput_Value_OneOf", err)
+			}
+		}
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+	return errors
+}
+
+func (c CronResolvedInput_Value) MarshalJSON() ([]byte, error) {
+	var parts []json.RawMessage
+
+	{
+		b, err := runtime.MarshalJSON(c.CronResolvedInput_Value_OneOf)
+		if err != nil {
+			return nil, fmt.Errorf("CronResolvedInput_Value_OneOf marshal: %w", err)
+		}
+		parts = append(parts, b)
+	}
+
+	return runtime.CoalesceOrMerge(parts...)
+}
+
+func (c *CronResolvedInput_Value) UnmarshalJSON(data []byte) error {
+	trim := bytes.TrimSpace(data)
+	if bytes.Equal(trim, []byte("null")) {
+		return nil
+	}
+	if len(trim) == 0 {
+		return fmt.Errorf("empty JSON input")
+	}
+
+	if c.CronResolvedInput_Value_OneOf == nil {
+		c.CronResolvedInput_Value_OneOf = &CronResolvedInput_Value_OneOf{}
+	}
+
+	if err := runtime.UnmarshalJSON(data, c.CronResolvedInput_Value_OneOf); err != nil {
+		return fmt.Errorf("CronResolvedInput_Value_OneOf unmarshal: %w", err)
+	}
+
+	return nil
 }
 
 type CronRun struct {
@@ -2100,6 +2277,21 @@ func (d DisconnectRelayRequestBody) Validate() error {
 
 type DisconnectRelayResponseBody struct {
 	Revoked bool `json:"revoked"`
+}
+
+type DocbankHealth struct {
+	// Credential Docbank API key state, ok or missing; an advisory warning that does not change health.ok.
+	Credential string `json:"credential" validate:"required"`
+
+	// CredentialReason Why the key source cannot supply a key.
+	CredentialReason *string `json:"credential_reason,omitempty"`
+
+	// CredentialSource Key source that failed: file:<path> or env:<NAME>; never the key value.
+	CredentialSource *string `json:"credential_source,omitempty"`
+}
+
+func (d DocbankHealth) Validate() error {
+	return runtime.ConvertValidatorError(typesValidator.Struct(d))
 }
 
 type DoctorResponseBody struct {
@@ -3587,6 +3779,16 @@ func (i InitProjectResponseBody) Validate() error {
 	return errors
 }
 
+type InputError struct {
+	Code    string  `json:"code" validate:"required"`
+	Message string  `json:"message" validate:"required"`
+	Name    *string `json:"name,omitempty"`
+}
+
+func (i InputError) Validate() error {
+	return runtime.ConvertValidatorError(typesValidator.Struct(i))
+}
+
 type InstanceResponseBody struct {
 	Auth                             AuthInfoOut `json:"auth"`
 	EmbeddingArtifactProtocolVersion *int64      `json:"embedding_artifact_protocol_version,omitempty"`
@@ -4674,6 +4876,291 @@ func (l ListTokensResponseBody) Validate() error {
 		return nil
 	}
 	return errors
+}
+
+type LocalEmbeddingsIndexing struct {
+	Done       int64  `json:"done"`
+	EtaSeconds *int64 `json:"eta_seconds,omitempty"`
+	Failed     bool   `json:"failed"`
+	Total      int64  `json:"total"`
+}
+
+type LocalEmbeddingsJob struct {
+	Downloaded int64   `json:"downloaded"`
+	ErrorData  *string `json:"error,omitempty"`
+	State      string  `json:"state" validate:"required"`
+	Total      int64   `json:"total"`
+}
+
+func (l LocalEmbeddingsJob) Validate() error {
+	return runtime.ConvertValidatorError(typesValidator.Struct(l))
+}
+
+type LocalEmbeddingsStatus struct {
+	CanChange       bool                          `json:"can_change"`
+	DownloadBytes   int64                         `json:"download_bytes"`
+	Indexing        *LocalEmbeddingsIndexing      `json:"indexing,omitempty"`
+	Job             *LocalEmbeddingsJob           `json:"job,omitempty"`
+	OllamaAvailable bool                          `json:"ollama_available"`
+	Provider        LocalEmbeddingsStatusProvider `json:"provider" validate:"required"`
+}
+
+func (l LocalEmbeddingsStatus) Validate() error {
+	var errors runtime.ValidationErrors
+	if l.Indexing != nil {
+		if v, ok := any(l.Indexing).(runtime.Validator); ok {
+			if err := v.Validate(); err != nil {
+				errors = errors.Append("Indexing", err)
+			}
+		}
+	}
+	if l.Job != nil {
+		if v, ok := any(l.Job).(runtime.Validator); ok {
+			if err := v.Validate(); err != nil {
+				errors = errors.Append("Job", err)
+			}
+		}
+	}
+	if v, ok := any(l.Provider).(runtime.Validator); ok {
+		if err := v.Validate(); err != nil {
+			errors = errors.Append("Provider", err)
+		}
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+	return errors
+}
+
+type MCPEventsArguments struct {
+	AllProjects *bool    `json:"all_projects,omitempty"`
+	For         string   `json:"for" validate:"required"`
+	IssueUID    *string  `json:"issue_uid,omitempty"`
+	ProjectUids []string `json:"project_uids,omitempty"`
+}
+
+func (m MCPEventsArguments) Validate() error {
+	return runtime.ConvertValidatorError(typesValidator.Struct(m))
+}
+
+type MCPEventsDelivery struct {
+	Mode   string  `json:"mode" validate:"required"`
+	Secret *string `json:"secret,omitempty"`
+	URL    string  `json:"url" validate:"required"`
+}
+
+func (m MCPEventsDelivery) Validate() error {
+	return runtime.ConvertValidatorError(typesValidator.Struct(m))
+}
+
+type MCPEventsDeliveryStatus struct {
+	Active         bool       `json:"active"`
+	FailedSince    *time.Time `json:"failed_since,omitempty"`
+	LastDeliveryAt *time.Time `json:"last_delivery_at,omitempty"`
+	LastError      *string    `json:"last_error,omitempty"`
+}
+
+type MCPEventsEventDefinition struct {
+	Delivery      []string       `json:"delivery" validate:"required"`
+	Description   string         `json:"description" validate:"required"`
+	InputSchema   map[string]any `json:"input_schema"`
+	Name          string         `json:"name" validate:"required"`
+	PayloadSchema map[string]any `json:"payload_schema"`
+}
+
+func (m MCPEventsEventDefinition) Validate() error {
+	return runtime.ConvertValidatorError(typesValidator.Struct(m))
+}
+
+type MCPEventsForwarderScope struct {
+	All      *bool    `json:"all,omitempty"`
+	Projects []string `json:"projects,omitempty"`
+}
+
+type MCPEventsListResponseBody struct {
+	Events []MCPEventsEventDefinition `json:"events" validate:"required"`
+}
+
+func (m MCPEventsListResponseBody) Validate() error {
+	var errors runtime.ValidationErrors
+	if err := typesValidator.Var(m.Events, "required"); err != nil {
+		errors = errors.Append("Events", err)
+	}
+	for i, item := range m.Events {
+		if v, ok := any(item).(runtime.Validator); ok {
+			if err := v.Validate(); err != nil {
+				errors = errors.Append(fmt.Sprintf("Events[%d]", i), err)
+			}
+		}
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+	return errors
+}
+
+type MCPEventsSubscribeBody struct {
+	Arguments      MCPEventsArguments       `json:"arguments"`
+	Delivery       MCPEventsDelivery        `json:"delivery"`
+	ForwarderScope *MCPEventsForwarderScope `json:"forwarder_scope,omitempty"`
+	Name           string                   `json:"name" validate:"required"`
+	NoExpiry       *bool                    `json:"no_expiry,omitempty"`
+	TTLMs          *int64                   `json:"ttl_ms,omitempty"`
+}
+
+func (m MCPEventsSubscribeBody) Validate() error {
+	var errors runtime.ValidationErrors
+	if v, ok := any(m.Arguments).(runtime.Validator); ok {
+		if err := v.Validate(); err != nil {
+			errors = errors.Append("Arguments", err)
+		}
+	}
+	if v, ok := any(m.Delivery).(runtime.Validator); ok {
+		if err := v.Validate(); err != nil {
+			errors = errors.Append("Delivery", err)
+		}
+	}
+	if m.ForwarderScope != nil {
+		if v, ok := any(m.ForwarderScope).(runtime.Validator); ok {
+			if err := v.Validate(); err != nil {
+				errors = errors.Append("ForwarderScope", err)
+			}
+		}
+	}
+	if err := typesValidator.Var(m.Name, "required"); err != nil {
+		errors = errors.Append("Name", err)
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+	return errors
+}
+
+type MCPEventsSubscribeResponseBody struct {
+	DeliveryStatus MCPEventsDeliveryStatus `json:"delivery_status"`
+	ID             string                  `json:"id" validate:"required"`
+	RefreshBefore  *time.Time              `json:"refresh_before" validate:"required"`
+}
+
+func (m MCPEventsSubscribeResponseBody) Validate() error {
+	var errors runtime.ValidationErrors
+	if v, ok := any(m.DeliveryStatus).(runtime.Validator); ok {
+		if err := v.Validate(); err != nil {
+			errors = errors.Append("DeliveryStatus", err)
+		}
+	}
+	if err := typesValidator.Var(m.ID, "required"); err != nil {
+		errors = errors.Append("ID", err)
+	}
+	if m.RefreshBefore != nil {
+		if err := typesValidator.Var(m.RefreshBefore, "required"); err != nil {
+			errors = errors.Append("RefreshBefore", err)
+		}
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+	return errors
+}
+
+type MCPEventsSubscriptionStatus struct {
+	DeadLetterCount int64                   `json:"dead_letter_count"`
+	Delivery        MCPEventsDeliveryStatus `json:"delivery"`
+	EndReason       *string                 `json:"end_reason,omitempty"`
+	FailedAttempts  int64                   `json:"failed_attempts"`
+	ID              string                  `json:"id" validate:"required"`
+	IssueUID        *string                 `json:"issue_uid,omitempty"`
+	Name            string                  `json:"name" validate:"required"`
+	PendingControl  *string                 `json:"pending_control,omitempty"`
+	ProjectUids     []string                `json:"project_uids,omitempty"`
+	Recipient       string                  `json:"recipient" validate:"required"`
+	RefreshBefore   *time.Time              `json:"refresh_before" validate:"required"`
+	State           string                  `json:"state" validate:"required"`
+}
+
+func (m MCPEventsSubscriptionStatus) Validate() error {
+	var errors runtime.ValidationErrors
+	if v, ok := any(m.Delivery).(runtime.Validator); ok {
+		if err := v.Validate(); err != nil {
+			errors = errors.Append("Delivery", err)
+		}
+	}
+	if err := typesValidator.Var(m.ID, "required"); err != nil {
+		errors = errors.Append("ID", err)
+	}
+	if err := typesValidator.Var(m.Name, "required"); err != nil {
+		errors = errors.Append("Name", err)
+	}
+	if err := typesValidator.Var(m.Recipient, "required"); err != nil {
+		errors = errors.Append("Recipient", err)
+	}
+	if m.RefreshBefore != nil {
+		if err := typesValidator.Var(m.RefreshBefore, "required"); err != nil {
+			errors = errors.Append("RefreshBefore", err)
+		}
+	}
+	if err := typesValidator.Var(m.State, "required"); err != nil {
+		errors = errors.Append("State", err)
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+	return errors
+}
+
+type MCPEventsSubscriptionsResponseBody struct {
+	Enabled       bool                          `json:"enabled"`
+	Reason        *string                       `json:"reason,omitempty"`
+	Subscriptions []MCPEventsSubscriptionStatus `json:"subscriptions" validate:"required"`
+}
+
+func (m MCPEventsSubscriptionsResponseBody) Validate() error {
+	var errors runtime.ValidationErrors
+	if err := typesValidator.Var(m.Subscriptions, "required"); err != nil {
+		errors = errors.Append("Subscriptions", err)
+	}
+	for i, item := range m.Subscriptions {
+		if v, ok := any(item).(runtime.Validator); ok {
+			if err := v.Validate(); err != nil {
+				errors = errors.Append(fmt.Sprintf("Subscriptions[%d]", i), err)
+			}
+		}
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+	return errors
+}
+
+type MCPEventsUnsubscribeBody struct {
+	Arguments MCPEventsArguments `json:"arguments"`
+	Delivery  MCPEventsDelivery  `json:"delivery"`
+	Name      string             `json:"name" validate:"required"`
+}
+
+func (m MCPEventsUnsubscribeBody) Validate() error {
+	var errors runtime.ValidationErrors
+	if v, ok := any(m.Arguments).(runtime.Validator); ok {
+		if err := v.Validate(); err != nil {
+			errors = errors.Append("Arguments", err)
+		}
+	}
+	if v, ok := any(m.Delivery).(runtime.Validator); ok {
+		if err := v.Validate(); err != nil {
+			errors = errors.Append("Delivery", err)
+		}
+	}
+	if err := typesValidator.Var(m.Name, "required"); err != nil {
+		errors = errors.Append("Name", err)
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+	return errors
+}
+
+type MCPEventsUnsubscribeResponseBody struct {
+	Unsubscribed bool `json:"unsubscribed"`
 }
 
 type MapConnectorFieldRequestBody struct {
@@ -7684,453 +8171,4 @@ func (u UISnapshotResponseBody) Validate() error {
 type UnassignRequestBody struct {
 	Actor         *string `json:"actor,omitempty"`
 	ExpectedOwner *string `json:"expected_owner,omitempty"`
-}
-
-type CronJobInputsResponseBody struct {
-	DeclaredBy                 string              `json:"declared_by" validate:"required"`
-	DefinitionEventUID         string              `json:"definition_event_uid" validate:"required"`
-	Errors                     []InputError        `json:"errors" validate:"required"`
-	Inputs                     []CronResolvedInput `json:"inputs" validate:"required"`
-	JobUID                     string              `json:"job_uid" validate:"required"`
-	WorkflowDefinitionEventUID *string             `json:"workflow_definition_event_uid,omitempty"`
-	WorkflowUID                *string             `json:"workflow_uid,omitempty"`
-}
-
-func (c CronJobInputsResponseBody) Validate() error {
-	var errors runtime.ValidationErrors
-	if err := typesValidator.Var(c.DeclaredBy, "required"); err != nil {
-		errors = errors.Append("DeclaredBy", err)
-	}
-	if err := typesValidator.Var(c.DefinitionEventUID, "required"); err != nil {
-		errors = errors.Append("DefinitionEventUID", err)
-	}
-	if err := typesValidator.Var(c.Errors, "required"); err != nil {
-		errors = errors.Append("Errors", err)
-	}
-	for i, item := range c.Errors {
-		if v, ok := any(item).(runtime.Validator); ok {
-			if err := v.Validate(); err != nil {
-				errors = errors.Append(fmt.Sprintf("Errors[%d]", i), err)
-			}
-		}
-	}
-	if err := typesValidator.Var(c.Inputs, "required"); err != nil {
-		errors = errors.Append("Inputs", err)
-	}
-	for i, item := range c.Inputs {
-		if v, ok := any(item).(runtime.Validator); ok {
-			if err := v.Validate(); err != nil {
-				errors = errors.Append(fmt.Sprintf("Inputs[%d]", i), err)
-			}
-		}
-	}
-	if err := typesValidator.Var(c.JobUID, "required"); err != nil {
-		errors = errors.Append("JobUID", err)
-	}
-	if len(errors) == 0 {
-		return nil
-	}
-	return errors
-}
-
-type CronResolvedInput struct {
-	Description *string                  `json:"description,omitempty"`
-	Max         *int64                   `json:"max,omitempty"`
-	MaxLength   *int64                   `json:"max_length,omitempty"`
-	Min         *int64                   `json:"min,omitempty"`
-	Multiline   *bool                    `json:"multiline,omitempty"`
-	Name        string                   `json:"name" validate:"required"`
-	Required    *bool                    `json:"required,omitempty"`
-	Source      string                   `json:"source" validate:"required"`
-	Title       *string                  `json:"title,omitempty"`
-	Type        string                   `json:"type" validate:"required"`
-	Value       *CronResolvedInput_Value `json:"value,omitempty"`
-	Values      []string                 `json:"values,omitempty"`
-}
-
-func (c CronResolvedInput) Validate() error {
-	var errors runtime.ValidationErrors
-	if err := typesValidator.Var(c.Name, "required"); err != nil {
-		errors = errors.Append("Name", err)
-	}
-	if err := typesValidator.Var(c.Source, "required"); err != nil {
-		errors = errors.Append("Source", err)
-	}
-	if err := typesValidator.Var(c.Type, "required"); err != nil {
-		errors = errors.Append("Type", err)
-	}
-	if c.Value != nil {
-		if v, ok := any(c.Value).(runtime.Validator); ok {
-			if err := v.Validate(); err != nil {
-				errors = errors.Append("Value", err)
-			}
-		}
-	}
-	if len(errors) == 0 {
-		return nil
-	}
-	return errors
-}
-
-type CronResolvedInput_Value struct {
-	CronResolvedInput_Value_OneOf *CronResolvedInput_Value_OneOf `json:"-"`
-}
-
-func (c CronResolvedInput_Value) Validate() error {
-	var errors runtime.ValidationErrors
-	if c.CronResolvedInput_Value_OneOf != nil {
-		if v, ok := any(c.CronResolvedInput_Value_OneOf).(runtime.Validator); ok {
-			if err := v.Validate(); err != nil {
-				errors = errors.Append("CronResolvedInput_Value_OneOf", err)
-			}
-		}
-	}
-	if len(errors) == 0 {
-		return nil
-	}
-	return errors
-}
-
-func (c CronResolvedInput_Value) MarshalJSON() ([]byte, error) {
-	var parts []json.RawMessage
-
-	{
-		b, err := runtime.MarshalJSON(c.CronResolvedInput_Value_OneOf)
-		if err != nil {
-			return nil, fmt.Errorf("CronResolvedInput_Value_OneOf marshal: %w", err)
-		}
-		parts = append(parts, b)
-	}
-
-	return runtime.CoalesceOrMerge(parts...)
-}
-
-func (c *CronResolvedInput_Value) UnmarshalJSON(data []byte) error {
-	trim := bytes.TrimSpace(data)
-	if bytes.Equal(trim, []byte("null")) {
-		return nil
-	}
-	if len(trim) == 0 {
-		return fmt.Errorf("empty JSON input")
-	}
-
-	if c.CronResolvedInput_Value_OneOf == nil {
-		c.CronResolvedInput_Value_OneOf = &CronResolvedInput_Value_OneOf{}
-	}
-
-	if err := runtime.UnmarshalJSON(data, c.CronResolvedInput_Value_OneOf); err != nil {
-		return fmt.Errorf("CronResolvedInput_Value_OneOf unmarshal: %w", err)
-	}
-
-	return nil
-}
-
-type DocbankHealth struct {
-	// Credential Docbank API key state, ok or missing; an advisory warning that does not change health.ok.
-	Credential string `json:"credential" validate:"required"`
-
-	// CredentialReason Why the key source cannot supply a key.
-	CredentialReason *string `json:"credential_reason,omitempty"`
-
-	// CredentialSource Key source that failed: file:<path> or env:<NAME>; never the key value.
-	CredentialSource *string `json:"credential_source,omitempty"`
-}
-
-func (d DocbankHealth) Validate() error {
-	return runtime.ConvertValidatorError(typesValidator.Struct(d))
-}
-
-type InputError struct {
-	Code    string  `json:"code" validate:"required"`
-	Message string  `json:"message" validate:"required"`
-	Name    *string `json:"name,omitempty"`
-}
-
-func (i InputError) Validate() error {
-	return runtime.ConvertValidatorError(typesValidator.Struct(i))
-}
-
-type LocalEmbeddingsIndexing struct {
-	Done       int64  `json:"done"`
-	EtaSeconds *int64 `json:"eta_seconds,omitempty"`
-	Failed     bool   `json:"failed"`
-	Total      int64  `json:"total"`
-}
-
-type LocalEmbeddingsJob struct {
-	Downloaded int64   `json:"downloaded"`
-	ErrorData  *string `json:"error,omitempty"`
-	State      string  `json:"state" validate:"required"`
-	Total      int64   `json:"total"`
-}
-
-func (l LocalEmbeddingsJob) Validate() error {
-	return runtime.ConvertValidatorError(typesValidator.Struct(l))
-}
-
-type LocalEmbeddingsStatus struct {
-	CanChange       bool                          `json:"can_change"`
-	DownloadBytes   int64                         `json:"download_bytes"`
-	Indexing        *LocalEmbeddingsIndexing      `json:"indexing,omitempty"`
-	Job             *LocalEmbeddingsJob           `json:"job,omitempty"`
-	OllamaAvailable bool                          `json:"ollama_available"`
-	Provider        LocalEmbeddingsStatusProvider `json:"provider" validate:"required"`
-}
-
-func (l LocalEmbeddingsStatus) Validate() error {
-	var errors runtime.ValidationErrors
-	if l.Indexing != nil {
-		if v, ok := any(l.Indexing).(runtime.Validator); ok {
-			if err := v.Validate(); err != nil {
-				errors = errors.Append("Indexing", err)
-			}
-		}
-	}
-	if l.Job != nil {
-		if v, ok := any(l.Job).(runtime.Validator); ok {
-			if err := v.Validate(); err != nil {
-				errors = errors.Append("Job", err)
-			}
-		}
-	}
-	if v, ok := any(l.Provider).(runtime.Validator); ok {
-		if err := v.Validate(); err != nil {
-			errors = errors.Append("Provider", err)
-		}
-	}
-	if len(errors) == 0 {
-		return nil
-	}
-	return errors
-}
-
-type MCPEventsArguments struct {
-	AllProjects *bool    `json:"all_projects,omitempty"`
-	For         string   `json:"for" validate:"required"`
-	IssueUID    *string  `json:"issue_uid,omitempty"`
-	ProjectUids []string `json:"project_uids,omitempty"`
-}
-
-func (m MCPEventsArguments) Validate() error {
-	return runtime.ConvertValidatorError(typesValidator.Struct(m))
-}
-
-type MCPEventsDelivery struct {
-	Mode   string  `json:"mode" validate:"required"`
-	Secret *string `json:"secret,omitempty"`
-	URL    string  `json:"url" validate:"required"`
-}
-
-func (m MCPEventsDelivery) Validate() error {
-	return runtime.ConvertValidatorError(typesValidator.Struct(m))
-}
-
-type MCPEventsDeliveryStatus struct {
-	Active         bool       `json:"active"`
-	FailedSince    *time.Time `json:"failed_since,omitempty"`
-	LastDeliveryAt *time.Time `json:"last_delivery_at,omitempty"`
-	LastError      *string    `json:"last_error,omitempty"`
-}
-
-type MCPEventsEventDefinition struct {
-	Delivery      []string       `json:"delivery" validate:"required"`
-	Description   string         `json:"description" validate:"required"`
-	InputSchema   map[string]any `json:"input_schema"`
-	Name          string         `json:"name" validate:"required"`
-	PayloadSchema map[string]any `json:"payload_schema"`
-}
-
-func (m MCPEventsEventDefinition) Validate() error {
-	return runtime.ConvertValidatorError(typesValidator.Struct(m))
-}
-
-type MCPEventsForwarderScope struct {
-	All      *bool    `json:"all,omitempty"`
-	Projects []string `json:"projects,omitempty"`
-}
-
-type MCPEventsListResponseBody struct {
-	Events []MCPEventsEventDefinition `json:"events" validate:"required"`
-}
-
-func (m MCPEventsListResponseBody) Validate() error {
-	var errors runtime.ValidationErrors
-	if err := typesValidator.Var(m.Events, "required"); err != nil {
-		errors = errors.Append("Events", err)
-	}
-	for i, item := range m.Events {
-		if v, ok := any(item).(runtime.Validator); ok {
-			if err := v.Validate(); err != nil {
-				errors = errors.Append(fmt.Sprintf("Events[%d]", i), err)
-			}
-		}
-	}
-	if len(errors) == 0 {
-		return nil
-	}
-	return errors
-}
-
-type MCPEventsSubscribeBody struct {
-	Arguments      MCPEventsArguments       `json:"arguments"`
-	Delivery       MCPEventsDelivery        `json:"delivery"`
-	ForwarderScope *MCPEventsForwarderScope `json:"forwarder_scope,omitempty"`
-	Name           string                   `json:"name" validate:"required"`
-	NoExpiry       *bool                    `json:"no_expiry,omitempty"`
-	TTLMs          *int64                   `json:"ttl_ms,omitempty"`
-}
-
-func (m MCPEventsSubscribeBody) Validate() error {
-	var errors runtime.ValidationErrors
-	if v, ok := any(m.Arguments).(runtime.Validator); ok {
-		if err := v.Validate(); err != nil {
-			errors = errors.Append("Arguments", err)
-		}
-	}
-	if v, ok := any(m.Delivery).(runtime.Validator); ok {
-		if err := v.Validate(); err != nil {
-			errors = errors.Append("Delivery", err)
-		}
-	}
-	if m.ForwarderScope != nil {
-		if v, ok := any(m.ForwarderScope).(runtime.Validator); ok {
-			if err := v.Validate(); err != nil {
-				errors = errors.Append("ForwarderScope", err)
-			}
-		}
-	}
-	if err := typesValidator.Var(m.Name, "required"); err != nil {
-		errors = errors.Append("Name", err)
-	}
-	if len(errors) == 0 {
-		return nil
-	}
-	return errors
-}
-
-type MCPEventsSubscribeResponseBody struct {
-	DeliveryStatus MCPEventsDeliveryStatus `json:"delivery_status"`
-	ID             string                  `json:"id" validate:"required"`
-	RefreshBefore  *time.Time              `json:"refresh_before" validate:"required"`
-}
-
-func (m MCPEventsSubscribeResponseBody) Validate() error {
-	var errors runtime.ValidationErrors
-	if v, ok := any(m.DeliveryStatus).(runtime.Validator); ok {
-		if err := v.Validate(); err != nil {
-			errors = errors.Append("DeliveryStatus", err)
-		}
-	}
-	if err := typesValidator.Var(m.ID, "required"); err != nil {
-		errors = errors.Append("ID", err)
-	}
-	if m.RefreshBefore != nil {
-		if err := typesValidator.Var(m.RefreshBefore, "required"); err != nil {
-			errors = errors.Append("RefreshBefore", err)
-		}
-	}
-	if len(errors) == 0 {
-		return nil
-	}
-	return errors
-}
-
-type MCPEventsSubscriptionStatus struct {
-	DeadLetterCount int64                   `json:"dead_letter_count"`
-	Delivery        MCPEventsDeliveryStatus `json:"delivery"`
-	EndReason       *string                 `json:"end_reason,omitempty"`
-	FailedAttempts  int64                   `json:"failed_attempts"`
-	ID              string                  `json:"id" validate:"required"`
-	IssueUID        *string                 `json:"issue_uid,omitempty"`
-	Name            string                  `json:"name" validate:"required"`
-	PendingControl  *string                 `json:"pending_control,omitempty"`
-	ProjectUids     []string                `json:"project_uids,omitempty"`
-	Recipient       string                  `json:"recipient" validate:"required"`
-	RefreshBefore   *time.Time              `json:"refresh_before" validate:"required"`
-	State           string                  `json:"state" validate:"required"`
-}
-
-func (m MCPEventsSubscriptionStatus) Validate() error {
-	var errors runtime.ValidationErrors
-	if v, ok := any(m.Delivery).(runtime.Validator); ok {
-		if err := v.Validate(); err != nil {
-			errors = errors.Append("Delivery", err)
-		}
-	}
-	if err := typesValidator.Var(m.ID, "required"); err != nil {
-		errors = errors.Append("ID", err)
-	}
-	if err := typesValidator.Var(m.Name, "required"); err != nil {
-		errors = errors.Append("Name", err)
-	}
-	if err := typesValidator.Var(m.Recipient, "required"); err != nil {
-		errors = errors.Append("Recipient", err)
-	}
-	if m.RefreshBefore != nil {
-		if err := typesValidator.Var(m.RefreshBefore, "required"); err != nil {
-			errors = errors.Append("RefreshBefore", err)
-		}
-	}
-	if err := typesValidator.Var(m.State, "required"); err != nil {
-		errors = errors.Append("State", err)
-	}
-	if len(errors) == 0 {
-		return nil
-	}
-	return errors
-}
-
-type MCPEventsSubscriptionsResponseBody struct {
-	Enabled       bool                          `json:"enabled"`
-	Reason        *string                       `json:"reason,omitempty"`
-	Subscriptions []MCPEventsSubscriptionStatus `json:"subscriptions" validate:"required"`
-}
-
-func (m MCPEventsSubscriptionsResponseBody) Validate() error {
-	var errors runtime.ValidationErrors
-	if err := typesValidator.Var(m.Subscriptions, "required"); err != nil {
-		errors = errors.Append("Subscriptions", err)
-	}
-	for i, item := range m.Subscriptions {
-		if v, ok := any(item).(runtime.Validator); ok {
-			if err := v.Validate(); err != nil {
-				errors = errors.Append(fmt.Sprintf("Subscriptions[%d]", i), err)
-			}
-		}
-	}
-	if len(errors) == 0 {
-		return nil
-	}
-	return errors
-}
-
-type MCPEventsUnsubscribeBody struct {
-	Arguments MCPEventsArguments `json:"arguments"`
-	Delivery  MCPEventsDelivery  `json:"delivery"`
-	Name      string             `json:"name" validate:"required"`
-}
-
-func (m MCPEventsUnsubscribeBody) Validate() error {
-	var errors runtime.ValidationErrors
-	if v, ok := any(m.Arguments).(runtime.Validator); ok {
-		if err := v.Validate(); err != nil {
-			errors = errors.Append("Arguments", err)
-		}
-	}
-	if v, ok := any(m.Delivery).(runtime.Validator); ok {
-		if err := v.Validate(); err != nil {
-			errors = errors.Append("Delivery", err)
-		}
-	}
-	if err := typesValidator.Var(m.Name, "required"); err != nil {
-		errors = errors.Append("Name", err)
-	}
-	if len(errors) == 0 {
-		return nil
-	}
-	return errors
-}
-
-type MCPEventsUnsubscribeResponseBody struct {
-	Unsubscribed bool `json:"unsubscribed"`
 }
