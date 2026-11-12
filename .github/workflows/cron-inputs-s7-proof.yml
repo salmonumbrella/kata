@@ -1,0 +1,39 @@
+name: Cron input conformance proof
+on:
+  push:
+    branches: [proof/cron-s7-request-floor-red-93f2a78]
+permissions:
+  contents: read
+env:
+  GOMAXPROCS: '2'
+  GOFLAGS: '-p=1'
+  KATA_HOME: /tmp/kata-proof/home
+  KATA_DB: /tmp/kata-proof/home/kata.db
+  KATA_WORKSPACE: /tmp/kata-proof/workspace
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+      - name: Format changed Go files
+        run: gofmt -w cmd/kata/cron_conformance.go cmd/kata/cron_conformance_inputs_test.go pkg/cron/conformance/check.go pkg/cron/conformance/fixtures.go pkg/cron/conformance/inputs.go pkg/cron/conformance/inputs_test.go pkg/cron/conformance/types.go pkg/cron/conformance/version_test.go
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: formatted-go
+          path: |
+            cmd/kata/cron_conformance.go
+            cmd/kata/cron_conformance_inputs_test.go
+            pkg/cron/conformance/check.go
+            pkg/cron/conformance/fixtures.go
+            pkg/cron/conformance/inputs.go
+            pkg/cron/conformance/inputs_test.go
+            pkg/cron/conformance/types.go
+            pkg/cron/conformance/version_test.go
+      - run: git diff --exit-code -- cmd/kata/cron_conformance.go cmd/kata/cron_conformance_inputs_test.go pkg/cron/conformance
+      - run: go test -p 1 ./pkg/cron/conformance ./internal/cron -count=1
+      - run: go test -p 1 ./cmd/kata -run '^TestCronConformance' -count=1
