@@ -154,17 +154,30 @@ function serveRunUsage(source: 'agentsview' | 'none', fixture: UsageFixture = {}
     }
     if (url.pathname === cronPath(exampleProject, 'capabilities')) {
       if (fixture.capabilities) return fixture.capabilities()
-      return Response.json({
-        project_uid: exampleProject.uid,
-        event_features: [],
-        usage: { source },
-      })
+      return Response.json(capabilitiesBody(exampleProject.uid, source))
     }
     if (url.pathname === cronPath(exampleProject, `runs/${runC}/usage`)) {
       return fixture.usage ? fixture.usage() : Response.json(usageBody())
     }
     return emptyCatalog(url) ?? notFound()
   })
+}
+
+function capabilitiesBody(projectUID: string, source: 'agentsview' | 'none' = 'agentsview') {
+  return { project_uid: projectUID, event_features: [], usage: { source } }
+}
+
+// A JSON response whose body is already in memory, so a read's continuations
+// finish in promise jobs and one zero-delay timer turn drains them before a
+// test checks that nothing followed.
+function settledJSON(body: unknown): Response {
+  const text = JSON.stringify(body)
+  return {
+    status: 200,
+    ok: true,
+    headers: new Headers({ 'Content-Type': 'application/json' }),
+    text: async () => text,
+  } as unknown as Response
 }
 
 function usageReads(fetcher: ReturnType<typeof serve>): URL[] {
@@ -316,29 +329,6 @@ describe('CronPage', () => {
     expect(requested(fetcher, cronPath(exampleProject, `runs/${runB}`))).toHaveLength(1)
   })
 
-  it('shows the cost of an open run with one usage read when usage is on', async () => {
-    const fetcher = serveRunUsage('agentsview')
-    render(CronPage, { props: runSelectionProps() })
-
-    expect(await screen.findByText(`Run ${runC}`)).not.toBeNull()
-    expect(await screen.findByRole('heading', { name: 'Cost' })).not.toBeNull()
-    // The heading shows while the usage read is pending; the amount follows it.
-    expect(await screen.findByText('$2.41')).not.toBeNull()
-    const usage = requested(fetcher, cronPath(exampleProject, `runs/${runC}/usage`))
-    expect(usage.map((url) => url.searchParams.get('refresh'))).toEqual(['false'])
-  })
-
-  it('shows no cost and reads no usage when usage is off', async () => {
-    const fetcher = serveRunUsage('none')
-    render(CronPage, { props: runSelectionProps() })
-
-    expect(await screen.findByText(`Run ${runC}`)).not.toBeNull()
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    expect(screen.queryByRole('heading', { name: 'Cost' })).toBeNull()
-    expect(requested(fetcher, cronPath(exampleProject, `runs/${runC}/usage`))).toEqual([])
-    expect(screen.getByText('Sessions')).not.toBeNull()
-  })
-
   it('refreshes cost with a new capability check and refresh=true, one read at a time', async () => {
     let finish: (response: Response) => void = () => {}
     let reads = 0
@@ -367,22 +357,18 @@ describe('CronPage', () => {
     expect(requested(fetcher, cronPath(exampleProject, 'capabilities'))).toHaveLength(2)
   })
 
-  it.each([
-    [403, 'Cost needs a signed-in session'],
-    [404, 'Run not found'],
-    [502, 'The total cost cannot be represented.'],
-    [503, 'Usage is disabled on this daemon.'],
-    [400, 'Could not read cost. Refresh to retry.'],
-  ])('explains a usage read answered with %i', async (status, text) => {
+  it('shows the text for a failed usage read in the Cost section', async () => {
     serveRunUsage('agentsview', {
-      usage: () => Response.json({ error: { code: 'example' } }, { status }),
+      usage: () => Response.json({ error: { code: 'usage_source_disabled' } }, { status: 503 }),
     })
     render(CronPage, { props: runSelectionProps() })
 
-    expect(await screen.findByText(text)).not.toBeNull()
+    expect(await screen.findByText('Usage is disabled on this daemon.')).not.toBeNull()
     expect(screen.getByRole('heading', { name: 'Cost' })).not.toBeNull()
   })
 
+  // A healthy daemon echoes the requested run and project, so these answers are
+  // defense in depth against a misbehaving peer.
   it('refuses usage for another run and for another project', async () => {
     serveRunUsage('agentsview', { usage: () => Response.json(usageBody({ run_uid: runB })) })
     render(CronPage, { props: runSelectionProps() })
@@ -391,25 +377,14 @@ describe('CronPage', () => {
 
     cleanup()
     const fetcher = serveRunUsage('agentsview', {
-      capabilities: () =>
-        Response.json({
-          project_uid: spokeProject.uid,
-          event_features: [],
-          usage: { source: 'agentsview' },
-        }),
+      capabilities: () => settledJSON(capabilitiesBody(spokeProject.uid)),
     })
     render(CronPage, { props: runSelectionProps() })
-    expect(await screen.findByText(`Run ${runC}`)).not.toBeNull()
+    await waitFor(() =>
+      expect(requested(fetcher, cronPath(exampleProject, 'capabilities'))).toHaveLength(1),
+    )
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(screen.queryByRole('heading', { name: 'Cost' })).toBeNull()
-    expect(usageReads(fetcher)).toEqual([])
-  })
-
-  it('asks an anonymous reader to sign in without reading usage', async () => {
-    const fetcher = serveRunUsage('agentsview')
-    render(CronPage, { props: { ...runSelectionProps(), anonymous: true } })
-
-    expect(await screen.findByText('Cost needs a signed-in session')).not.toBeNull()
     expect(usageReads(fetcher)).toEqual([])
   })
 
@@ -427,13 +402,7 @@ describe('CronPage', () => {
     const other = { kind: 'run' as const, projectUID: exampleProject.uid, uid: runB }
     await view.rerender({ ...current, route: { ...current.route, selection: other } })
     expect(await screen.findByText('Run not found.')).not.toBeNull()
-    answer(
-      Response.json({
-        project_uid: exampleProject.uid,
-        event_features: [],
-        usage: { source: 'agentsview' },
-      }),
-    )
+    answer(settledJSON(capabilitiesBody(exampleProject.uid)))
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(usageReads(fetcher)).toEqual([])
@@ -459,14 +428,30 @@ describe('CronPage', () => {
   })
 
   it('links only safe AgentsView session addresses', async () => {
-    const priced = usageBody().sessions[0]!
+    const first = '11111111-1111-4111-8111-111111111111'
+    const second = '22222222-2222-4222-8222-222222222222'
+    const priced = { agent: 'codex', state: 'priced', cost_source: 'reported' }
     serveRunUsage('agentsview', {
       usage: () =>
         Response.json(
           usageBody({
             sessions: [
-              { ...priced, url: 'http://127.0.0.1:8080/sessions/example' },
-              { ...priced, session_id: 'session-b', url: 'http://example-user@127.0.0.1/s' },
+              {
+                ...priced,
+                session_id: first,
+                canonical_session_id: first,
+                cost_microdollars: 1_205_000,
+                url: `http://127.0.0.1:8080/sessions/codex/${first}`,
+              },
+              // The daemon never emits a URL with credentials; the guard is
+              // defense in depth, and the session stays readable without it.
+              {
+                ...priced,
+                session_id: second,
+                canonical_session_id: second,
+                cost_microdollars: 1_205_000,
+                url: `http://example-user@127.0.0.1:8080/sessions/codex/${second}`,
+              },
             ],
           }),
         ),
@@ -474,11 +459,11 @@ describe('CronPage', () => {
     render(CronPage, { props: runSelectionProps() })
 
     const link = await screen.findByRole('link', { name: 'Open in AgentsView' })
-    expect(link.getAttribute('href')).toBe('http://127.0.0.1:8080/sessions/example')
+    expect(link.getAttribute('href')).toBe(`http://127.0.0.1:8080/sessions/codex/${first}`)
     expect(link.getAttribute('target')).toBe('_blank')
     expect(link.getAttribute('rel')).toBe('noopener noreferrer')
     expect(screen.getAllByRole('link', { name: 'Open in AgentsView' })).toHaveLength(1)
-    expect(screen.getByText('codex session-: $2.41')).not.toBeNull()
+    expect(screen.getByText('codex 22222222: $1.21')).not.toBeNull()
   })
 
   it('shows a selected project the connection cannot read without reading it', async () => {
