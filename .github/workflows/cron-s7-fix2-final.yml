@@ -1,0 +1,46 @@
+name: Cron S7 fix2 integrated proof
+on:
+  push:
+    branches: [proof/cron-s7-fix2-final-f95656]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GOMAXPROCS: '2'
+      GOFLAGS: '-p=1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+      - name: Focused conformance and cron
+        run: go test -p 1 ./pkg/cron/conformance ./internal/cron -count=1
+      - name: Focused CLI
+        run: go test -p 1 ./cmd/kata -run '^TestCronConformance' -count=1
+      - name: Integrated API artifacts and marker
+        run: go test -p 1 ./internal/daemon -run '^(TestAPISchemaVersionMatchesRecordedContract|TestOpenAPIArtifactUpToDate|TestOpenAPIClientSpecArtifactUpToDate|TestOpenAPIClientArtifactUpToDate)$' -count=1
+      - name: Compare v2 exports to frozen source
+        run: |
+          cp pkg/cron/conformance/testdata/v2-export-sha256.json /tmp/s7-v2-export-sha256.json
+          cp .github/proof/s7-v2-test.txt /tmp/s7-v2-test.txt
+          git fetch --depth=1 origin 9fcc74bf13414cb0ec3f2bea592e8852d359b358
+          git worktree add --detach /tmp/s7-frozen 9fcc74bf13414cb0ec3f2bea592e8852d359b358
+          cp /tmp/s7-v2-test.txt /tmp/s7-frozen/pkg/cron/conformance/proof_v2_test.go
+          cd /tmp/s7-frozen
+          go test -p 1 ./pkg/cron/conformance -run '^TestProofFrozenV2$' -count=1
+      - name: Format changed source
+        if: always()
+        run: gofmt -w pkg/cron/conformance/check.go pkg/cron/conformance/inputs.go pkg/cron/conformance/inputs_test.go pkg/cron/conformance/version_test.go
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: formatted-source
+          path: |
+            pkg/cron/conformance/check.go
+            pkg/cron/conformance/inputs.go
+            pkg/cron/conformance/inputs_test.go
+            pkg/cron/conformance/version_test.go
