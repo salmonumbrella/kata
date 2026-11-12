@@ -529,3 +529,12 @@ func TestCronSpokeForwardEnabledActions(t *testing.T) {
 	require.Equal(t, f.sp.ID, out.Body.Job.ProjectID)
 	require.Zero(t, out.Body.Job.ID)
 }
+
+// TestCronSpokeRejectsNotifyInputsBeforeForwarding enforces client validation at the spoke.
+func TestCronSpokeRejectsNotifyInputsBeforeForwarding(t *testing.T) {
+	f := newCronForwardFixture(t, nil)
+	f.definition.Options = []byte(`{"input_values":{"flag":true}}`)
+	response, raw := f.put(t, cronHTTPUID(t), "")
+	require.Equalf(t, http.StatusBadRequest, response.StatusCode, "%s", raw)
+	require.Zero(t, f.writes.Load())
+}

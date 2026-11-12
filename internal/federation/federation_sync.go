@@ -1073,6 +1073,26 @@ type Runner struct {
 	// is nil when the pass has no parent activity lease.
 	OnPulledEventsFrom func(projectID int64, events []db.Event, fork activity.Admission)
 	DrainAdmission     activity.WaitableAdmission
+	// refusalClock reads the time that schedules relay refusal retries. Nil
+	// means time.Now.
+	refusalClock func() time.Time
+	// debounceTimer starts the wait between a wake and the pass it causes. Nil
+	// means a real timer.
+	debounceTimer func(time.Duration) Timer
+}
+
+func (r *Runner) newDebounceTimer(delay time.Duration) Timer {
+	if r.debounceTimer != nil {
+		return r.debounceTimer(delay)
+	}
+	return wallTimer{timer: time.NewTimer(delay)}
+}
+
+func (r *Runner) refusalNow() time.Time {
+	if r.refusalClock != nil {
+		return r.refusalClock()
+	}
+	return time.Now()
 }
 
 type runnerLeaseStore interface {
@@ -1103,7 +1123,7 @@ type activeSpokeBinding struct {
 // RunOnce executes one pull pass. With no spoke bindings it returns without
 // reading credentials or making network requests.
 func (r *Runner) RunOnce(ctx context.Context) error {
-	_, _, _, err := r.runOnce(ctx, nil, nil)
+	_, _, _, err := r.runOnce(ctx, nil, nil, nil)
 	return err
 }
 
@@ -1114,6 +1134,7 @@ func (r *Runner) runOnce(
 	ctx context.Context,
 	validateLease func(context.Context) error,
 	only map[int64]bool,
+	refusals relayRefusalRetries,
 ) (retry <-chan struct{}, denied bool, remaining map[int64]bool, err error) {
 	var scan *activity.Lease
 	if r.DrainAdmission != nil {
@@ -1159,7 +1180,7 @@ func (r *Runner) runOnce(
 	}
 	var errs []error
 	for _, spoke := range spokes {
-		if len(only) > 0 && !only[spoke.binding.ProjectID] {
+		if refusals.blocked(spoke.binding, r.refusalNow()) || (len(only) > 0 && !only[spoke.binding.ProjectID]) {
 			continue
 		}
 		var drain *activity.Lease
@@ -1176,6 +1197,7 @@ func (r *Runner) runOnce(
 			}
 			return r.runSpoke(ctx, spoke, credentialStore, validateLease, drain)
 		}()
+		refusals.record(spoke.binding, spokeErr, r.effectiveInterval(), r.refusalNow())
 		if errors.Is(spokeErr, context.Canceled) || errors.Is(spokeErr, errFederationRunnerLeaseInvalid) {
 			return nil, false, nil, spokeErr
 		}
@@ -1561,10 +1583,8 @@ func monitorFederationRunnerLease(
 }
 
 func (r *Runner) run(ctx context.Context, validateLease func(context.Context) error) error {
-	interval := r.Interval
-	if interval <= 0 {
-		interval = 30 * time.Second
-	}
+	interval := r.effectiveInterval()
+	refusals := make(relayRefusalRetries)
 	debounce := r.Debounce
 	if debounce <= 0 {
 		debounce = 50 * time.Millisecond
@@ -1580,7 +1600,7 @@ func (r *Runner) run(ctx context.Context, validateLease func(context.Context) er
 				return err
 			}
 		}
-		retry, denied, remaining, err := r.runOnce(ctx, validateLease, pending)
+		retry, denied, remaining, err := r.runOnce(ctx, validateLease, pending, refusals)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, errFederationRunnerLeaseInvalid) {
 				return err
@@ -1622,12 +1642,12 @@ func (r *Runner) run(ctx context.Context, validateLease func(context.Context) er
 			return ctx.Err()
 		case <-ticker.C:
 		case <-r.Wake:
-			timer := time.NewTimer(debounce)
+			timer := r.newDebounceTimer(debounce)
 			select {
 			case <-ctx.Done():
 				timer.Stop()
 				return ctx.Err()
-			case <-timer.C:
+			case <-timer.C():
 			}
 		}
 	}

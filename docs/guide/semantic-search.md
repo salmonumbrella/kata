@@ -1,7 +1,7 @@
 ---
 title: Semantic search
 description: Configure hybrid semantic search and understand embeddings, ranking, fallbacks, and operations.
-last_edited: 2026-11-05
+last_edited: 2026-11-12
 ---
 
 # Semantic search
@@ -13,9 +13,12 @@ before creating a duplicate. Semantic search adds a vector (embedding) leg so a 
 like "auth redirect duplicates" can surface an issue titled "Login callback
 double-submits on Safari" even though they share no keywords.
 
-Semantic search is **opt-in**. With no embedding endpoint configured, `kata
-search` behaves exactly as before and the daemon makes no network calls. This
-page explains how to turn it on and how it behaves; for the exact config fields
+Semantic search is **opt-in**. Without an embedding endpoint, `kata search`
+matches words. A local daemon with search by meaning off adds a stderr hint
+pointing to Settings and the CLI setup command. `--quiet` and `--agent` suppress
+it; stdout stays unchanged.
+
+This page explains how to turn it on and how it behaves; for the exact config fields
 see [Configuration](../reference/configuration.md#semantic-search), and for the
 command flags see the [CLI reference](../reference/cli.md).
 
@@ -37,6 +40,16 @@ Kata can run a shared local embeddings server or use an OpenAI-compatible
 `/embeddings` endpoint, such as Ollama or a hosted provider.
 
 ## Enabling it
+
+Open `kata ui`, click the gear in the top bar, and choose **Turn on** under **Search by meaning**. Settings applies to every project on the daemon. Turn on downloads what is missing and saves the setting. Run `kata daemon restart` to finish, then reopen `kata ui` to see indexing progress and any failures while it retries. A local owner session or a daemon access administrator sees the button. Other viewers, including viewers connected through the daemon switcher, see the status.
+
+The built-in server choice is shared with supported apps on this computer. When another supported app enables it, a SQLite daemon starts indexing on its next start unless Kata already has a configured provider. PostgreSQL requires explicit setup in Kata. A saved built-in setting also starts with installed files. If those files are missing, SQLite accepts a shared choice to download them. Otherwise, run `kata daemon local-embeddings` to approve the download.
+
+Kata records the shared choice after setup succeeds. If Kata cannot confirm the choice was saved, setup still succeeds and Kata logs the failure. Other apps may miss the choice if it wasn't saved. The CLI writes the warning to stderr. Settings writes it to the detached daemon's `daemon.log`, or to stderr when the daemon runs in the foreground.
+
+PostgreSQL needs pgvector and Kata’s semantic-search tables before setup. Follow the [PostgreSQL setup guide](../operations/postgres.md) to prepare the database, then try Turn on again.
+
+You can also enable it from the CLI:
 
 ```sh
 kata daemon local-embeddings

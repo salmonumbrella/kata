@@ -213,6 +213,7 @@ type Model struct {
 	undoCloseEntryID         uint64
 	reopenPrompt             *reopenPrompt
 	reopenLookupPending      bool
+	move                     moveState
 	mutationEpoch            uint64
 }
 
@@ -485,6 +486,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.staleConnMsg(mut.connGen) {
 			return m, nil
 		}
+		if mut.origin == "move" {
+			return m.handleMoveDone(mut)
+		}
 		return m.routeMutation(mut)
 	}
 	if done, ok := msg.(undoDoneMsg); ok {
@@ -492,6 +496,12 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if backlog, ok := msg.(reopenBacklogMsg); ok {
 		return m.handleReopenBacklog(backlog)
+	}
+	if projects, ok := msg.(moveProjectsMsg); ok {
+		return m.handleMoveProjects(projects), nil
+	}
+	if preview, ok := msg.(movePreviewMsg); ok {
+		return m.handleMovePreview(preview), nil
 	}
 	// Editor returns from a centered form's ctrl+e handoff land here
 	// before dispatchToView so the writeback can hit m.input. formGen=0
@@ -803,23 +813,27 @@ func batchLabelRefresh(
 		return next, prior
 	}
 	pid := projectIDFromMutation(nm, mut)
-	if pid == 0 {
-		return next, prior
+	nm, refresh := nm.refreshCachedLabels(pid)
+	return nm, combineCmds(prior, refresh)
+}
+
+// refreshCachedLabels fetches the label aggregate of each project that already
+// has a cache entry. A project the user never opened the suggestion menu for
+// has none, and a fetch for it would be a wasted roundtrip.
+func (m Model) refreshCachedLabels(pids ...int64) (Model, tea.Cmd) {
+	var cmd tea.Cmd
+	if m.projectLabels == nil {
+		return m, nil
 	}
-	if nm.projectLabels == nil {
-		return next, prior
+	for _, pid := range pids {
+		if _, exists := m.projectLabels.byProject[pid]; pid == 0 || !exists {
+			continue
+		}
+		var refresh tea.Cmd
+		m, refresh = m.dispatchLabelFetch(pid)
+		cmd = combineCmds(cmd, refresh)
 	}
-	if _, exists := nm.projectLabels.byProject[pid]; !exists {
-		return next, prior
-	}
-	nm, refresh := nm.dispatchLabelFetch(pid)
-	if refresh == nil {
-		return nm, prior
-	}
-	if prior == nil {
-		return nm, refresh
-	}
-	return nm, tea.Batch(prior, refresh)
+	return m, cmd
 }
 
 // projectIDFromMutation picks the project id the mutation acted on.
@@ -851,6 +865,9 @@ func (m Model) routeTopLevel(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		return next, cmd, true
 	case cronLoadedMsg:
 		return m.cronLoaded(msg), nil, true
+	case workflowOpenedMsg:
+		next, cmd := m.workflowOpened(msg)
+		return next, cmd, true
 	case cronEditOpenedMsg:
 		next, cmd := m.cronEditOpened(msg)
 		return next, cmd, true
@@ -887,6 +904,9 @@ func (m Model) routeTopLevel(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 				return m, nil, true
 			}
 			m.input.err = ""
+		}
+		if m.modal == modalMoveIssue {
+			return m.pasteIntoMoveFilter(msg), nil, true
 		}
 		if m.modal == modalNone && m.input.kind != inputNone {
 			m.input, _ = m.input.delegateToField(msg)
@@ -972,6 +992,12 @@ func (m Model) routeTopLevel(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 			return next, cmd, true
 		}
 		if next, cmd, ok := m.routeDeleteKey(msg); ok {
+			return next, cmd, true
+		}
+		if next, cmd, ok := m.routeMoveKey(msg); ok {
+			return next, cmd, true
+		}
+		if next, cmd, ok := m.routeRecurrenceKey(msg); ok {
 			return next, cmd, true
 		}
 		if next, cmd, ok := m.routeReopenKey(msg); ok {
@@ -1073,13 +1099,16 @@ func (m Model) mutationForKey(msg tea.KeyPressMsg) (withinSubtree, mutation bool
 	switch {
 	case m.keymap.NewIssue.matches(msg):
 		return false, true
-	case m.keymap.Delete.matches(msg):
-		// Issue-scoped credentials cannot delete, whatever else they may edit.
+	case m.keymap.Delete.matches(msg), m.keymap.MoveIssue.matches(msg):
+		// Issue-scoped credentials cannot delete or move, whatever else they
+		// may edit.
 		return false, true
 	case m.keymap.Close.matches(msg), m.keymap.Reopen.matches(msg), m.keymap.SetDates.matches(msg):
 		return true, true
 	case !m.detailIsActive():
 		return false, false
+	case m.keymap.SetRecurrence.matches(msg):
+		return true, true
 	case m.keymap.SetParent.matches(msg):
 		return false, true
 	default:
@@ -1852,6 +1881,12 @@ func (m Model) routeFormMutation(mut mutationDoneMsg) (tea.Model, tea.Cmd) {
 	if mut.err != nil {
 		m.input.saving = false
 		m.input.err = mut.kind + " failed: " + mut.err.Error()
+		if m.input.kind == inputRecurrenceForm {
+			m.input.err = fmt.Sprintf(successTemplates[mut.kind].failure, mut.err.Error())
+			if isRevisionConflict(mut.err) {
+				return m, tea.Batch(m.reportShownError(mut.kind), m.scheduleDetailRefresh())
+			}
+		}
 		return m, m.reportShownError(mut.kind)
 	}
 	if m.input.kind == inputNewIssueForm {
@@ -1891,7 +1926,7 @@ func (m Model) routeFormMutation(mut mutationDoneMsg) (tea.Model, tea.Cmd) {
 	// detail's body / comments list updates. Re-classify as if it
 	// came from detail (gen=current detail gen) so existing
 	// applyMutation logic kicks in.
-	if formKind == inputCloseForm || formKind == inputDatesForm {
+	if formKind == inputCloseForm || formKind == inputDatesForm || formKind == inputRecurrenceForm {
 		mut.origin = target.origin
 		mut.gen = target.detailGen
 	} else {
@@ -2124,6 +2159,9 @@ func (m Model) commitFormInput(kind inputKind) (Model, tea.Cmd) {
 	if kind == inputDeleteForm {
 		return m.commitDeleteForm()
 	}
+	if kind == inputRecurrenceForm {
+		return m.commitRecurrenceForm()
+	}
 	if kind == inputCloseForm {
 		in, err := closeInputFromForm(m.input, m.list.actor)
 		if err != nil {
@@ -2147,7 +2185,7 @@ func (m Model) commitFormInput(kind inputKind) (Model, tea.Cmd) {
 			m.input.target.forceReply = false
 		}
 		if (m.input.target.replyKind == "confirm" || m.input.target.replyKind == "refute") && utf8.RuneCountInString(strings.Join(strings.Fields(rawBuf), " ")) < 40 {
-			m.input.err = "confirm/refute need at least 40 evidence characters"
+			m.input.err = "Confirm and refute replies need at least 40 characters of evidence"
 			return m, nil
 		}
 		if m.input.target.idempotencyKey == "" || rawBuf != m.input.target.submittedBody || m.input.target.replyKind != m.input.target.submittedKind {
@@ -2639,12 +2677,19 @@ func (m Model) routeSSE(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 // keeps selection and split detail on the issue that was highlighted before.
 func (m Model) refreshListDay(edit func(listModel) listModel) (Model, tea.Cmd) {
 	prevPID, prevUID, prevHas := highlightedIdentity(m.list)
+	m = m.editListDay(edit)
+	return m.reconcileSplitDetailAfterRefetch(prevPID, prevUID, prevHas)
+}
+
+// editListDay applies edit to the list and re-filters relative dates, leaving
+// the split detail pane to the caller.
+func (m Model) editListDay(edit func(listModel) listModel) Model {
 	m.list = m.list.syncSelection(m.list.visibleRows())
 	if edit != nil {
 		m.list = edit(m.list)
 	}
 	m.list = m.list.refreshDay()
-	return m.reconcileSplitDetailAfterRefetch(prevPID, prevUID, prevHas)
+	return m
 }
 
 func (m Model) staleConnMsg(gen uint64) bool {
@@ -2880,9 +2925,12 @@ func (m *Model) maybeRefetchOpenDetail(msg eventReceivedMsg) tea.Cmd {
 		return nil
 	}
 	projectCommentArrival := msg.eventType == "issue.snapshot" || (m.issueScoped && msg.eventType == "issue.commented")
+	// Refresh events for this recurrence, retrying when its read failed.
+	recurrenceChange := m.detail.issue.RecurrenceID != nil && strings.HasPrefix(msg.eventType, "recurrence.") &&
+		(m.detail.recurrenceErr != nil || (m.detail.recurrence != nil && msg.recurrenceUID == m.detail.recurrence.UID))
 	ref := m.detail.issue.ShortID
 	uid := m.detail.issue.UID
-	if !msg.matchesIssue(ref, uid) && !commentMatch && !relationLifecycleMatch && !projectCommentArrival {
+	if !msg.matchesIssue(ref, uid) && !commentMatch && !relationLifecycleMatch && !projectCommentArrival && !recurrenceChange {
 		return nil
 	}
 	return m.scheduleDetailRefresh()
@@ -3159,24 +3207,29 @@ const toastResyncedTTL = 2 * time.Second
 // resynced toast because the user has to act on the hint, not just notice.
 const toastNoBindingTTL = 3 * time.Second
 
+// tickAfter builds every timer command in this package. Production uses
+// tea.Tick. Tests that run commands inline replace it so a timer does not
+// hold the test for its real duration.
+var tickAfter = tea.Tick
+
 // dayTick checks the wall clock within a minute of resuming from suspend.
 // A fixed interval also avoids constructing midnight inside a DST gap.
 func dayTick() tea.Cmd {
-	return tea.Tick(time.Minute, func(time.Time) tea.Msg { return dayTickMsg{} })
+	return tickAfter(time.Minute, func(time.Time) tea.Msg { return dayTickMsg{} })
 }
 
 // debouncedRefetch returns a tea.Cmd that emits refetchTickMsg after d.
 // The TEA loop receives the message, checks the cache, and dispatches
 // the actual list refetch via lm.refetchCmd.
 func debouncedRefetch(d time.Duration) tea.Cmd {
-	return tea.Tick(d, func(time.Time) tea.Msg { return refetchTickMsg{} })
+	return tickAfter(d, func(time.Time) tea.Msg { return refetchTickMsg{} })
 }
 
 // toastExpireCmd schedules a toastExpiredMsg at d. The Update branch
 // double-checks the wall clock before clearing the toast so a fresher
 // toast cannot be cut short by an earlier timer.
 func toastExpireCmd(d time.Duration) tea.Cmd {
-	return tea.Tick(d, func(time.Time) tea.Msg { return toastExpiredMsg{} })
+	return tickAfter(d, func(time.Time) tea.Msg { return toastExpiredMsg{} })
 }
 
 // canQuit reports whether a global keystroke (q, ?, R) should be
@@ -3244,6 +3297,8 @@ func (m Model) routeModalKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+	case modalMoveIssue:
+		return m.routeMoveModalKey(msg)
 	case modalReopenBacklog:
 		switch msg.String() {
 		case "y", "Y":
@@ -3615,7 +3670,7 @@ func (m Model) scheduleDetailFollow() (Model, tea.Cmd) {
 	m = m.markSearchSplitDetailOwned()
 	m.nextDetailFollowGen++
 	tickGen := m.nextDetailFollowGen
-	return m, tea.Tick(detailFollowDebounce, func(time.Time) tea.Msg {
+	return m, tickAfter(detailFollowDebounce, func(time.Time) tea.Msg {
 		return detailFollowTickMsg{gen: tickGen}
 	})
 }
@@ -3684,7 +3739,7 @@ func (m Model) viewContent() string {
 	// after a resize below threshold (roborev #250). Without this the
 	// modal would silently disappear and the user would be stuck —
 	// pressing q again would only re-trigger the (invisible) modal.
-	if m.width > 0 && m.width < 80 {
+	if m.width > 0 && m.width < tooNarrowWidth {
 		// Auxiliary inventory views render their own narrow-friendly body; every other
 		// view falls back to the "too narrow" hint. Either way an active
 		// modal/form must layer on top — without that, a quit-confirm
@@ -3734,7 +3789,7 @@ func (m Model) viewContent() string {
 func (m Model) overlayInputAndModal(body string) string {
 	if m.input.kind.isCenteredForm() {
 		var now time.Time
-		if m.input.kind == inputDatesForm {
+		if m.input.kind == inputDatesForm || m.input.kind == inputRecurrenceForm {
 			now = m.toastNow()
 		}
 		form := renderCenteredForm(m.input, m.width, m.height, now)
@@ -3743,7 +3798,9 @@ func (m Model) overlayInputAndModal(body string) string {
 	if m.modal == modalReopenBacklog {
 		return m.overlayReopenBacklog(body)
 	}
-	if m.modal != modalNone {
+	if m.modal == modalMoveIssue {
+		body = overlayModal(body, renderMoveModal(m.move, m.width, m.height), m.width, m.height)
+	} else if m.modal != modalNone {
 		body = overlayModal(body, m.renderActiveConfirmModal(), m.width, m.height)
 	}
 	return body
@@ -3890,6 +3947,8 @@ func (m Model) chrome() viewChrome {
 		modal:         m.modal,
 		undoAvailable: len(m.undoHistory.entries) > 0,
 		deleteHidden:  m.deleteHidden(),
+		moveHidden:    m.moveHidden(),
+		moveStep:      m.move.step(),
 	}
 }
 

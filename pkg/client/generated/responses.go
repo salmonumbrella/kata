@@ -1853,6 +1853,7 @@ type SearchIssuesResp struct {
 	Body         []byte
 	StatusCode   int
 	JSON200      *SearchIssuesResponse
+	Headers200   *SearchIssuesResp200Headers
 	JSON400      *SearchIssuesErrorResponse
 	JSON401      *SearchIssuesErrorResponseJSON
 	JSON403      *SearchIssuesErrorResponseJSON403
@@ -1989,4 +1990,104 @@ type CaptureTelemetryEventResp struct {
 	StatusCode   int
 	JSON202      *CaptureTelemetryEventResponse
 	JSONDefault  *CaptureTelemetryEventErrorResponse
+}
+
+type GetLocalEmbeddingsResponse = LocalEmbeddingsStatus
+
+type GetLocalEmbeddingsErrorResponse = ErrorEnvelope
+
+type GetLocalEmbeddingsErrorResponseJSON = ErrorEnvelope
+
+type TurnOnLocalEmbeddingsResponse = LocalEmbeddingsStatus
+
+type TurnOnLocalEmbeddingsErrorResponse = ErrorEnvelope
+
+type TurnOnLocalEmbeddingsErrorResponseJSON = ErrorEnvelope
+
+type TurnOnLocalEmbeddingsErrorResponseJSON409 = ErrorEnvelope
+
+type TurnOnLocalEmbeddingsErrorResponseJSON500 = ErrorEnvelope
+
+type McpEventsListResponse = MCPEventsListResponseBody
+
+type McpEventsListErrorResponse = ErrorEnvelope
+
+type McpEventsSubscribeResponse = MCPEventsSubscribeResponseBody
+
+type McpEventsSubscribeErrorResponse = ErrorEnvelope
+
+type McpEventSubscriptionsResponse = MCPEventsSubscriptionsResponseBody
+
+type McpEventSubscriptionsErrorResponse = ErrorEnvelope
+
+type McpEventsUnsubscribeResponse = MCPEventsUnsubscribeResponseBody
+
+type McpEventsUnsubscribeErrorResponse = ErrorEnvelope
+
+type GetCronJobInputsResponse = CronJobInputsResponseBody
+
+type GetCronJobInputsErrorResponse = ErrorEnvelope
+
+type GetLocalEmbeddingsResp struct {
+	HTTPResponse *http.Response
+	Body         []byte
+	StatusCode   int
+	JSON200      *GetLocalEmbeddingsResponse
+	JSON404      *GetLocalEmbeddingsErrorResponse
+	JSON500      *GetLocalEmbeddingsErrorResponseJSON
+}
+
+type TurnOnLocalEmbeddingsResp struct {
+	HTTPResponse *http.Response
+	Body         []byte
+	StatusCode   int
+	JSON202      *TurnOnLocalEmbeddingsResponse
+	JSON403      *TurnOnLocalEmbeddingsErrorResponse
+	JSON404      *TurnOnLocalEmbeddingsErrorResponseJSON
+	JSON409      *TurnOnLocalEmbeddingsErrorResponseJSON409
+	JSON500      *TurnOnLocalEmbeddingsErrorResponseJSON500
+}
+
+type McpEventsListResp struct {
+	HTTPResponse *http.Response
+	Body         []byte
+	StatusCode   int
+	JSON200      *McpEventsListResponse
+	JSONDefault  *McpEventsListErrorResponse
+}
+
+type McpEventsSubscribeResp struct {
+	HTTPResponse *http.Response
+	Body         []byte
+	StatusCode   int
+	JSON200      *McpEventsSubscribeResponse
+	JSONDefault  *McpEventsSubscribeErrorResponse
+}
+
+type McpEventSubscriptionsResp struct {
+	HTTPResponse *http.Response
+	Body         []byte
+	StatusCode   int
+	JSON200      *McpEventSubscriptionsResponse
+	JSONDefault  *McpEventSubscriptionsErrorResponse
+}
+
+type McpEventsUnsubscribeResp struct {
+	HTTPResponse *http.Response
+	Body         []byte
+	StatusCode   int
+	JSON200      *McpEventsUnsubscribeResponse
+	JSONDefault  *McpEventsUnsubscribeErrorResponse
+}
+
+type GetCronJobInputsResp struct {
+	HTTPResponse *http.Response
+	Body         []byte
+	StatusCode   int
+	JSON200      *GetCronJobInputsResponse
+	JSONDefault  *GetCronJobInputsErrorResponse
+}
+
+type SearchIssuesResp200Headers struct {
+	XKataEmbeddingsConfigured string `header:"X-Kata-Embeddings-Configured"`
 }

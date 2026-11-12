@@ -381,3 +381,30 @@ func TestCronProjectPauseTools(t *testing.T) {
 	require.Equal(t, true, resumed["changed"])
 	require.Nil(t, resumed["project_pause"])
 }
+
+func TestCronJobInputs(t *testing.T) {
+	f := newCronFixture(t)
+	id := cronNewUID(t, f.session)
+	definition := cronDefinition()
+	definition["options"] = map[string]any{"inputs": map[string]any{"empty_default": map[string]any{"type": "string", "default": ""}, "empty_fixed": map[string]any{"type": "string"}, "number": map[string]any{"type": "int", "default": 4}, "flag": map[string]any{"type": "bool", "default": true}, "unset": map[string]any{"type": "string"}}, "input_values": map[string]any{"empty_fixed": ""}}
+	cronRecord(t, f.session, "cron_job_create", map[string]any{"uid": id, "name": "Fixture", "definition": definition}, "job")
+	result := cronOK(t, f.session, "cron_job_inputs", map[string]any{"uid": id})
+	require.Equal(t, id, result["job_uid"])
+	require.Equal(t, "job", result["declared_by"])
+	inputs := result["inputs"].([]any)
+	require.Equal(t, "", inputs[0].(map[string]any)["value"])
+	require.Equal(t, "", inputs[1].(map[string]any)["value"])
+	require.Equal(t, true, inputs[2].(map[string]any)["value"])
+	require.Equal(t, float64(4), inputs[3].(map[string]any)["value"])
+	require.NotContains(t, inputs[4].(map[string]any), "value")
+}
+
+func TestCronJobInputsRequiresDaemonVersion(t *testing.T) {
+	_, wrapped, session, _, _, _, _ := mcpFixedScopeFixture(t)
+	wrapped.requestsMu.Lock()
+	wrapped.healthAPIVersion = "0.47.0"
+	wrapped.requestsMu.Unlock()
+	result := cronCall(t, session, "cron_job_inputs", map[string]any{"uid": "01J00000000000000000000010"})
+	require.True(t, result.IsError)
+	require.Contains(t, string(mustJSON(t, result)), "requires daemon API 0.48.0 or newer")
+}

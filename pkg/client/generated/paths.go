@@ -881,3 +881,12 @@ func (a AddTeamMemberPath) Validate() error {
 type RevokeTokenPath struct {
 	ID int64 `json:"id"`
 }
+
+type GetCronJobInputsPath struct {
+	ProjectID int64  `json:"project_id"`
+	CronUID   string `json:"cron_uid" validate:"required"`
+}
+
+func (g GetCronJobInputsPath) Validate() error {
+	return runtime.ConvertValidatorError(typesValidator.Struct(g))
+}

@@ -68,6 +68,16 @@ make nilaway
 
 Pull requests select checks based on the changed files. See the filters and job conditions in [test.yml](https://github.com/kenn-io/kata/blob/main/.github/workflows/test.yml) for the selection rules. Pushes to `main` run every check.
 
+### API contract changes
+
+Every HTTP wire-contract change, including an optional response field, needs a new `APISchemaVersion`.
+
+1. Bump `APISchemaVersion` and run `make api-generate`.
+2. Run `go test ./internal/daemon -run '^TestAPISchemaVersionMatchesRecordedContract$'`.
+3. Add the suggested marker with a one-line summary. Keep all base markers and their summaries; you may correct a summary in its existing file.
+
+If another change takes your version, move your marker and any feature minimum checks introduced by your change to the next minor version. Regenerate the combined contract and use its digest in the marker name, retaining the summary suffix.
+
 ### Native agent plugins
 
 The `native-agent-plugins` job in
@@ -182,6 +192,12 @@ make docs-serve
 Zensical's preview server is for local preview only. Publish the generated
 static files from `site/` with a real static host, CDN, or web server.
 
+The release command check compares README and installer examples with the latest
+release. For a command that hasn't shipped, put a visible
+`Not in the latest release yet` paragraph before its README block. In an installer, put
+`# Not in the latest release yet` before the output lines and leave a blank
+source line after them. Remove the note once the command ships.
+
 ## Documentation standards
 
 Write for the person trying to use or maintain Kata:
@@ -234,6 +250,15 @@ renders the reference site from the Markdown pages listed in
 `/`, the introductory guide at `/guide/`, and the documentation at `/docs/`.
 Keep `docs/llms.txt` links aligned with those public routes.
 
+Pages must not paint before their stylesheets and fonts load. The build embeds
+each `/fonts/<name>.woff2` that `docs/website/styles/site.css` references, and
+inlines `docs/website/hold-first-paint.js` right after each built page's
+`<meta charset="utf-8">`. The Zensical theme's font loading stays off;
+`docs/stylesheets/extra.css` sets the docs faces. The First paint CI job reads
+the HTML and CSS of the built site and of the web UI the daemon serves. When
+you move that job's pin, copy the pinned commit's `hold-first-paint.js` code
+too.
+
 When changing behavior:
 
 - update CLI help when flags or contracts change;
@@ -273,6 +298,11 @@ last_edited: 2026-09-15
 
 Do not leave accepted repository changes uncommitted at the end of a task.
 Do not squash or amend history unless explicitly asked.
+
+End the pull request description with a `Model used:` line naming the model, such as
+`Model used: Opus 5.5` or `Model used: GPT-6.1 Sol`. Add a `Co-authored-by:`
+trailer for the tool to each commit it wrote and to the end of the description,
+because squash-merge keeps only the description.
 
 When closing kata issues, close with a substantive message and typed evidence:
 

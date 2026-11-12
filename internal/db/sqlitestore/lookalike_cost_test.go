@@ -79,13 +79,15 @@ func TestSearchFTSAny_LookalikePageBudget(t *testing.T) {
 			tx, err := raw.BeginTx(ctx, nil)
 			require.NoError(t, err)
 			t.Cleanup(func() { _ = tx.Rollback() })
+			insertIssue := prepareSeed(t, tx, `INSERT INTO issues(uid,project_id,short_id,title,body,author) VALUES(?,?,?,?,?,'tester')`)
 			for n := range 2_000 {
-				_, err = tx.ExecContext(ctx, `INSERT INTO issues(uid,project_id,short_id,title,body,author) VALUES(?,?,?,?,?,'tester')`, fmt.Sprintf("%026d", n+1), project.ID, fmt.Sprintf("%08d", n+1), tc.title, tc.body)
+				_, err = insertIssue.ExecContext(ctx, fmt.Sprintf("%026d", n+1), project.ID, fmt.Sprintf("%08d", n+1), tc.title, tc.body)
 				require.NoError(t, err)
 			}
+			insertComment := prepareSeed(t, tx, `INSERT INTO comments(uid,issue_id,author,body) VALUES(?,(SELECT id FROM issues WHERE project_id=? ORDER BY id LIMIT 1 OFFSET ?),'tester',?)`)
 			for n := range tc.commentCount {
 				start := n % (len(words) - 16)
-				_, err = tx.ExecContext(ctx, `INSERT INTO comments(uid,issue_id,author,body) VALUES(?,(SELECT id FROM issues WHERE project_id=? ORDER BY id LIMIT 1 OFFSET ?),'tester',?)`, fmt.Sprintf("%026d", n+1), project.ID, n%2_000, strings.Join(words[start:start+16], " "))
+				_, err = insertComment.ExecContext(ctx, fmt.Sprintf("%026d", n+1), project.ID, n%2_000, strings.Join(words[start:start+16], " "))
 				require.NoError(t, err)
 			}
 			require.NoError(t, tx.Commit())
@@ -129,8 +131,9 @@ func TestSearchFTSAny_LookalikeSizeAndOrder(t *testing.T) {
 			tx, err := raw.BeginTx(ctx, nil)
 			require.NoError(t, err)
 			t.Cleanup(func() { _ = tx.Rollback() })
+			insertIssue := prepareSeed(t, tx, `INSERT INTO issues(uid,project_id,short_id,title,body,author) VALUES(?,?,?,?,?,'tester')`)
 			for n := range count {
-				_, err = tx.ExecContext(ctx, `INSERT INTO issues(uid,project_id,short_id,title,body,author) VALUES(?,?,?,?,?,'tester')`, fmt.Sprintf("%026d", n+1), project.ID, fmt.Sprintf("%08d", n+1), "unrelated issue", "other content")
+				_, err = insertIssue.ExecContext(ctx, fmt.Sprintf("%026d", n+1), project.ID, fmt.Sprintf("%08d", n+1), "unrelated issue", "other content")
 				require.NoError(t, err)
 			}
 			require.NoError(t, tx.Commit())
@@ -292,6 +295,7 @@ func TestSearchFTSAny_LookalikeTitlePageBudget(t *testing.T) {
 			tx, err := raw.BeginTx(ctx, nil)
 			require.NoError(t, err)
 			t.Cleanup(func() { _ = tx.Rollback() })
+			insertIssue := prepareSeed(t, tx, `INSERT INTO issues(uid,project_id,short_id,title,body,author) VALUES(?,?,?,?,?,'tester')`)
 			n := 0
 			for distractorTitle, distractorBody := range distractors {
 				if tc.commonTitlePrefix {
@@ -300,7 +304,7 @@ func TestSearchFTSAny_LookalikeTitlePageBudget(t *testing.T) {
 				if tc.commonTitles {
 					distractorTitle = title + " alpha beta gamma delta epsilon zeta theta iota"
 				}
-				_, err = tx.ExecContext(ctx, `INSERT INTO issues(uid,project_id,short_id,title,body,author) VALUES(?,?,?,?,?,'tester')`, fmt.Sprintf("%026d", n+1), project.ID, fmt.Sprintf("%08d", n+1), distractorTitle, distractorBody)
+				_, err = insertIssue.ExecContext(ctx, fmt.Sprintf("%026d", n+1), project.ID, fmt.Sprintf("%08d", n+1), distractorTitle, distractorBody)
 				require.NoError(t, err)
 				n++
 			}
@@ -356,8 +360,9 @@ func TestSearchFTSAny_LookalikeTitlePageBudget(t *testing.T) {
 				tx, err := raw.BeginTx(ctx, nil)
 				require.NoError(t, err)
 				t.Cleanup(func() { _ = tx.Rollback() })
+				insertIssue := prepareSeed(t, tx, `INSERT INTO issues(uid,project_id,short_id,title,body,author) VALUES(?,?,?,?,?,'tester')`)
 				for n := range 201 {
-					_, err = tx.ExecContext(ctx, `INSERT INTO issues(uid,project_id,short_id,title,body,author) VALUES(?,?,?,?,?,'tester')`, fmt.Sprintf("%026d", n+10_000), project.ID, fmt.Sprintf("%08d", n+10_000), title, originalBody)
+					_, err = insertIssue.ExecContext(ctx, fmt.Sprintf("%026d", n+10_000), project.ID, fmt.Sprintf("%08d", n+10_000), title, originalBody)
 					require.NoError(t, err)
 				}
 				require.NoError(t, tx.Commit())
@@ -370,6 +375,41 @@ func TestSearchFTSAny_LookalikeTitlePageBudget(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, full, reduced)
 			})
+		})
+	}
+}
+
+// Large-store title filtering must still find titles made only of stop words
+// and one-letter words, which leave the similarity tokenizer nothing to match.
+func TestSearchFTSAny_LookalikeStopWordTitle(t *testing.T) {
+	for _, title := range []string{"the", "This is it", "A B"} {
+		t.Run(title, func(t *testing.T) {
+			ctx := t.Context()
+			store, path := openTestDBWithPath(t)
+			project, err := store.CreateProject(ctx, "example-project")
+			require.NoError(t, err)
+			raw, err := sql.Open("sqlite", path)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, raw.Close()) })
+			tx, err := raw.BeginTx(ctx, nil)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = tx.Rollback() })
+			insertIssue := prepareSeed(t, tx, `INSERT INTO issues(uid,project_id,short_id,title,body,author) VALUES(?,?,?,?,?,'tester')`)
+			for n := range 5_100 {
+				_, err = insertIssue.ExecContext(ctx, fmt.Sprintf("%026d", n+1), project.ID, fmt.Sprintf("%08d", n+1), "unrelated issue", "other content")
+				require.NoError(t, err)
+			}
+			require.NoError(t, tx.Commit())
+			original := createTesterIssueWithBody(ctx, t, store, project.ID, title, "")
+
+			hits, err := store.SearchFTSAny(ctx, db.SearchFTSParams{
+				ProjectID: project.ID, Query: similarity.LookalikeQuery(title, ""),
+				TitleQuery: similarity.TitlePrefix(title), Limit: 20,
+			})
+
+			require.NoError(t, err)
+			require.NotEmpty(t, hits)
+			require.Equal(t, original.ID, hits[0].Issue.ID)
 		})
 	}
 }

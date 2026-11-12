@@ -1,12 +1,10 @@
 <script lang="ts">
   /* eslint-disable svelte/prefer-svelte-reactivity */
-  import { onDestroy, tick, untrack } from 'svelte'
+  import { onDestroy, tick, untrack, type Snippet } from 'svelte'
   import ChevronDownIcon from '@lucide/svelte/icons/chevron-down'
-  import ChevronRightIcon from '@lucide/svelte/icons/chevron-right'
   import ChevronUpIcon from '@lucide/svelte/icons/chevron-up'
   import ListChevronsDownUpIcon from '@lucide/svelte/icons/list-chevrons-down-up'
   import ListChevronsUpDownIcon from '@lucide/svelte/icons/list-chevrons-up-down'
-  import NetworkIcon from '@lucide/svelte/icons/network'
   import { relativeTime, shortDate } from '../lib/kata/dates'
   import { kataTaskStatusMatchesFilter } from '../lib/kata/filters'
   import type { KataTaskSearchFilters, KataTaskSummary } from '../lib/kata/types'
@@ -38,6 +36,7 @@
 
   interface Props {
     currentView: KataCurrentView
+    now: number
     resultsKey?: string
     issueCatalog: readonly KataTaskSummary[]
     scopeLabel?: string
@@ -51,12 +50,15 @@
     revealRequest?: KataIssueRevealRequest | null
     onSelect: (issue: KataTaskSummary) => void
     onOpenGraph?: ((issue: KataTaskSummary) => void) | undefined
+    /** Replaces the bare `No tasks` line when the list has no rows. */
+    empty?: Snippet | undefined
   }
 
   const EMPTY_READY_ISSUE_UIDS: ReadonlySet<string> = new Set()
 
   let {
     currentView,
+    now,
     resultsKey = '',
     issueCatalog,
     scopeLabel = undefined,
@@ -70,6 +72,7 @@
     revealRequest = null,
     onSelect,
     onOpenGraph = undefined,
+    empty = undefined,
   }: Props = $props()
 
   const SORT_STORAGE_KEY = 'kata:issue-sort/v1'
@@ -1040,7 +1043,11 @@
       </div>
 
       {#if visibleRootIssues.length === 0}
-        <div class="empty">No tasks</div>
+        {#if empty}
+          {@render empty()}
+        {:else}
+          <div class="empty">No tasks</div>
+        {/if}
       {/if}
 
       {#if hasTemporaryReveal || isProjectScoped || shouldFlatten}
@@ -1100,7 +1107,21 @@
             aria-hidden="true"
             onclick={(event) => toggleExpand(issue, event)}
           >
-            <ChevronRightIcon size={12} strokeWidth={2} />
+            <!-- Lucide chevron-right as static markup: a list renders one per
+                 parent row, and a component per row costs more than cloning. -->
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="lucide-icon lucide lucide-chevron-right"
+              aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg
+            >
           </span>
         {:else}
           <span class="chevron chevron--placeholder" aria-hidden="true"></span>
@@ -1109,7 +1130,7 @@
       </span>
       {#if columnVisibility.updated}
         <span class="cell cell-updated" title={issue.updated_at}>
-          {relativeTime(issue.updated_at)}
+          {relativeTime(issue.updated_at, new Date(now))}
         </span>
       {/if}
       {#if columnVisibility.priority}
@@ -1153,7 +1174,30 @@
         title="Open reachable graph"
         onclick={(event) => openGraph(issue, event)}
       >
-        <NetworkIcon size={13} strokeWidth={1.9} aria-hidden="true" />
+        <!-- Lucide network as static markup: every row renders one, and a
+             component per row costs more than cloning. -->
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="13"
+          height="13"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.9"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          class="lucide-icon lucide lucide-network"
+          aria-hidden="true"
+          ><rect x="16" y="16" width="6" height="6" rx="1" /><rect
+            x="2"
+            y="16"
+            width="6"
+            height="6"
+            rx="1"
+          /><rect x="9" y="2" width="6" height="6" rx="1" /><path
+            d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"
+          /><path d="M12 12V8" /></svg
+        >
       </button>
     {/if}
   </div>
@@ -1390,6 +1434,10 @@
   .row-frame {
     position: relative;
     min-width: var(--table-min-width);
+    /* Rows below the fold skip layout and paint until they scroll near, so a
+       long list paints its first screen at once. */
+    content-visibility: auto;
+    contain-intrinsic-block-size: auto 30px;
   }
 
   .row:hover {

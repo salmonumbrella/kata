@@ -61,6 +61,7 @@ import type {
   CreateTokenResponseBody,
   CronCapabilitiesResponseBody,
   CronDefinitionActionBody,
+  CronJobInputsResponseBody,
   CronJobEnabledActionBody,
   CronJobResponseBody,
   CronJobResumeBody,
@@ -329,6 +330,14 @@ import type {
   UnbindExternalRootParams,
   UnbindExternalRootPathParameters,
   UnmapConnectorFieldPathParameters,
+  GetCronJobInputsPathParameters,
+  LocalEmbeddingsStatus,
+  MCPEventsListResponseBody,
+  MCPEventsSubscribeBody,
+  MCPEventsSubscribeResponseBody,
+  MCPEventsSubscriptionsResponseBody,
+  MCPEventsUnsubscribeBody,
+  MCPEventsUnsubscribeResponseBody,
 } from '../models'
 
 import { orvalFetch } from '../../client.ts'
@@ -7317,5 +7326,304 @@ export const captureTelemetryEvent = async (
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(captureTelemetryEventRequestBody),
+  })
+}
+
+export type getLocalEmbeddingsResponse200 = {
+  data: LocalEmbeddingsStatus
+  status: 200
+}
+
+export type getLocalEmbeddingsResponse404 = {
+  data: ErrorEnvelope
+  status: 404
+}
+
+export type getLocalEmbeddingsResponse500 = {
+  data: ErrorEnvelope
+  status: 500
+}
+
+export type getLocalEmbeddingsResponseSuccess = getLocalEmbeddingsResponse200 & {
+  headers: Headers
+}
+export type getLocalEmbeddingsResponseError = (
+  | getLocalEmbeddingsResponse404
+  | getLocalEmbeddingsResponse500
+) & {
+  headers: Headers
+}
+
+export type getLocalEmbeddingsResponse =
+  | getLocalEmbeddingsResponseSuccess
+  | getLocalEmbeddingsResponseError
+
+export const getGetLocalEmbeddingsUrl = () => {
+  return `/api/v1/embeddings/local`
+}
+
+export const getLocalEmbeddings = async (
+  options?: Parameters<typeof orvalFetch>[1],
+): Promise<getLocalEmbeddingsResponse> => {
+  return orvalFetch<getLocalEmbeddingsResponse>(getGetLocalEmbeddingsUrl(), {
+    ...options,
+    method: 'GET',
+  })
+}
+
+export type turnOnLocalEmbeddingsResponse202 = {
+  data: LocalEmbeddingsStatus
+  status: 202
+}
+
+export type turnOnLocalEmbeddingsResponse403 = {
+  data: ErrorEnvelope
+  status: 403
+}
+
+export type turnOnLocalEmbeddingsResponse404 = {
+  data: ErrorEnvelope
+  status: 404
+}
+
+export type turnOnLocalEmbeddingsResponse409 = {
+  data: ErrorEnvelope
+  status: 409
+}
+
+export type turnOnLocalEmbeddingsResponse500 = {
+  data: ErrorEnvelope
+  status: 500
+}
+
+export type turnOnLocalEmbeddingsResponseSuccess = turnOnLocalEmbeddingsResponse202 & {
+  headers: Headers
+}
+export type turnOnLocalEmbeddingsResponseError = (
+  | turnOnLocalEmbeddingsResponse403
+  | turnOnLocalEmbeddingsResponse404
+  | turnOnLocalEmbeddingsResponse409
+  | turnOnLocalEmbeddingsResponse500
+) & {
+  headers: Headers
+}
+
+export type turnOnLocalEmbeddingsResponse =
+  | turnOnLocalEmbeddingsResponseSuccess
+  | turnOnLocalEmbeddingsResponseError
+
+export const getTurnOnLocalEmbeddingsUrl = () => {
+  return `/api/v1/embeddings/local`
+}
+
+export const turnOnLocalEmbeddings = async (
+  options?: Parameters<typeof orvalFetch>[1],
+): Promise<turnOnLocalEmbeddingsResponse> => {
+  return orvalFetch<turnOnLocalEmbeddingsResponse>(getTurnOnLocalEmbeddingsUrl(), {
+    ...options,
+    method: 'POST',
+  })
+}
+
+export type mcpEventsListResponse200 = {
+  data: MCPEventsListResponseBody
+  status: 200
+}
+
+export type mcpEventsListResponseDefault = {
+  data: ErrorEnvelope
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type mcpEventsListResponseSuccess = mcpEventsListResponse200 & {
+  headers: Headers
+}
+export type mcpEventsListResponseError = mcpEventsListResponseDefault & {
+  headers: Headers
+}
+
+export type mcpEventsListResponse = mcpEventsListResponseSuccess | mcpEventsListResponseError
+
+export const getMcpEventsListUrl = () => {
+  return `/api/v1/mcp-events/list`
+}
+
+/**
+ * @summary List the MCP Events this daemon can deliver
+ */
+export const mcpEventsList = async (
+  options?: Parameters<typeof orvalFetch>[1],
+): Promise<mcpEventsListResponse> => {
+  return orvalFetch<mcpEventsListResponse>(getMcpEventsListUrl(), {
+    ...options,
+    method: 'POST',
+  })
+}
+
+export type mcpEventsSubscribeResponse200 = {
+  data: MCPEventsSubscribeResponseBody
+  status: 200
+}
+
+export type mcpEventsSubscribeResponseDefault = {
+  data: ErrorEnvelope
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type mcpEventsSubscribeResponseSuccess = mcpEventsSubscribeResponse200 & {
+  headers: Headers
+}
+export type mcpEventsSubscribeResponseError = mcpEventsSubscribeResponseDefault & {
+  headers: Headers
+}
+
+export type mcpEventsSubscribeResponse =
+  | mcpEventsSubscribeResponseSuccess
+  | mcpEventsSubscribeResponseError
+
+export const getMcpEventsSubscribeUrl = () => {
+  return `/api/v1/mcp-events/subscribe`
+}
+
+/**
+ * @summary Create or refresh an MCP Events webhook subscription
+ */
+export const mcpEventsSubscribe = async (
+  mCPEventsSubscribeBody: MCPEventsSubscribeBody,
+  options?: Parameters<typeof orvalFetch>[1],
+): Promise<mcpEventsSubscribeResponse> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit['headers']>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {}
+    if (h instanceof Headers) return Object.fromEntries(h.entries())
+    if (Array.isArray(h)) return Object.fromEntries(h)
+    return h
+  }
+  return orvalFetch<mcpEventsSubscribeResponse>(getMcpEventsSubscribeUrl(), {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(mCPEventsSubscribeBody),
+  })
+}
+
+export type mcpEventSubscriptionsResponse200 = {
+  data: MCPEventsSubscriptionsResponseBody
+  status: 200
+}
+
+export type mcpEventSubscriptionsResponseDefault = {
+  data: ErrorEnvelope
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type mcpEventSubscriptionsResponseSuccess = mcpEventSubscriptionsResponse200 & {
+  headers: Headers
+}
+export type mcpEventSubscriptionsResponseError = mcpEventSubscriptionsResponseDefault & {
+  headers: Headers
+}
+
+export type mcpEventSubscriptionsResponse =
+  | mcpEventSubscriptionsResponseSuccess
+  | mcpEventSubscriptionsResponseError
+
+export const getMcpEventSubscriptionsUrl = () => {
+  return `/api/v1/mcp-events/subscriptions`
+}
+
+/**
+ * @summary List the caller's MCP Events subscriptions and whether Events is running
+ */
+export const mcpEventSubscriptions = async (
+  options?: Parameters<typeof orvalFetch>[1],
+): Promise<mcpEventSubscriptionsResponse> => {
+  return orvalFetch<mcpEventSubscriptionsResponse>(getMcpEventSubscriptionsUrl(), {
+    ...options,
+    method: 'GET',
+  })
+}
+
+export type mcpEventsUnsubscribeResponse200 = {
+  data: MCPEventsUnsubscribeResponseBody
+  status: 200
+}
+
+export type mcpEventsUnsubscribeResponseDefault = {
+  data: ErrorEnvelope
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type mcpEventsUnsubscribeResponseSuccess = mcpEventsUnsubscribeResponse200 & {
+  headers: Headers
+}
+export type mcpEventsUnsubscribeResponseError = mcpEventsUnsubscribeResponseDefault & {
+  headers: Headers
+}
+
+export type mcpEventsUnsubscribeResponse =
+  | mcpEventsUnsubscribeResponseSuccess
+  | mcpEventsUnsubscribeResponseError
+
+export const getMcpEventsUnsubscribeUrl = () => {
+  return `/api/v1/mcp-events/unsubscribe`
+}
+
+/**
+ * @summary End an MCP Events webhook subscription
+ */
+export const mcpEventsUnsubscribe = async (
+  mCPEventsUnsubscribeBody: MCPEventsUnsubscribeBody,
+  options?: Parameters<typeof orvalFetch>[1],
+): Promise<mcpEventsUnsubscribeResponse> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit['headers']>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {}
+    if (h instanceof Headers) return Object.fromEntries(h.entries())
+    if (Array.isArray(h)) return Object.fromEntries(h)
+    return h
+  }
+  return orvalFetch<mcpEventsUnsubscribeResponse>(getMcpEventsUnsubscribeUrl(), {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(mCPEventsUnsubscribeBody),
+  })
+}
+
+export type getCronJobInputsResponse200 = {
+  data: CronJobInputsResponseBody
+  status: 200
+}
+
+export type getCronJobInputsResponseDefault = {
+  data: ErrorEnvelope
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type getCronJobInputsResponseSuccess = getCronJobInputsResponse200 & {
+  headers: Headers
+}
+export type getCronJobInputsResponseError = getCronJobInputsResponseDefault & {
+  headers: Headers
+}
+
+export type getCronJobInputsResponse =
+  | getCronJobInputsResponseSuccess
+  | getCronJobInputsResponseError
+
+export const getGetCronJobInputsUrl = ({ projectId, cronUid }: GetCronJobInputsPathParameters) => {
+  return `/api/v1/projects/${encodeURIComponent(String(projectId))}/cron/jobs/${encodeURIComponent(String(cronUid))}/inputs`
+}
+
+export const getCronJobInputs = async (
+  { projectId, cronUid }: GetCronJobInputsPathParameters,
+  options?: Parameters<typeof orvalFetch>[1],
+): Promise<getCronJobInputsResponse> => {
+  return orvalFetch<getCronJobInputsResponse>(getGetCronJobInputsUrl({ projectId, cronUid }), {
+    ...options,
+    method: 'GET',
   })
 }

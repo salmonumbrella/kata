@@ -22,6 +22,7 @@ const (
 	modalDiscardCronJob
 	modalReopenBacklog
 	modalCronAction
+	modalMoveIssue
 )
 
 // renderQuitConfirmModal returns the centered "Are you sure?" panel.
@@ -69,7 +70,7 @@ func renderConfirmModal(kind modalKind, reopen *reopenPrompt) string {
 	case modalDiscardNewIssue:
 		return renderDiscardNewIssueModal()
 	case modalDiscardCronJob:
-		return renderDiscardDraftModal("Discard job draft?", "Your unsaved job changes will be lost.")
+		return renderDiscardDraftModal("Discard draft?", "Your unsaved changes will be lost.")
 	}
 	return ""
 }
