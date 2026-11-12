@@ -119,10 +119,15 @@ describe('CronPage', () => {
     let inFlight = 0
     let mostInFlight = 0
     const refreshFailures = new Map<string, number>()
+    // One project's first read stays pending until the test releases it.
+    let releaseSlow: () => void = () => {}
+    const slow = new Promise<void>((resolve) => (releaseSlow = resolve))
+    let slowReads = 0
     serve(async (url) => {
       inFlight += 1
       mostInFlight = Math.max(mostInFlight, inFlight)
       await new Promise((resolve) => setTimeout(resolve, 1))
+      if (url.pathname === cronPath(projects[4]!, 'jobs') && slowReads++ === 0) await slow
       inFlight -= 1
       const failure = refreshFailures.get(url.pathname)
       if (failure) return Response.json({ error: { code: 'example' } }, { status: failure })
@@ -141,8 +146,12 @@ describe('CronPage', () => {
 
     render(CronPage, { props: props({}, projects) })
 
+    // A slow project does not hold back the projects that already answered.
     expect(await screen.findByRole('button', { name: 'Review example-project-1' })).not.toBeNull()
-    expect(screen.getByRole('button', { name: 'Review example-project-6' })).not.toBeNull()
+    expect(await screen.findByRole('button', { name: 'Review example-project-6' })).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'Review example-project-5' })).toBeNull()
+    releaseSlow()
+    expect(await screen.findByRole('button', { name: 'Review example-project-5' })).not.toBeNull()
     expect(
       screen.getByText('example-project-3: this connection cannot read its cron records.'),
     ).not.toBeNull()
