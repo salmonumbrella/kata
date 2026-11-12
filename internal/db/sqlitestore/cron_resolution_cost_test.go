@@ -48,6 +48,15 @@ func (c evidenceConn) QueryContext(ctx context.Context, query string, args []dri
 	return c.Conn.(driver.QueryerContext).QueryContext(ctx, query, args)
 }
 
+type evidenceStore struct {
+	*sqlitestore.Store
+	reader *sqlitestore.Store
+}
+
+func (s evidenceStore) ListCronRequests(ctx context.Context, in db.CronRequestList) ([]db.CronRequest, error) {
+	return s.reader.ListCronRequests(ctx, in)
+}
+
 // A request-aware read must derive evidence only for its requested UID.
 func TestCronRequestResolutionEvidenceQueries(t *testing.T) {
 	store, path := openTestDBWithPath(t)
@@ -68,7 +77,7 @@ func TestCronRequestResolutionEvidenceQueries(t *testing.T) {
 	raw := sql.OpenDB(evidenceConnector{driver: store.DB.Driver(), path: path, queries: &queries})
 	raw.SetMaxOpenConns(1)
 	t.Cleanup(func() { require.NoError(t, raw.Close()) })
-	server := daemon.NewServer(daemon.ServerConfig{DB: &sqlitestore.Store{DB: raw}})
+	server := daemon.NewServer(daemon.ServerConfig{DB: evidenceStore{Store: store, reader: &sqlitestore.Store{DB: raw}}})
 	t.Cleanup(func() { require.NoError(t, server.Close()) })
 	request := httptest.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("/api/v1/projects/%d/cron/jobs/%s/inputs?request_uid=%s", project.ID, job.UID, strings.ToLower(selected)), nil)
 	response := httptest.NewRecorder()
