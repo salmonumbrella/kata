@@ -88,7 +88,7 @@ func TestVersionedWorkflowCoverage(t *testing.T) {
 }
 
 func TestFixtureVersionsAreExplicit(t *testing.T) {
-	for _, schema := range []string{"", "kata.cron.adapter-conformance/v3"} {
+	for _, schema := range []string{"", "kata.cron.adapter-conformance/v4"} {
 		if _, err := NewSuite(t.Context(), schema, Reference{}.Declare()); err == nil {
 			t.Fatalf("accepted %q", schema)
 		}

@@ -34,11 +34,18 @@ func Execute(ctx context.Context, a Adapter, s Scenario) (Answer, error) {
 		if err := ctx.Err(); err != nil {
 			return answer, err
 		}
-		if (step.Plan == nil) == (step.Settle == nil) {
+		if decisionCount(step) != 1 {
 			return answer, fmt.Errorf("decision requires exactly one input")
 		}
 		var output any
-		if step.Plan != nil {
+		if step.Inputs != nil {
+            if step.UseCheckpoint || step.UseOccupancy { return answer, fmt.Errorf("sequence flags require a plan") }
+            bridge, ok := a.(InputDeliverer)
+            if !ok { return answer, fmt.Errorf("input decisions require InputDeliverer") }
+            out, err := bridge.DeliverInputs(ctx, *step.Inputs)
+            if err != nil { return answer, err }
+            output = out
+        } else if step.Plan != nil {
 			in := *step.Plan
 			if step.UseCheckpoint {
 				if plan == nil {
@@ -114,7 +121,7 @@ func Suite(ctx context.Context, d Declaration) (FixtureSuite, error) { return Ne
 // frozen default vectors; v2 adds independently specified workflow decisions.
 func NewSuite(ctx context.Context, schema string, d Declaration) (FixtureSuite, error) {
 	suite := FixtureSuite{Schema: schema, Declaration: d}
-	if schema != Schema && schema != SchemaV2 {
+	if schema != Schema && schema != SchemaV2 && schema != SchemaV3 {
 		return suite, fmt.Errorf("unsupported conformance schema %q", schema)
 	}
 	if err := ctx.Err(); err != nil {
@@ -152,7 +159,7 @@ func NewSuite(ctx context.Context, schema string, d Declaration) (FixtureSuite, 
 		}
 		suite.Scenarios = append(suite.Scenarios, boundaries...)
 	}
-	if schema == SchemaV2 {
+	if schema == SchemaV2 || schema == SchemaV3 {
 		raw, err := fixtures.ReadFile("testdata/adapter-v2/workflow.json")
 		if err != nil {
 			return suite, err
@@ -165,6 +172,13 @@ func NewSuite(ctx context.Context, schema string, d Declaration) (FixtureSuite, 
 		// have fixed workflow literals; never rematerialize their oracle.
 		suite.Scenarios = append(suite.Scenarios, workflow.Scenarios...)
 	}
+    if schema == SchemaV3 {
+        raw, err := fixtures.ReadFile("testdata/adapter-v3/inputs.json")
+        if err != nil { return suite, err }
+        inputs, err := loadBundleVersion(raw, SchemaV3)
+        if err != nil { return suite, err }
+        suite.Scenarios = append(suite.Scenarios, inputs.Scenarios...)
+    }
 	return suite, nil
 }
 
@@ -341,6 +355,7 @@ func decodeSettleOutput(raw []byte) (SettleOutput, error) {
 
 // Decode DTOs before comparing: integers stay exact and times use UTC instants.
 func decodeOutput(raw []byte, step Decision, d Declaration) (any, error) {
+	if step.Inputs != nil { return decodeInputOutput(raw) }
 	if step.Plan == nil {
 		return decodeSettleOutput(raw)
 	}
@@ -385,7 +400,7 @@ func (suite FixtureSuite) ExportFiles(ctx context.Context) (map[string][]byte, e
 	names := []string{}
 	for area, scenarios := range groups {
 		b := bundle{Schema: suite.Schema, Scenarios: scenarios}
-		if d.DropRecords || suite.Schema == SchemaV2 {
+		if d.DropRecords || (suite.Schema == SchemaV2 || suite.Schema == SchemaV3) {
 			b.Declaration = &d
 		}
 		raw, err := json.Marshal(b, jsontext.WithIndent("  "), json.Deterministic(true))

@@ -2439,6 +2439,7 @@ kata cron job restore <job-uid> --expected-event-uid <event-uid> --json
 kata cron capabilities --json
 kata cron conformance export --dir ./adapter-vectors [--declaration declaration.json] [--schema schema]
 kata cron conformance check --answers answers.jsonl
+# Select input delivery fixtures explicitly with --schema kata.cron.adapter-conformance/v3
 kata cron run observe <run-uid> --json-input observation.json --json
 kata cron run list [--limit 100] [--before-uid <uid>] [--job-uid <job-uid>] --json
 kata cron run show <run-uid> --json

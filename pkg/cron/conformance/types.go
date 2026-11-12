@@ -16,6 +16,8 @@ const Schema = "kata.cron.adapter-conformance/v1"
 
 // SchemaV2 adds explicit successful and multi-parent workflow coverage.
 const SchemaV2 = "kata.cron.adapter-conformance/v2"
+// SchemaV3 adds input-delivery decisions.
+const SchemaV3 = "kata.cron.adapter-conformance/v3"
 const maxScan = 100000
 
 // maxSeconds is the Go duration representation limit, also used for standalone
@@ -144,6 +146,7 @@ type SettleOutput struct {
 
 // Decision contains exactly one input. Sequence flags use actual prior outputs.
 type Decision struct {
+	Inputs *InputDelivery `json:"inputs,omitempty"`
 	Plan          *PlanInput     `json:"plan,omitempty"`
 	Settle        *SettleInput   `json:"settle,omitempty"`
 	UseCheckpoint bool           `json:"use_checkpoint,omitempty"`
@@ -199,4 +202,50 @@ type Drop struct {
 // DropRecorder replaces Plan with one combined call when recording is declared.
 type DropRecorder interface {
 	PlanWithDrops(context.Context, PlanInput) (PlanOutput, []Drop, error)
+}
+
+// InputStep describes execution text without changing persisted definitions.
+type InputStep struct {
+ Kind string `json:"kind"`
+ Command string `json:"command"`
+ Argv []string `json:"argv"`
+ Prompt string `json:"prompt"`
+}
+
+// InputObservation describes one daemon resolution response. Resolution is raw
+// JSON so signed integers retain their exact representation.
+type InputObservation struct {
+ DefinitionEventUID string `json:"definition_event_uid"`
+ WorkflowDefinitionEventUID string `json:"workflow_definition_event_uid"`
+ Resolution jsontext.Value `json:"resolution"`
+}
+
+// InputDelivery supplies definitions and observations to the adapter bridge.
+type InputDelivery struct {
+ JobOptions jsontext.Value `json:"job_options"`
+ WorkflowOptions jsontext.Value `json:"workflow_options"`
+ HasWorkflow bool `json:"has_workflow"`
+ RequestInputs bool `json:"request_inputs"`
+ APIVersion string `json:"api_version"`
+ DefinitionEventUID string `json:"definition_event_uid"`
+ WorkflowDefinitionEventUID string `json:"workflow_definition_event_uid"`
+ Observations []InputObservation `json:"observations"`
+ Step InputStep `json:"step"`
+}
+
+// InputDeliveryOutput is the observable delivery and resolution call result.
+type InputDeliveryOutput struct {
+ Calls int `json:"calls"`
+ Refreshes int `json:"refreshes"`
+ Status string `json:"status"`
+ Message string `json:"message"`
+ Env map[string]string `json:"env"`
+ Command string `json:"command"`
+ Argv []string `json:"argv"`
+ Prompt string `json:"prompt"`
+}
+
+// InputDeliverer is an optional adapter decision bridge for v3 fixtures.
+type InputDeliverer interface {
+ DeliverInputs(context.Context, InputDelivery) (InputDeliveryOutput, error)
 }

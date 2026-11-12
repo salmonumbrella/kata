@@ -67,7 +67,7 @@ func newCronConformanceCmd() *cobra.Command {
 			Files     []string `json:"files"`
 		}{schema, dir, names})
 	}}
-	export.Flags().StringVar(&schema, "schema", conformance.Schema, "fixture schema version; v1 default or explicit v2")
+	export.Flags().StringVar(&schema, "schema", conformance.Schema, "fixture schema version; v1 default or explicit v2/v3")
 	export.Flags().StringVar(&dir, "dir", "", "destination directory; existing files are never replaced")
 	export.Flags().StringVar(&declarationPath, "declaration", "", "complete adapter declaration JSON file, or - for stdin")
 	check := &cobra.Command{Use: "check", Short: "compare adapter answers against the declared profile", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {

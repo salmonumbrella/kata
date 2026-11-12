@@ -1,7 +1,7 @@
 ---
 title: Cron
 description: Recurring child issues, shared job definitions, and attributed run evidence.
-last_edited: 2026-11-11
+last_edited: 2026-11-12
 ---
 
 Kata creates recurring child issues and inbox requests from enabled native
@@ -1046,6 +1046,8 @@ kata cron conformance export --dir ./adapter-vectors
 kata cron conformance check --answers ./answers.jsonl
 # Stronger workflow coverage is explicit; v1 remains the default.
 kata cron conformance export --schema kata.cron.adapter-conformance/v2 --dir ./adapter-vectors-v2
+# Include input delivery decisions as well.
+kata cron conformance export --schema kata.cron.adapter-conformance/v3 --dir ./adapter-vectors-v3
 ```
 
 These commands need no project, daemon or network. Export writes bundles plus
@@ -1056,7 +1058,17 @@ standard input with either `--declaration` or `--answers`; input is capped at
 
 Check selects the suite from the answer header. Use the exact exported schema;
 there is no fallback between versions. V2 export adds `workflow.json`, and every
-bundle and the manifest declare v2. The answers file starts with a
+bundle and the manifest declare v2. V3 includes those cases and adds
+`inputs.json`; v1 and v2 exports remain unchanged. The Go harness uses the
+optional `InputDeliverer` bridge for input decisions. Missing bridge support
+is an error. The fixture step includes command, argv and prompt text as kit
+data; it does not change stored definitions or launch a process.
+
+Input fixtures cover resolution and refresh calls, refused launches, environment
+values and the prompt data block. Adapters must preserve command and argv text,
+omit unset values, and compare prompt data as JSON. The reference launcher is
+not part of this kit; a launcher may adopt these vectors independently.
+The answers file starts with a
 schema/declaration header:
 
 ```json
@@ -1075,6 +1087,7 @@ zero for an unconsumed attempt.
 | --- | --- |
 | Plan | `launch`: ascending instant array; `checkpoint`: object below; `excluded`: string below. |
 | Checkpoint | `through`: enumeration instant; `definition_event_uid`: revision identity; `pending`: ascending instant array. |
+| Input delivery | `calls`, `refreshes`, `status`, `message`, `env`, `command`, `argv`, and `prompt`. |
 | Settle | `attempts`: map of step keys to integer counts; `skipped`: step-key array; `status`: run status; `occupied`: boolean. |
 | Recorded plan | All plan members plus `drops`: non-null array of groups with `reason` and nonempty ascending `instants`. |
 
