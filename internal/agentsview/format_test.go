@@ -31,7 +31,7 @@ func TestUsageText(t *testing.T) {
 		{"complete", &cost, 0, 2, "~$2.41"}, {"partial", &cost, 1, 2, "~$2.41+ (1 of 2 sessions not priced)"},
 		{"complete", nil, 0, 2, "unknown"}, {"unknown", nil, 2, 2, "unknown"}, {"no_sessions", nil, 0, 0, "no sessions"},
 	} {
-		require.Equal(t, tc.want, TotalText(tc.state, tc.cost, true, tc.unpriced, tc.sessions))
+		require.Equal(t, tc.want, TotalText(tc.state, tc.cost, true, false, tc.unpriced, tc.sessions))
 	}
 	require.Equal(t, "~$2.41", SessionText("priced", &cost, "mixed", nil, nil))
 	require.Equal(t, "unpriced (model)", SessionText("unpriced", nil, "", []string{"model\x1b[31m"}, nil))

@@ -281,6 +281,9 @@ func cronDetail(m Model, ref cronRef) (string, string, []cronLine) {
 			}
 			if m.cron.usage.uid == r.UID {
 				cronUsageField(&d, m.cron.usage)
+			} else if p.usage == "" && p.usageErr != nil {
+				// The usage source is unknown, not off, so no usage read starts.
+				cronUsageField(&d, cronUsage{err: p.usageErr})
 			}
 			d.section("Message")
 			d.text(deref(r.Summary.Message), cronRef{})
@@ -333,10 +336,11 @@ func cronDetail(m Model, ref cronRef) (string, string, []cronLine) {
 func cronUsageField(d *cronDoc, u cronUsage) {
 	switch {
 	case u.err != nil:
-		d.field("Cost", "unavailable: "+sanitizeForLine(u.err.Error())+" · r to retry")
+		d.field("Cost", "unavailable: "+sanitizeForLine(u.err.Error())+" · r: refresh")
 		return
 	case u.result == nil:
-		d.field("Cost", "loading…")
+		// r while the first read is pending starts no second one.
+		d.field("Cost", "loading… · press r after it loads")
 		return
 	}
 	usage := *u.result
@@ -346,7 +350,7 @@ func cronUsageField(d *cronDoc, u cronUsage) {
 			unpriced++
 		}
 	}
-	total := agentsview.TotalText(string(usage.State), usage.CostMicrodollars, usage.Estimated, unpriced, len(usage.Sessions))
+	total := agentsview.TotalText(string(usage.State), usage.CostMicrodollars, usage.Estimated, usage.SessionsIncomplete, unpriced, len(usage.Sessions))
 	if u.loading {
 		total += " · refreshing…"
 	}

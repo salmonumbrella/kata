@@ -112,7 +112,7 @@ func writeCronUsage(out io.Writer, usage generated.RunUsage) error {
 			missing++
 		}
 	}
-	total := agentsview.TotalText(string(usage.State), usage.CostMicrodollars, usage.Estimated, missing, len(usage.Sessions))
+	total := agentsview.TotalText(string(usage.State), usage.CostMicrodollars, usage.Estimated, usage.SessionsIncomplete, missing, len(usage.Sessions))
 	if _, err := fmt.Fprintln(out, "Cost:", total); err != nil {
 		return err
 	}
