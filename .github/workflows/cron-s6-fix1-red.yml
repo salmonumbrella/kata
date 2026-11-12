@@ -1,0 +1,45 @@
+name: Cron S6 fix1 visual RED
+on:
+  push:
+    branches: [proof/cron-s6-fix1-red-e3aec9d4c]
+permissions:
+  contents: read
+env:
+  GOMAXPROCS: '2'
+  GOFLAGS: '-p=1'
+  KATA_HOME: /tmp/kata-proof/home
+  KATA_DB: /tmp/kata-proof/home/kata.db
+  KATA_WORKSPACE: /tmp/kata-proof/workspace
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+      - name: focused cron TUI except the new enum RED
+        run: go test ./internal/tui -run '^Test(Cron|Snapshot_Cron)' -skip '^TestCronRequestInputsLongEnumShowsFullChoice$' -count=1 -v 2>&1 | tee /tmp/tui.log | grep -E '^(--- FAIL|ok|FAIL|PASS)|_test.go:[0-9]+' ; test ${PIPESTATUS[0]} -eq 0
+      - name: long enum RED
+        if: always()
+        run: go test ./internal/tui -run '^TestCronRequestInputsLongEnumShowsFullChoice$' -count=1 -v
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+      - run: |
+          gofmt -l internal/tui/cron_request_inputs_test.go internal/tui/cron_request_inputs_ui_test.go internal/tui/cron_request_inputs_ui.go
+          gofmt -w internal/tui/cron_request_inputs_test.go internal/tui/cron_request_inputs_ui_test.go
+          git diff --binary > /tmp/gofmt-s6-fix1.patch; cat /tmp/gofmt-s6-fix1.patch
+          go vet ./internal/tui
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: gofmt-s6-fix1-red
+          path: /tmp/gofmt-s6-fix1.patch
