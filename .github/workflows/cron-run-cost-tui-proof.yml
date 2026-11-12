@@ -70,7 +70,7 @@ jobs:
       - run: bash .github/proof/cron-run-cost-capture.sh
         env:
           BEFORE_SHA: 025423ab77d8ba804be19b238a9c9a33f6ac4b11
-          AFTER_SHA: 1e53e8d21f0f299e51831f70c729de68e88b1902
+          AFTER_SHA: aa77f02dfab86de646bbabdf05b04b0d37acf612
           OUT: ${{ runner.temp }}/cron-run-cost-capture
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
