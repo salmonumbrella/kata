@@ -1,10 +1,10 @@
 package dbtest
 
 import (
-	"strings"
 	"encoding/json/jsontext"
-	"time"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.kenn.io/kata/internal/cron"

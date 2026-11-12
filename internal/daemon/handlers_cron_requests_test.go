@@ -157,13 +157,20 @@ func TestCronRequestInputsValidationAndReplay(t *testing.T) {
 	job, _, err := env.DB.PutCronJob(t.Context(), db.PutCronJob{ProjectID: p.ID, Actor: "operator", Name: "Execute review", Definition: definition})
 	require.NoError(t, err)
 	path := fmt.Sprintf("/api/v1/projects/%d/cron/jobs/%s/requests", p.ID, job.UID)
+	before, err := env.DB.MaxEventID(t.Context())
+	require.NoError(t, err)
+	status, raw := cronHTTP(t, env, http.MethodPost, path, map[string]any{"uid": cronHTTPUID(t), "actor": "operator"})
+	require.Equal(t, 400, status, string(raw))
 	for _, values := range []map[string]any{nil, {"other": 1}, {"batch": "wrong"}, {"batch": nil}} {
 		status, raw := cronHTTP(t, env, http.MethodPost, path, map[string]any{"uid": cronHTTPUID(t), "actor": "operator", "inputs": values})
 		require.Equal(t, 400, status, string(raw))
 	}
+	after, err := env.DB.MaxEventID(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, before, after)
 	requestUID := cronHTTPUID(t)
 	body := map[string]any{"uid": requestUID, "actor": "operator", "inputs": map[string]any{"batch": 3}}
-	status, raw := cronHTTP(t, env, http.MethodPost, path, body)
+	status, raw = cronHTTP(t, env, http.MethodPost, path, body)
 	require.Equal(t, 200, status, string(raw))
 	definition.Options = []byte(`{"inputs":{"batch":{"type":"int","max":1}}}`)
 	_, _, err = env.DB.PutCronJob(t.Context(), db.PutCronJob{ProjectID: p.ID, UID: job.UID, Actor: "operator", Name: job.Name, Definition: definition, ExpectedEventUID: job.DefinitionEventUID})
