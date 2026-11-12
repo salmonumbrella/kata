@@ -170,24 +170,16 @@ describe('CronPage', () => {
     expect(screen.getByRole('button', { name: 'Review example-project-1' })).not.toBeNull()
   })
 
-  it('loads older runs per project and keeps the cursor when an older page fails', async () => {
-    let olderAttempts = 0
+  it('shows only the newest bounded page of runs per project', async () => {
     const fetcher = serve((url) => {
       if (url.pathname === cronPath(exampleProject, 'jobs')) {
         return Response.json({ jobs: [job(exampleProject, 'Daily review')] })
       }
       if (url.pathname === cronPath(exampleProject, 'runs')) {
-        if (!url.searchParams.has('before_uid')) {
-          return Response.json({
-            runs: [run(exampleProject, runA, 3), run(exampleProject, runB, 2)],
-            next_before_uid: runB,
-          })
-        }
-        olderAttempts += 1
-        if (olderAttempts === 1) {
-          return Response.json({ error: { code: 'invalid' } }, { status: 400 })
-        }
-        return Response.json({ runs: [run(exampleProject, runC, 1, { status: 'failed' })] })
+        return Response.json({
+          runs: [run(exampleProject, runA, 3), run(exampleProject, runB, 2)],
+          next_before_uid: runB,
+        })
       }
       return emptyCatalog(url) ?? notFound()
     })
@@ -200,31 +192,10 @@ describe('CronPage', () => {
       ),
     ).not.toBeNull()
     expect(screen.getAllByRole('button', { name: 'Daily review' })).toHaveLength(2)
-    await fireEvent.click(screen.getByRole('button', { name: 'Load older runs · example-project' }))
-    const retry = await screen.findByRole('button', {
-      name: 'Try older runs again · example-project',
-    })
-    await fireEvent.click(retry)
-
-    await waitFor(() =>
-      expect(screen.getAllByRole('button', { name: 'Daily review' })).toHaveLength(3),
-    )
-    expect(screen.queryByRole('button', { name: /older runs/ })).toBeNull()
-    expect(
-      screen.getByText('Showing loaded runs, newest first. Filters apply to loaded runs.'),
-    ).not.toBeNull()
     const runsPath = cronPath(exampleProject, 'runs')
-    const older = requested(fetcher, runsPath).filter((url) => url.searchParams.has('before_uid'))
-    expect(older.map((url) => url.searchParams.get('before_uid'))).toEqual([runB, runB])
-    expect(older.every((url) => url.searchParams.get('limit') === '50')).toBe(true)
-
-    // Older runs can change after they load, so a successful Refresh drops
-    // them and offers Load older again instead of showing them as current.
-    await fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
-    await waitFor(() =>
-      expect(screen.getAllByRole('button', { name: 'Daily review' })).toHaveLength(2),
-    )
-    expect(screen.getByRole('button', { name: 'Load older runs · example-project' })).not.toBeNull()
+    expect(requested(fetcher, runsPath).map((url) => url.searchParams.toString())).toEqual([
+      'limit=50',
+    ])
   })
 
   it('filters loaded runs by status and tells a filtered page from an empty one', async () => {

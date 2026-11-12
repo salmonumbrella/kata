@@ -67,7 +67,7 @@ function seedCron(kata: KataFixture, issueUID: string): void {
       expected_revision: 0,
       ...observation,
     })
-  // Fifty older runs fill the first page, so two remain behind Load older.
+  // Fifty older runs fill the newest page with these two, so two stay unloaded.
   for (let index = 1; index <= 50; index += 1) {
     observe(fillerRunUID(index), {
       status: 'succeeded',
@@ -142,12 +142,9 @@ test('browses real cron jobs, runs and workflows across projects and daemons', a
   await page.getByRole('radio', { name: 'Runs' }).click()
   await expect(page).toHaveURL(/cron_tab=runs/)
   const runs = page.getByRole('table', { name: 'Cron runs' }).locator('tbody tr')
-  const loadOlder = page.getByRole('button', { name: 'Load older runs · example-project' })
-  await expect(loadOlder).toBeVisible()
+  // The daemon holds 52 runs; the page loads only the newest 50.
+  await expect(runs).toHaveCount(50)
   await capture(page, testInfo, 'cron-desktop-runs')
-  // The daemon's real next_before_uid cursor reaches the two oldest runs.
-  await loadOlder.click()
-  await expect(runs).toHaveCount(52)
 
   await page.getByRole('button', { name: 'Status', exact: true }).click()
   await page.getByRole('button', { name: 'failed', exact: true }).click()
@@ -179,7 +176,7 @@ test('browses real cron jobs, runs and workflows across projects and daemons', a
 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto(`${cronRoute}&cron_tab=runs`)
-  await expect(loadOlder).toBeVisible()
+  await expect(runs).toHaveCount(50)
   await noHorizontalOverflow(page, 390)
   await capture(page, testInfo, 'cron-mobile-runs')
   await page.goto(runRoute(failedRunUID))

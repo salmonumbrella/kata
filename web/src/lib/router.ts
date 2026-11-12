@@ -75,12 +75,14 @@ export function parseRoute(url: URL, routePath = applicationRoutePath()): KataRo
     }
   }
   if (view === 'cron') {
+    const cron = parseCronRoute(url.searchParams)
+    if (!cron) return { kind: 'route-error', path: url.pathname + url.search, reason: 'view' }
     return {
       kind: 'kata',
       view,
       graph: false,
       filters: { status: [], owner: [], label: [], relationship: [] },
-      cron: parseCronRoute(url.searchParams),
+      cron,
     }
   }
   if (view && !isSystemView(view)) {
@@ -139,26 +141,36 @@ export function defaultCronRoute(): CronRoute {
   return { tab: 'jobs', projectUIDs: [], statuses: [] }
 }
 
-function parseCronRoute(query: URLSearchParams): CronRoute {
-  const tab = query.get('cron_tab')
-  const route: CronRoute = {
-    tab: tab === 'runs' || tab === 'workflows' ? tab : 'jobs',
-    projectUIDs: sortedUnique(query.getAll('cron_project')).filter(validUID),
-    statuses: [],
+// A present but malformed Cron parameter makes the whole link a route error,
+// so a damaged link never silently opens a wider view. Absent ones default.
+function parseCronRoute(query: URLSearchParams): CronRoute | undefined {
+  const tabs = query.getAll('cron_tab')
+  const tab = tabs[0] ?? 'jobs'
+  const projectUIDs = query.getAll('cron_project')
+  const statuses = query.getAll('cron_status')
+  if (tabs.length > 1 || !isCronTab(tab) || !projectUIDs.every(validUID)) return undefined
+  if (statuses.length > 0 && (tab !== 'runs' || !statuses.every(isCronRunStatus))) {
+    return undefined
   }
-  if (route.tab === 'runs') {
-    route.statuses = sortedUnique(query.getAll('cron_status')).filter(isCronRunStatus)
+  const route: CronRoute = {
+    tab,
+    projectUIDs: sortedUnique(projectUIDs),
+    statuses: sortedUnique(statuses).filter(isCronRunStatus),
   }
   const kind = query.get('cron_kind')
-  const projectUID = query.get('cron_scope') ?? ''
-  const uid = query.get('cron_uid') ?? ''
+  const projectUID = query.get('cron_scope')
+  const uid = query.get('cron_uid')
+  if (kind === null && projectUID === null && uid === null) return route
   if (
-    (kind === 'job' || kind === 'run' || kind === 'workflow') &&
-    validUID(projectUID) &&
-    validUID(uid)
+    (kind !== 'job' && kind !== 'run' && kind !== 'workflow') ||
+    !projectUID ||
+    !validUID(projectUID) ||
+    !uid ||
+    !validUID(uid)
   ) {
-    route.selection = { kind, projectUID, uid }
+    return undefined
   }
+  route.selection = { kind, projectUID, uid }
   return route
 }
 
@@ -173,6 +185,10 @@ function writeCronRoute(query: URLSearchParams, route: CronRoute): void {
     query.set('cron_scope', route.selection.projectUID)
     query.set('cron_uid', route.selection.uid)
   }
+}
+
+function isCronTab(value: string): value is CronTab {
+  return cronTabs.includes(value as CronTab)
 }
 
 function isCronRunStatus(value: string): value is CronRunStatus {
