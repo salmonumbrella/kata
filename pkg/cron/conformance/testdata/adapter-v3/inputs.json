@@ -8,37 +8,13 @@
           "inputs": {
             "job_options": {
               "inputs": {
-                "text": {
-                  "type": "string",
-                  "default": "$(touch x)"
-                },
-                "choice": {
-                  "type": "enum",
-                  "values": [
-                    "blue",
-                    "red"
-                  ],
-                  "default": "blue"
-                },
-                "flag": {
-                  "type": "bool",
-                  "default": false
-                },
-                "number": {
-                  "type": "int",
-                  "default": -9223372036854775808
-                },
-                "zero": {
-                  "type": "int",
-                  "default": -0
-                },
-                "empty": {
-                  "type": "string",
-                  "default": ""
-                },
-                "optional": {
-                  "type": "string"
-                }
+                "text": {"type": "string", "default": "$(touch x)"},
+                "choice": {"type": "enum", "values": ["blue", "red"], "default": "blue"},
+                "flag": {"type": "bool", "default": false},
+                "number": {"type": "int", "default": -9223372036854775808},
+                "zero": {"type": "int", "default": -0},
+                "empty": {"type": "string", "default": ""},
+                "optional": {"type": "string"}
               }
             },
             "workflow_options": {},
@@ -54,65 +30,19 @@
                 "resolution": {
                   "declared_by": "job",
                   "inputs": [
-                    {
-                      "name": "choice",
-                      "type": "enum",
-                      "values": [
-                        "blue",
-                        "red"
-                      ],
-                      "source": "default",
-                      "value": "blue"
-                    },
-                    {
-                      "name": "empty",
-                      "type": "string",
-                      "source": "default",
-                      "value": ""
-                    },
-                    {
-                      "name": "flag",
-                      "type": "bool",
-                      "source": "default",
-                      "value": false
-                    },
-                    {
-                      "name": "number",
-                      "type": "int",
-                      "source": "default",
-                      "value": -9223372036854775808
-                    },
-                    {
-                      "name": "optional",
-                      "type": "string",
-                      "source": "unset"
-                    },
-                    {
-                      "name": "text",
-                      "type": "string",
-                      "source": "default",
-                      "value": "$(touch x)"
-                    },
-                    {
-                      "name": "zero",
-                      "type": "int",
-                      "source": "default",
-                      "value": -0
-                    }
+                    {"name": "choice", "type": "enum", "values": ["blue", "red"], "source": "default", "value": "blue"},
+                    {"name": "empty", "type": "string", "source": "default", "value": ""},
+                    {"name": "flag", "type": "bool", "source": "default", "value": false},
+                    {"name": "number", "type": "int", "source": "default", "value": -9223372036854775808},
+                    {"name": "optional", "type": "string", "source": "unset"},
+                    {"name": "text", "type": "string", "source": "default", "value": "$(touch x)"},
+                    {"name": "zero", "type": "int", "source": "default", "value": -0}
                   ],
                   "errors": []
                 }
               }
             ],
-            "step": {
-              "kind": "command",
-              "command": "echo ${KATA_INPUT_TEXT}",
-              "argv": [
-                "$(echo nope)",
-                "${KATA_INPUT_TEXT}"
-              ],
-              "prompt": ""
-            }
+            "step": {"kind": "command", "command": "echo ${KATA_INPUT_TEXT}", "argv": ["$(echo nope)", "${KATA_INPUT_TEXT}"], "prompt": ""}
           },
           "expect": {
             "calls": 1,
@@ -128,10 +58,7 @@
               "KATA_INPUT_ZERO": "0"
             },
             "command": "echo ${KATA_INPUT_TEXT}",
-            "argv": [
-              "$(echo nope)",
-              "${KATA_INPUT_TEXT}"
-            ],
+            "argv": ["$(echo nope)", "${KATA_INPUT_TEXT}"],
             "prompt": ""
           }
         }
@@ -144,37 +71,13 @@
           "inputs": {
             "job_options": {
               "inputs": {
-                "text": {
-                  "type": "string",
-                  "default": "$(touch x)"
-                },
-                "choice": {
-                  "type": "enum",
-                  "values": [
-                    "blue",
-                    "red"
-                  ],
-                  "default": "blue"
-                },
-                "flag": {
-                  "type": "bool",
-                  "default": false
-                },
-                "number": {
-                  "type": "int",
-                  "default": -9223372036854775808
-                },
-                "zero": {
-                  "type": "int",
-                  "default": -0
-                },
-                "empty": {
-                  "type": "string",
-                  "default": ""
-                },
-                "optional": {
-                  "type": "string"
-                }
+                "text": {"type": "string", "default": "$(touch x)"},
+                "choice": {"type": "enum", "values": ["blue", "red"], "default": "blue"},
+                "flag": {"type": "bool", "default": false},
+                "number": {"type": "int", "default": -9223372036854775808},
+                "zero": {"type": "int", "default": -0},
+                "empty": {"type": "string", "default": ""},
+                "optional": {"type": "string"}
               }
             },
             "workflow_options": {},
@@ -190,62 +93,19 @@
                 "resolution": {
                   "declared_by": "job",
                   "inputs": [
-                    {
-                      "name": "choice",
-                      "type": "enum",
-                      "values": [
-                        "blue",
-                        "red"
-                      ],
-                      "source": "default",
-                      "value": "blue"
-                    },
-                    {
-                      "name": "empty",
-                      "type": "string",
-                      "source": "default",
-                      "value": ""
-                    },
-                    {
-                      "name": "flag",
-                      "type": "bool",
-                      "source": "default",
-                      "value": false
-                    },
-                    {
-                      "name": "number",
-                      "type": "int",
-                      "source": "default",
-                      "value": -9223372036854775808
-                    },
-                    {
-                      "name": "optional",
-                      "type": "string",
-                      "source": "unset"
-                    },
-                    {
-                      "name": "text",
-                      "type": "string",
-                      "source": "default",
-                      "value": "$(touch x)"
-                    },
-                    {
-                      "name": "zero",
-                      "type": "int",
-                      "source": "default",
-                      "value": -0
-                    }
+                    {"name": "choice", "type": "enum", "values": ["blue", "red"], "source": "default", "value": "blue"},
+                    {"name": "empty", "type": "string", "source": "default", "value": ""},
+                    {"name": "flag", "type": "bool", "source": "default", "value": false},
+                    {"name": "number", "type": "int", "source": "default", "value": -9223372036854775808},
+                    {"name": "optional", "type": "string", "source": "unset"},
+                    {"name": "text", "type": "string", "source": "default", "value": "$(touch x)"},
+                    {"name": "zero", "type": "int", "source": "default", "value": -0}
                   ],
                   "errors": []
                 }
               }
             ],
-            "step": {
-              "kind": "prompt",
-              "command": "",
-              "argv": [],
-              "prompt": "Inspect data"
-            }
+            "step": {"kind": "prompt", "command": "", "argv": [], "prompt": "Inspect data"}
           },
           "expect": {
             "calls": 1,
@@ -265,14 +125,7 @@
       "steps": [
         {
           "inputs": {
-            "job_options": {
-              "inputs": {
-                "needed": {
-                  "type": "bool",
-                  "required": true
-                }
-              }
-            },
+            "job_options": {"inputs": {"needed": {"type": "bool", "required": true}}},
             "workflow_options": {},
             "has_workflow": false,
             "request_inputs": false,
@@ -285,33 +138,12 @@
                 "workflow_definition_event_uid": "",
                 "resolution": {
                   "declared_by": "job",
-                  "inputs": [
-                    {
-                      "name": "needed",
-                      "type": "bool",
-                      "required": true,
-                      "source": "unset"
-                    }
-                  ],
-                  "errors": [
-                    {
-                      "name": "needed",
-                      "code": "missing_required",
-                      "message": "required input is unset"
-                    }
-                  ]
+                  "inputs": [{"name": "needed", "type": "bool", "required": true, "source": "unset"}],
+                  "errors": [{"name": "needed", "code": "missing_required", "message": "required input is unset"}]
                 }
               }
             ],
-            "step": {
-              "kind": "command",
-              "command": "echo ${KATA_INPUT_TEXT}",
-              "argv": [
-                "$(echo nope)",
-                "${KATA_INPUT_TEXT}"
-              ],
-              "prompt": ""
-            }
+            "step": {"kind": "command", "command": "echo ${KATA_INPUT_TEXT}", "argv": ["$(echo nope)", "${KATA_INPUT_TEXT}"], "prompt": ""}
           },
           "expect": {
             "calls": 1,
@@ -333,37 +165,13 @@
           "inputs": {
             "job_options": {
               "inputs": {
-                "text": {
-                  "type": "string",
-                  "default": "$(touch x)"
-                },
-                "choice": {
-                  "type": "enum",
-                  "values": [
-                    "blue",
-                    "red"
-                  ],
-                  "default": "blue"
-                },
-                "flag": {
-                  "type": "bool",
-                  "default": false
-                },
-                "number": {
-                  "type": "int",
-                  "default": -9223372036854775808
-                },
-                "zero": {
-                  "type": "int",
-                  "default": -0
-                },
-                "empty": {
-                  "type": "string",
-                  "default": ""
-                },
-                "optional": {
-                  "type": "string"
-                }
+                "text": {"type": "string", "default": "$(touch x)"},
+                "choice": {"type": "enum", "values": ["blue", "red"], "default": "blue"},
+                "flag": {"type": "bool", "default": false},
+                "number": {"type": "int", "default": -9223372036854775808},
+                "zero": {"type": "int", "default": -0},
+                "empty": {"type": "string", "default": ""},
+                "optional": {"type": "string"}
               }
             },
             "workflow_options": {},
@@ -373,15 +181,7 @@
             "definition_event_uid": "job-1",
             "workflow_definition_event_uid": "",
             "observations": [],
-            "step": {
-              "kind": "command",
-              "command": "echo ${KATA_INPUT_TEXT}",
-              "argv": [
-                "$(echo nope)",
-                "${KATA_INPUT_TEXT}"
-              ],
-              "prompt": ""
-            }
+            "step": {"kind": "command", "command": "echo ${KATA_INPUT_TEXT}", "argv": ["$(echo nope)", "${KATA_INPUT_TEXT}"], "prompt": ""}
           },
           "expect": {
             "calls": 0,
@@ -409,15 +209,7 @@
             "definition_event_uid": "job-1",
             "workflow_definition_event_uid": "",
             "observations": [],
-            "step": {
-              "kind": "command",
-              "command": "echo ${KATA_INPUT_TEXT}",
-              "argv": [
-                "$(echo nope)",
-                "${KATA_INPUT_TEXT}"
-              ],
-              "prompt": ""
-            }
+            "step": {"kind": "command", "command": "echo ${KATA_INPUT_TEXT}", "argv": ["$(echo nope)", "${KATA_INPUT_TEXT}"], "prompt": ""}
           },
           "expect": {
             "calls": 0,
@@ -426,10 +218,7 @@
             "message": "",
             "env": {},
             "command": "echo ${KATA_INPUT_TEXT}",
-            "argv": [
-              "$(echo nope)",
-              "${KATA_INPUT_TEXT}"
-            ],
+            "argv": ["$(echo nope)", "${KATA_INPUT_TEXT}"],
             "prompt": ""
           }
         }
@@ -440,9 +229,7 @@
       "steps": [
         {
           "inputs": {
-            "job_options": {
-              "adapter": "example"
-            },
+            "job_options": {"adapter": "example"},
             "workflow_options": {},
             "has_workflow": false,
             "request_inputs": false,
@@ -450,15 +237,7 @@
             "definition_event_uid": "job-1",
             "workflow_definition_event_uid": "",
             "observations": [],
-            "step": {
-              "kind": "command",
-              "command": "echo ${KATA_INPUT_TEXT}",
-              "argv": [
-                "$(echo nope)",
-                "${KATA_INPUT_TEXT}"
-              ],
-              "prompt": ""
-            }
+            "step": {"kind": "command", "command": "echo ${KATA_INPUT_TEXT}", "argv": ["$(echo nope)", "${KATA_INPUT_TEXT}"], "prompt": ""}
           },
           "expect": {
             "calls": 0,
@@ -467,10 +246,7 @@
             "message": "",
             "env": {},
             "command": "echo ${KATA_INPUT_TEXT}",
-            "argv": [
-              "$(echo nope)",
-              "${KATA_INPUT_TEXT}"
-            ],
+            "argv": ["$(echo nope)", "${KATA_INPUT_TEXT}"],
             "prompt": ""
           }
         }
@@ -482,14 +258,7 @@
         {
           "inputs": {
             "job_options": {},
-            "workflow_options": {
-              "inputs": {
-                "enabled": {
-                  "type": "bool",
-                  "default": true
-                }
-              }
-            },
+            "workflow_options": {"inputs": {"enabled": {"type": "bool", "default": true}}},
             "has_workflow": true,
             "request_inputs": false,
             "api_version": "0.48.0",
@@ -501,41 +270,21 @@
                 "workflow_definition_event_uid": "flow-1",
                 "resolution": {
                   "declared_by": "workflow",
-                  "inputs": [
-                    {
-                      "name": "enabled",
-                      "type": "bool",
-                      "source": "default",
-                      "value": true
-                    }
-                  ],
+                  "inputs": [{"name": "enabled", "type": "bool", "source": "default", "value": true}],
                   "errors": []
                 }
               }
             ],
-            "step": {
-              "kind": "command",
-              "command": "echo ${KATA_INPUT_TEXT}",
-              "argv": [
-                "$(echo nope)",
-                "${KATA_INPUT_TEXT}"
-              ],
-              "prompt": ""
-            }
+            "step": {"kind": "command", "command": "echo ${KATA_INPUT_TEXT}", "argv": ["$(echo nope)", "${KATA_INPUT_TEXT}"], "prompt": ""}
           },
           "expect": {
             "calls": 1,
             "refreshes": 0,
             "status": "launch",
             "message": "",
-            "env": {
-              "KATA_INPUT_ENABLED": "true"
-            },
+            "env": {"KATA_INPUT_ENABLED": "true"},
             "command": "echo ${KATA_INPUT_TEXT}",
-            "argv": [
-              "$(echo nope)",
-              "${KATA_INPUT_TEXT}"
-            ],
+            "argv": ["$(echo nope)", "${KATA_INPUT_TEXT}"],
             "prompt": ""
           }
         }
@@ -548,37 +297,13 @@
           "inputs": {
             "job_options": {
               "inputs": {
-                "text": {
-                  "type": "string",
-                  "default": "$(touch x)"
-                },
-                "choice": {
-                  "type": "enum",
-                  "values": [
-                    "blue",
-                    "red"
-                  ],
-                  "default": "blue"
-                },
-                "flag": {
-                  "type": "bool",
-                  "default": false
-                },
-                "number": {
-                  "type": "int",
-                  "default": -9223372036854775808
-                },
-                "zero": {
-                  "type": "int",
-                  "default": -0
-                },
-                "empty": {
-                  "type": "string",
-                  "default": ""
-                },
-                "optional": {
-                  "type": "string"
-                }
+                "text": {"type": "string", "default": "$(touch x)"},
+                "choice": {"type": "enum", "values": ["blue", "red"], "default": "blue"},
+                "flag": {"type": "bool", "default": false},
+                "number": {"type": "int", "default": -9223372036854775808},
+                "zero": {"type": "int", "default": -0},
+                "empty": {"type": "string", "default": ""},
+                "optional": {"type": "string"}
               }
             },
             "workflow_options": {},
@@ -594,51 +319,13 @@
                 "resolution": {
                   "declared_by": "job",
                   "inputs": [
-                    {
-                      "name": "choice",
-                      "type": "enum",
-                      "values": [
-                        "blue",
-                        "red"
-                      ],
-                      "source": "default",
-                      "value": "blue"
-                    },
-                    {
-                      "name": "empty",
-                      "type": "string",
-                      "source": "default",
-                      "value": ""
-                    },
-                    {
-                      "name": "flag",
-                      "type": "bool",
-                      "source": "default",
-                      "value": false
-                    },
-                    {
-                      "name": "number",
-                      "type": "int",
-                      "source": "default",
-                      "value": -9223372036854775808
-                    },
-                    {
-                      "name": "optional",
-                      "type": "string",
-                      "source": "unset"
-                    },
-                    {
-                      "name": "text",
-                      "type": "string",
-                      "source": "default",
-                      "value": "$(touch x)"
-                    },
-                    {
-                      "name": "zero",
-                      "type": "int",
-                      "source": "default",
-                      "value": -0
-                    }
+                    {"name": "choice", "type": "enum", "values": ["blue", "red"], "source": "default", "value": "blue"},
+                    {"name": "empty", "type": "string", "source": "default", "value": ""},
+                    {"name": "flag", "type": "bool", "source": "default", "value": false},
+                    {"name": "number", "type": "int", "source": "default", "value": -9223372036854775808},
+                    {"name": "optional", "type": "string", "source": "unset"},
+                    {"name": "text", "type": "string", "source": "default", "value": "$(touch x)"},
+                    {"name": "zero", "type": "int", "source": "default", "value": -0}
                   ],
                   "errors": []
                 }
@@ -649,65 +336,19 @@
                 "resolution": {
                   "declared_by": "job",
                   "inputs": [
-                    {
-                      "name": "choice",
-                      "type": "enum",
-                      "values": [
-                        "blue",
-                        "red"
-                      ],
-                      "source": "default",
-                      "value": "blue"
-                    },
-                    {
-                      "name": "empty",
-                      "type": "string",
-                      "source": "default",
-                      "value": ""
-                    },
-                    {
-                      "name": "flag",
-                      "type": "bool",
-                      "source": "default",
-                      "value": false
-                    },
-                    {
-                      "name": "number",
-                      "type": "int",
-                      "source": "default",
-                      "value": -9223372036854775808
-                    },
-                    {
-                      "name": "optional",
-                      "type": "string",
-                      "source": "unset"
-                    },
-                    {
-                      "name": "text",
-                      "type": "string",
-                      "source": "default",
-                      "value": "$(touch x)"
-                    },
-                    {
-                      "name": "zero",
-                      "type": "int",
-                      "source": "default",
-                      "value": -0
-                    }
+                    {"name": "choice", "type": "enum", "values": ["blue", "red"], "source": "default", "value": "blue"},
+                    {"name": "empty", "type": "string", "source": "default", "value": ""},
+                    {"name": "flag", "type": "bool", "source": "default", "value": false},
+                    {"name": "number", "type": "int", "source": "default", "value": -9223372036854775808},
+                    {"name": "optional", "type": "string", "source": "unset"},
+                    {"name": "text", "type": "string", "source": "default", "value": "$(touch x)"},
+                    {"name": "zero", "type": "int", "source": "default", "value": -0}
                   ],
                   "errors": []
                 }
               }
             ],
-            "step": {
-              "kind": "command",
-              "command": "echo ${KATA_INPUT_TEXT}",
-              "argv": [
-                "$(echo nope)",
-                "${KATA_INPUT_TEXT}"
-              ],
-              "prompt": ""
-            }
+            "step": {"kind": "command", "command": "echo ${KATA_INPUT_TEXT}", "argv": ["$(echo nope)", "${KATA_INPUT_TEXT}"], "prompt": ""}
           },
           "expect": {
             "calls": 2,
@@ -723,10 +364,41 @@
               "KATA_INPUT_ZERO": "0"
             },
             "command": "echo ${KATA_INPUT_TEXT}",
-            "argv": [
-              "$(echo nope)",
-              "${KATA_INPUT_TEXT}"
+            "argv": ["$(echo nope)", "${KATA_INPUT_TEXT}"],
+            "prompt": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "inputs/request-values-trigger",
+      "steps": [
+        {
+          "inputs": {
+            "job_options": {},
+            "workflow_options": {},
+            "has_workflow": false,
+            "request_inputs": true,
+            "api_version": "0.48.0",
+            "definition_event_uid": "job-1",
+            "workflow_definition_event_uid": "",
+            "observations": [
+              {
+                "definition_event_uid": "job-1",
+                "workflow_definition_event_uid": "",
+                "resolution": {"declared_by": "none", "inputs": [], "errors": []}
+              }
             ],
+            "step": {"kind": "command", "command": "echo ${KATA_INPUT_TEXT}", "argv": ["$(echo nope)", "${KATA_INPUT_TEXT}"], "prompt": ""}
+          },
+          "expect": {
+            "calls": 1,
+            "refreshes": 0,
+            "status": "launch",
+            "message": "",
+            "env": {},
+            "command": "echo ${KATA_INPUT_TEXT}",
+            "argv": ["$(echo nope)", "${KATA_INPUT_TEXT}"],
             "prompt": ""
           }
         }
