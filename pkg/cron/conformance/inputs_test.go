@@ -48,16 +48,21 @@ func (a inputTestBridge) DeliverInputs(_ context.Context, in InputDelivery) (Inp
 		} `json:"inputs"`
 		Errors []jsontext.Value `json:"errors"`
 	}
+	matched := false
 	for _, observation := range in.Observations {
 		out.Calls++
 		if observation.DefinitionEventUID != in.DefinitionEventUID || observation.WorkflowDefinitionEventUID != in.WorkflowDefinitionEventUID {
 			out.Refreshes++
 			continue
 		}
+		matched = true
 		if err := json.Unmarshal(observation.Resolution, &resolution); err != nil {
 			return out, err
 		}
 		break
+	}
+	if !matched {
+		return out, fmt.Errorf("no observation matches loaded definition after %d calls and %d refreshes", out.Calls, out.Refreshes)
 	}
 	if len(resolution.Errors) != 0 {
 		return InputDeliveryOutput{Calls: out.Calls, Refreshes: out.Refreshes, Status: "cancelled", Message: "reason: invalid_inputs", Env: map[string]string{}, Argv: []string{}}, nil
@@ -119,7 +124,7 @@ func TestInputBridgeAndResolver(t *testing.T) {
 		}
 		answers = append(answers, answer)
 		for _, step := range scenario.Steps {
-			if step.Inputs == nil {
+			if step.Inputs == nil || step.Inputs.RequestInputs {
 				continue
 			}
 			in := step.Inputs
@@ -391,5 +396,13 @@ func TestInputPromptSuffixAndCancellationFields(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestInputBridgeRejectsExhaustedObservations(t *testing.T) {
+	in := InputDelivery{JobOptions: jsontext.Value(`{"inputs":{}}`), WorkflowOptions: jsontext.Value(`{}`), APIVersion: "0.48.0", DefinitionEventUID: "current", Observations: []InputObservation{{DefinitionEventUID: "old"}}}
+	out, err := (inputTestBridge{}).DeliverInputs(t.Context(), in)
+	if err == nil || out.Calls != 1 || out.Refreshes != 1 {
+		t.Fatalf("out=%+v err=%v", out, err)
 	}
 }

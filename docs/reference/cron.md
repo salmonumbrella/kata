@@ -1066,7 +1066,8 @@ data; it does not change stored definitions or launch a process.
 
 Input fixtures cover resolution and refresh calls, refused launches, environment
 values and the prompt data block. Adapters must preserve command and argv text,
-omit unset values, and compare prompt data as JSON. The input decision supplies `job_options`, `workflow_options`, `has_workflow`,
+omit unset values, and compare prompt data as JSON. The input decision supplies
+`job_options`, `workflow_options`, `has_workflow`,
 `request_inputs`, `api_version`, both definition event UIDs, `observations`,
 and a `step` with `kind`, `command`, `argv`, and `prompt`. Declared inputs
 require API 0.48.0; request inputs require 0.49.0. Cancellation messages begin
@@ -1075,9 +1076,9 @@ Environment integers use canonical decimal; prompt JSON is structural, so `-0`
 and `0` compare equal. The kit covers a successful single refresh, not the
 adapter-specific missing-job, repeated-mismatch, or job-event outcomes. The
 reference launcher is not part of this kit; a launcher may adopt these vectors
-independently.
-The answers file starts with a
-schema/declaration header:
+independently. Prompt text before and after the JSON object is compared exactly.
+
+The answers file starts with a schema/declaration header:
 
 ```json
 {"schema":"kata.cron.adapter-conformance/v1","declaration":{"name":"example-adapter","tolerance_seconds":0,"catchup_limit":1000,"catchup_window_seconds":0,"failure_policy":"continue"}}
@@ -1095,7 +1096,7 @@ zero for an unconsumed attempt.
 | --- | --- |
 | Plan | `launch`: ascending instant array; `checkpoint`: object below; `excluded`: string below. |
 | Checkpoint | `through`: enumeration instant; `definition_event_uid`: revision identity; `pending`: ascending instant array. |
-| Input delivery | `calls`, `refreshes`, `status`, `message`, `env`, `command`, `argv`, and `prompt`. |
+| Input delivery | `calls`: resolution reads; `refreshes`: definition refreshes; `status`: `launch` or `cancelled`; `message`: cancellation reason or empty on launch; `env`: delivered environment map; `command`, `argv`, and `prompt`: delivered step text and arguments. Cancelled answers still supply all fields, but their unused delivery values are ignored. |
 | Settle | `attempts`: map of step keys to integer counts; `skipped`: step-key array; `status`: run status; `occupied`: boolean. |
 | Recorded plan | All plan members plus `drops`: non-null array of groups with `reason` and nonempty ascending `instants`. |
 

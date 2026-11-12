@@ -99,20 +99,22 @@
       "steps": [
         {
           "inputs": {
-            "job_options": {},
+            "job_options": {"input_values": {"enabled": false}},
             "workflow_options": {"inputs": {"enabled": {"type": "bool", "default": true}}},
             "has_workflow": true,
             "request_inputs": false,
             "api_version": "0.48.0",
             "definition_event_uid": "job-1",
             "workflow_definition_event_uid": "flow-1",
-            "observations": [{"definition_event_uid": "job-1", "workflow_definition_event_uid": "flow-1", "resolution": {"declared_by": "workflow", "inputs": [{"name": "enabled", "type": "bool", "source": "default", "value": true}], "errors": []}}],
+            "observations": [{"definition_event_uid": "job-1", "workflow_definition_event_uid": "flow-1", "resolution": {"declared_by": "workflow", "inputs": [{"name": "enabled", "type": "bool", "source": "job", "value": false}], "errors": []}}],
             "step": {"kind": "command", "command": "echo ${KATA_INPUT_TEXT}", "argv": ["$(echo nope)", "${KATA_INPUT_TEXT}"], "prompt": ""}
           },
-          "expect": {"calls": 1, "refreshes": 0, "status": "launch", "message": "", "env": {"KATA_INPUT_ENABLED": "true"}, "command": "echo ${KATA_INPUT_TEXT}", "argv": ["$(echo nope)", "${KATA_INPUT_TEXT}"], "prompt": ""}
+          "expect": {"calls": 1, "refreshes": 0, "status": "launch", "message": "", "env": {"KATA_INPUT_ENABLED": "false"}, "command": "echo ${KATA_INPUT_TEXT}", "argv": ["$(echo nope)", "${KATA_INPUT_TEXT}"], "prompt": ""}
         }
       ]
     },
+    {"name": "inputs/workflow-no-inputs", "steps": [{"inputs": {"job_options": {}, "workflow_options": {}, "has_workflow": true, "request_inputs": false, "api_version": "0.48.0", "definition_event_uid": "job-1", "workflow_definition_event_uid": "flow-1", "observations": [], "step": {"kind": "command", "command": "run", "argv": [], "prompt": ""}}, "expect": {"calls": 0, "refreshes": 0, "status": "launch", "message": "", "env": {}, "command": "run", "argv": [], "prompt": ""}}]},
+    {"name": "inputs/stale-fixed-value", "steps": [{"inputs": {"job_options": {"input_values": {"enabled": false}}, "workflow_options": {}, "has_workflow": true, "request_inputs": false, "api_version": "0.48.0", "definition_event_uid": "job-1", "workflow_definition_event_uid": "flow-1", "observations": [{"definition_event_uid": "job-1", "workflow_definition_event_uid": "flow-1", "resolution": {"declared_by": "none", "inputs": [], "errors": [{"name": "enabled", "code": "undeclared_value", "message": "undeclared input"}]}}], "step": {"kind": "command", "command": "run", "argv": [], "prompt": ""}}, "expect": {"calls": 1, "refreshes": 0, "status": "cancelled", "message": "reason: invalid_inputs", "env": {}, "command": "", "argv": [], "prompt": ""}}]},
     {
       "name": "inputs/refresh",
       "steps": [
@@ -156,8 +158,8 @@
       "name": "inputs/request-values-trigger",
       "steps": [
         {
-          "inputs": {"job_options": {}, "workflow_options": {}, "has_workflow": false, "request_inputs": true, "api_version": "0.49.0", "definition_event_uid": "job-1", "workflow_definition_event_uid": "", "observations": [{"definition_event_uid": "job-1", "workflow_definition_event_uid": "", "resolution": {"declared_by": "none", "inputs": [], "errors": []}}], "step": {"kind": "command", "command": "echo ${KATA_INPUT_TEXT}", "argv": ["$(echo nope)", "${KATA_INPUT_TEXT}"], "prompt": ""}},
-          "expect": {"calls": 1, "refreshes": 0, "status": "launch", "message": "", "env": {}, "command": "echo ${KATA_INPUT_TEXT}", "argv": ["$(echo nope)", "${KATA_INPUT_TEXT}"], "prompt": ""}
+          "inputs": {"job_options": {"inputs": {"text": {"type": "string", "default": "default"}}}, "workflow_options": {}, "has_workflow": false, "request_inputs": true, "api_version": "0.49.0", "definition_event_uid": "job-1", "workflow_definition_event_uid": "", "observations": [{"definition_event_uid": "job-1", "workflow_definition_event_uid": "", "resolution": {"declared_by": "job", "inputs": [{"name": "text", "type": "string", "source": "request", "value": "requested"}], "errors": []}}], "step": {"kind": "command", "command": "echo ${KATA_INPUT_TEXT}", "argv": ["$(echo nope)", "${KATA_INPUT_TEXT}"], "prompt": ""}},
+          "expect": {"calls": 1, "refreshes": 0, "status": "launch", "message": "", "env": {"KATA_INPUT_TEXT": "requested"}, "command": "echo ${KATA_INPUT_TEXT}", "argv": ["$(echo nope)", "${KATA_INPUT_TEXT}"], "prompt": ""}
         }
       ]
     }
