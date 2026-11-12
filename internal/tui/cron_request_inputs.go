@@ -131,6 +131,14 @@ func (d *cronRequestInputs) step(delta int) {
 	f.text = choices[(i+delta+len(choices))%len(choices)]
 }
 func (d *cronRequestInputs) freeze() (map[string]jsontext.Value, error) {
+	return d.values(true)
+}
+func (d *cronRequestInputs) validate() {
+	_, err := d.values(false)
+	d.general = ""
+	if err != nil { d.general = err.Error() }
+}
+func (d *cronRequestInputs) values(focusError bool) (map[string]jsontext.Value, error) {
 	d.syncEditor()
 	values := map[string]jsontext.Value{}
 	for i, f := range d.fields {
@@ -139,7 +147,7 @@ func (d *cronRequestInputs) freeze() (map[string]jsontext.Value, error) {
 		}
 		if !f.set {
 			if f.input.Required || f.jobInvalid {
-				d.focusField(i)
+				if focusError { d.focusField(i) }
 				return nil, fmt.Errorf("%s: required or invalid job value", f.input.Name)
 			}
 			continue
@@ -149,13 +157,13 @@ func (d *cronRequestInputs) freeze() (map[string]jsontext.Value, error) {
 		case "int":
 			n, err := strconv.ParseInt(f.text, 10, 64)
 			if err != nil {
-				d.focusField(i)
+				if focusError { d.focusField(i) }
 				return nil, fmt.Errorf("%s: invalid whole number", f.input.Name)
 			}
 			v = jsontext.Value(strconv.FormatInt(n, 10))
 		case "bool":
 			if f.text != "true" && f.text != "false" {
-				d.focusField(i)
+				if focusError { d.focusField(i) }
 				return nil, fmt.Errorf("%s: invalid boolean", f.input.Name)
 			}
 			v = f.text == "true"
@@ -163,11 +171,11 @@ func (d *cronRequestInputs) freeze() (map[string]jsontext.Value, error) {
 			v = f.text
 		}
 		if !cron.ValidInputValue(f.input, v) {
-			d.focusField(i)
+			if focusError { d.focusField(i) }
 			return nil, fmt.Errorf("%s: invalid input value", f.input.Name)
 		}
 		if f.jobInvalid && f.text == f.prefill && f.set == f.prefillSet {
-			d.focusField(i)
+			if focusError { d.focusField(i) }
 			return nil, fmt.Errorf("%s: job value is invalid", f.input.Name)
 		}
 		if f.set != f.prefillSet || f.text != f.prefill {
@@ -227,7 +235,7 @@ func (m Model) cronInputsAnswered(msg cronInputsMsg) (Model, tea.Cmd) {
 				break
 			}
 		}
-		if e.Code != "missing_required" && !(e.Code == "invalid_value" && e.Name != "" && declared) {
+		if !((e.Code == "missing_required" || e.Code == "invalid_value") && e.Name != "" && declared) {
 			return m.dropCronAction().undoNotice("Cannot request "+msg.action.name+": "+e.Name+": "+e.Message+"; fix the definition", toastError)
 		}
 	}
@@ -237,6 +245,7 @@ func (m Model) cronInputsAnswered(msg cronInputsMsg) (Model, tea.Cmd) {
 		return m, nil
 	}
 	d := newCronRequestInputs(msg.read.InputResolution)
+	d.validate()
 	m.nextFormGen++
 	d.formGen = m.nextFormGen
 	m.cron.action.inputs = d
@@ -287,7 +296,7 @@ func (m Model) routeCronRequestInputsKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		f.text, f.set = f.prefill, f.prefillSet
 		d.edInit = d.ed.activeField().value()
 		d.focusField(d.focus)
-		d.general = ""
+		d.validate()
 		return m, nil
 	}
 	if key == "ctrl+e" && d.externalText() {
@@ -311,7 +320,7 @@ func (m Model) routeCronRequestInputsKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		d.ed, _ = d.ed.delegateToField(msg)
 		d.syncEditor()
 	}
-	d.general = ""
+	d.validate()
 	return m, nil
 }
 

@@ -165,3 +165,16 @@ func TestCronRequestInputsChangedJobAndEditor(t *testing.T) {
 	require.Nil(t, m.cron.action)
 	require.Contains(t, m.toast.text, "changed")
 }
+
+func TestCronRequestInputsValidationUpdatesWhileEditing(t *testing.T) {
+	m, api := runtimeFixture(t, false)
+	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": true}
+	api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "count", Type: "int", Required: true, Source: "unset"}}, Errors: []cron.InputError{{Name: "count", Code: "missing_required"}}}}
+	m, cmd := press(m, keyRune('R'))
+	m = runtimeDone(t, m, cmd)
+	require.Contains(t, m.cron.action.inputs.general, "count")
+	m, _ = press(m, keyRune('7'))
+	require.Empty(t, m.cron.action.inputs.general)
+	m, _ = press(m, ctrlKey('r'))
+	require.Contains(t, m.cron.action.inputs.general, "count")
+}

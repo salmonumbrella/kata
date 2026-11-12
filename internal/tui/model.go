@@ -892,7 +892,7 @@ func (m Model) routeTopLevel(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 			if !d.loading && !a.inflight && a.requestUID == "" && !d.choice() && !d.externalText() {
 				d.ed, _ = d.ed.delegateToField(msg)
 				d.syncEditor()
-				d.general = ""
+				d.validate()
 			}
 			return m, nil, true
 		}
@@ -1974,7 +1974,7 @@ func (m Model) routeEditorReturn(msg editorReturnedMsg) (Model, tea.Cmd) {
 		} else if !a.inflight && a.requestUID == "" {
 			f := &d.fields[d.focus]
 			f.text, f.set = msg.content, true
-			d.general = ""
+			d.validate()
 		}
 		return m, nil
 	}
