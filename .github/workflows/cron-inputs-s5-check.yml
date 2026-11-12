@@ -1,0 +1,77 @@
+name: Cron inputs checks
+on:
+  push:
+    branches: [proof/cron-inputs-s5-check-fd9be19e]
+permissions:
+  contents: read
+env:
+  GOMAXPROCS: '2'
+  GOFLAGS: '-p=1'
+  KATA_HOME: /tmp/kata-proof/home
+  KATA_DB: /tmp/kata-proof/home/kata.db
+  KATA_WORKSPACE: /tmp/kata-proof/workspace
+jobs:
+  clients:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go test -p 1 ./cmd/kata ./internal/mcp ./internal/cron ./internal/db ./internal/daemon -run '^Test(CronRequestInputs|CronRequestInputCommands|ParseCronRequestInputs|RequestInputResolution|CronJobInputs)' -count=1
+  marker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go test -p 1 ./internal/daemon -run '^TestAPISchemaVersionMatchesRecordedContract$' -count=1
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: |
+          gofmt -w cmd/kata/cron.go cmd/kata/cron_contract_test.go cmd/kata/cron_controls.go cmd/kata/cron_request_inputs.go cmd/kata/cron_request_inputs_test.go cmd/kata/cron_requests.go internal/api/cron.go internal/api/cron_requests.go internal/cron/inputs.go internal/cron/inputs_test.go internal/daemon/handlers_cron_definitions.go internal/daemon/handlers_cron_requests.go internal/daemon/handlers_cron_requests_test.go internal/db/cron_controls.go internal/db/cron_request_inputs.go internal/db/cron_request_inputs_test.go internal/db/cron_requests.go internal/db/cron_requests_sql.go internal/db/dbtest/conformance_cron_controls.go internal/db/dbtest/conformance_cron_controls_ingest.go internal/db/dbtest/conformance_cron_requests.go internal/db/dbtest/conformance_cron_merge.go internal/tui/cron_client.go internal/mcp/cron_jobs.go internal/mcp/cron_requests.go internal/mcp/cron_requests_test.go
+          git diff --binary > /tmp/gofmt-s5.patch
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gofmt-s5
+          path: /tmp/gofmt-s5.patch
+  stores:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg18
+        env:
+          POSTGRES_DB: kata_test
+          POSTGRES_USER: kata
+          POSTGRES_PASSWORD: kata
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kata -d kata_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go test -p 1 ./internal/db/sqlitestore ./internal/db/pgstore -run '^TestStorageConformance/cron_(requests|request_sweep|request_reads|project_pause|control_ingress|project_merge_restore)$' -count=1
+        env:
+          KATA_TEST_FAST_SQLITE: '1'
+          PGPASSWORD: kata
+          KATA_TEST_POSTGRES_DSN: postgres://kata@127.0.0.1:5432/kata_test?sslmode=disable
