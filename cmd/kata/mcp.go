@@ -404,20 +404,19 @@ func resolveMCPRuntime(ctx context.Context, directory string) (client.ResolvedDa
 
 // resolveMCPCronUsage uses the startup handshake and first readable project.
 func resolveMCPCronUsage(ctx context.Context, apiVersion string, scope *mcpserver.Scope, client *kataclient.Client) (bool, error) {
-	compatible, valid := apiVersionAtLeast(apiVersion, mcpserver.CronUsageAPIFloor)
-	if !valid || !compatible {
+	if !mcpserver.APIVersionAtLeast(apiVersion, mcpserver.CronUsageAPIFloor) {
 		return false, nil
 	}
 	projects, err := scope.Projects(ctx, client, false)
 	if err != nil {
-		return false, fmt.Errorf("discover MCP cron usage projects: %w", err)
+		return false, nil
 	}
 	if len(projects) == 0 {
 		return false, nil
 	}
 	capabilities, err := client.GetCronCapabilities(ctx, &generated.GetCronCapabilitiesRequestOptions{PathParams: &generated.GetCronCapabilitiesPath{ProjectID: projects[0].ID}})
 	if err != nil {
-		return false, fmt.Errorf("discover MCP cron usage capability: %w", err)
+		return false, nil
 	}
 	return string(capabilities.Usage.Source) == "agentsview", nil
 }

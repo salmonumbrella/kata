@@ -61,13 +61,14 @@ func TestMCPServeTokenAdminRequiresAllProjects(t *testing.T) {
 	}
 }
 
-// serveMCPTestHealth reports the pre-usage API for unrelated fake daemons.
+// serveMCPTestHealth answers the startup API version handshake as a current
+// daemon so tests can exercise the rest of the fake daemon.
 func serveMCPTestHealth(writer http.ResponseWriter, request *http.Request) bool {
 	if request.URL.Path != "/api/v1/health" {
 		return false
 	}
 	writer.Header().Set("Content-Type", "application/json")
-	_, _ = fmt.Fprintf(writer, `{"ok":true,"api_schema_version":%q}`, "0.45.0")
+	_, _ = fmt.Fprintf(writer, `{"ok":true,"api_schema_version":%q}`, daemon.APISchemaVersion)
 	return true
 }
 
@@ -472,6 +473,11 @@ func TestMCPServeAllProjectsServesDaemonWideScope(t *testing.T) {
 		if serveMCPTestHealth(writer, request) {
 			return
 		}
+		if request.URL.Path == "/api/v1/projects" {
+			writer.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(writer, `{"projects":[]}`)
+			return
+		}
 		requests++
 		http.Error(writer, "unexpected project resolution", http.StatusInternalServerError)
 	}))
@@ -498,7 +504,7 @@ func TestMCPServeRenewsAdvertisedAutostartDaemon(t *testing.T) {
 			writer.Header().Set("Content-Type", "application/json")
 			_, _ = fmt.Fprintf(writer,
 				`{"ok":true,"api_schema_version":%q,"idle_shutdown":{"timeout":"15m0s","state":"armed"}}`,
-				"0.45.0",
+				daemon.APISchemaVersion,
 			)
 		case "/api/v1/ping":
 			assert.Equal(t, "1", request.Header.Get(daemon.IdleKeepaliveHeader))
@@ -968,7 +974,7 @@ func TestMCPCronUsage(t *testing.T) {
 				w.Header().Set("Content-Type", "application/json")
 				switch r.URL.Path {
 				case "/api/v1/health":
-					_, _ = io.WriteString(w, `{"ok":true,"api_schema_version":"0.46.0"}`)
+					_, _ = fmt.Fprintf(w, `{"ok":true,"api_schema_version":%q}`, mcpserver.CronUsageAPIFloor)
 				case "/api/v1/projects":
 					_, _ = io.WriteString(w, `{"projects":[{"id":42,"uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","name":"spoke-project","metadata":{},"revision":1,"created_at":"2026-08-11T00:00:00Z"}]}`)
 				case "/api/v1/projects/42/cron/capabilities":
@@ -1070,15 +1076,16 @@ func TestMCPCronUsageStartupDiscovery(t *testing.T) {
 		name, version, projects, capabilities string
 		status                                int
 		want                                  bool
+		wantRequests                          int
 	}{
-		{name: "enabled", version: "0.46.0", projects: `{"projects":[{"id":42,"uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","name":"spoke-project","metadata":{},"revision":1,"created_at":"2026-08-11T00:00:00Z"}]}`, capabilities: `{"project_uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","event_features":[],"usage":{"source":"agentsview"}}`, want: true},
-		{name: "disabled", version: "0.46.0", projects: `{"projects":[{"id":42,"uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","name":"spoke-project","metadata":{},"revision":1,"created_at":"2026-08-11T00:00:00Z"}]}`, capabilities: `{"project_uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","event_features":[],"usage":{"source":"none"}}`},
-		{name: "no projects", version: "0.46.0", projects: `{"projects":[]}`},
+		{name: "enabled", version: mcpserver.CronUsageAPIFloor, projects: `{"projects":[{"id":42,"uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","name":"spoke-project","metadata":{},"revision":1,"created_at":"2026-08-11T00:00:00Z"}]}`, capabilities: `{"project_uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","event_features":[],"usage":{"source":"agentsview"}}`, want: true, wantRequests: 2},
+		{name: "disabled", version: mcpserver.CronUsageAPIFloor, projects: `{"projects":[{"id":42,"uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","name":"spoke-project","metadata":{},"revision":1,"created_at":"2026-08-11T00:00:00Z"}]}`, capabilities: `{"project_uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","event_features":[],"usage":{"source":"none"}}`, wantRequests: 2},
+		{name: "no projects", version: mcpserver.CronUsageAPIFloor, projects: `{"projects":[]}`, wantRequests: 1},
 		{name: "old API", version: "0.45.0", status: http.StatusInternalServerError},
 		{name: "floor prerelease", version: "0.46.0-rc.1", status: http.StatusInternalServerError},
 		{name: "malformed version", version: "0.46.0+", status: http.StatusInternalServerError},
-		{name: "capability failure", version: "0.46.0", projects: `{"projects":[{"id":42,"uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","name":"spoke-project","metadata":{},"revision":1,"created_at":"2026-08-11T00:00:00Z"}]}`, status: http.StatusForbidden},
-		{name: "catalog failure", version: "0.46.0", status: http.StatusInternalServerError},
+		{name: "capability failure", version: mcpserver.CronUsageAPIFloor, projects: `{"projects":[{"id":42,"uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","name":"spoke-project","metadata":{},"revision":1,"created_at":"2026-08-11T00:00:00Z"}]}`, status: http.StatusForbidden, wantRequests: 2},
+		{name: "catalog failure", version: mcpserver.CronUsageAPIFloor, status: http.StatusInternalServerError, wantRequests: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			requests := 0
@@ -1101,12 +1108,7 @@ func TestMCPCronUsageStartupDiscovery(t *testing.T) {
 			got, err := resolveMCPCronUsage(t.Context(), tc.version, mcpserver.NewAllScope(), client)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, got)
-			if tc.name == "old API" || tc.name == "floor prerelease" || tc.name == "malformed version" {
-				require.Zero(t, requests)
-			}
-			if tc.name == "no projects" {
-				require.Equal(t, 1, requests)
-			}
+			require.Equal(t, tc.wantRequests, requests)
 		})
 	}
 }

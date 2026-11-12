@@ -19,8 +19,9 @@ import (
 func TestCronRunUsageWireAndVersion(t *testing.T) {
 	const uid = "01HAAAAAAAAAAAAAAAAAAAAAAA"
 	const body = `{"run_uid":"01HAAAAAAAAAAAAAAAAAAAAAAA","state":"complete","sessions":[{"agent":"pi","session_id":"example-session","state":"priced","canonical_session_id":"example-session","cost_microdollars":9007199254740993,"cost_source":"reported"}],"sessions_incomplete":false,"estimated":false,"fetched_at":"2026-08-11T00:00:00Z","cost_microdollars":9007199254740993}`
-	version := "0.46.0"
+	version := CronUsageAPIFloor
 	requests := 0
+	query := ""
 	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
@@ -28,7 +29,7 @@ func TestCronRunUsageWireAndVersion(t *testing.T) {
 			_, _ = fmt.Fprintf(w, `{"ok":true,"api_schema_version":%q}`, version)
 		case "/api/v1/projects/42/cron/runs/" + uid + "/usage":
 			requests++
-			require.Equal(t, "true", r.URL.Query().Get("refresh"))
+			query = r.URL.Query().Get("refresh")
 			_, _ = w.Write([]byte(body))
 		default:
 			http.NotFound(w, r)
@@ -75,11 +76,12 @@ func TestCronRunUsageWireAndVersion(t *testing.T) {
 	require.NoError(t, decoder.Decode(&got))
 	require.Equal(t, json.Number("9007199254740993"), got["cost_microdollars"])
 	require.Equal(t, 1, requests)
+	require.Equal(t, "true", query)
 	for _, replacement := range []string{"0.45.0", "invalid", ""} {
 		version = replacement
 		refused := call()
 		require.True(t, refused.IsError)
-		require.Contains(t, refused.Content[0].(*sdkmcp.TextContent).Text, "0.46.0")
+		require.Contains(t, refused.Content[0].(*sdkmcp.TextContent).Text, CronUsageAPIFloor)
 		require.Contains(t, refused.Content[0].(*sdkmcp.TextContent).Text, "upgrade")
 		require.Equal(t, 1, requests)
 	}

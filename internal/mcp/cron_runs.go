@@ -20,7 +20,7 @@ const CronUsageAPIFloor = "0.46.0"
 
 type CronRunUsageInput struct {
 	CronIdentityInput
-	Refresh bool `json:"refresh,omitempty"`
+	Refresh bool `json:"refresh,omitempty" jsonschema:"Refresh may reuse cached results younger than 10 seconds"`
 }
 
 // CronRunsInput requests a bounded project history page.
@@ -78,7 +78,7 @@ func restrictCronSessionSchema(schema *jsonschema.Schema) {
 func registerCronRunTools(server *sdkmcp.Server, h toolHandlers) {
 	read := toolHints(true, false, false)
 	if h.options.CronUsage {
-		addCronTool(server, "kata.cron_run_usage", "Read cron run usage", "Read live run usage; refresh requests a fresh source lookup.", read, h.cronRunUsage)
+		addCronTool(server, "kata.cron_run_usage", "Read cron run usage", "Read live run usage; refresh may reuse cached results younger than 10 seconds.", read, h.cronRunUsage)
 	}
 	addCronTool(server, "kata.cron_runs", "List cron run evidence", "Read bounded run observations with job filtering and next_before_uid pagination. Evidence does not prove or launch execution.", read, h.cronRuns)
 	addCronTool(server, "kata.cron_run", "Read cron run evidence", "Read one independently attributed run observation; never launches work or claims issue ownership.", read, h.cronRun)

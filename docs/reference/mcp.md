@@ -513,7 +513,14 @@ observations. Recording evidence does not launch execution, claim an issue, or
 change its status. The [run evidence contract](cron.md#independent-run-evidence)
 defines session fields, limits, and federation requirements.
 
-`kata.cron_run_usage` reads the daemon endpoint response unchanged for a run UID. Pass `refresh: true` to request a fresh lookup. It requires daemon API 0.46.0 or newer and appears only when the serving daemon enables AgentsView usage. Restart the daemon after changing that setting, then reconnect a standalone MCP server to refresh its catalog. Anonymous read-only callers may discover the tool but cannot read usage.
+`kata.cron_run_usage` returns the daemon endpoint response unchanged for a run
+UID. Pass `refresh: true` to bypass cached results older than ten seconds;
+younger results may be reused. The tool requires daemon API 0.46.0 or newer and
+appears when the serving daemon enables AgentsView usage and startup discovery
+succeeds. Restart the daemon after changing that setting, then reconnect a
+standalone MCP server to refresh its catalog. Reconnect also retries failed
+discovery or discovers usage after a project is added to an initially empty
+scope. Anonymous read-only callers may discover the tool but cannot read usage.
 
 Enabled native `notify` jobs activate the existing daemon delivery. Execution
 jobs and workflows require an installed external adapter. Check
