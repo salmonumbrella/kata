@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
 	"github.com/spf13/cobra"
+	"go.kenn.io/kata/internal/agentsview"
 	"go.kenn.io/kata/internal/textsafe"
 	kataclient "go.kenn.io/kata/pkg/client"
 	"go.kenn.io/kata/pkg/client/generated"
@@ -93,21 +93,6 @@ func newCronUsageCmd() *cobra.Command {
 	return cmd
 }
 
-func usageAmount(value int64, estimated bool) string {
-	cents := value / 10000
-	if value%10000 >= 5000 {
-		cents++
-	}
-	prefix := ""
-	if estimated {
-		prefix = "~"
-	}
-	if value > 0 && cents == 0 {
-		return prefix + "<$0.01"
-	}
-	return fmt.Sprintf("%s$%d.%02d", prefix, cents/100, cents%100)
-}
-
 func validateCronUsage(usage generated.RunUsage) error {
 	if err := usage.State.Validate(); err != nil {
 		return errors.New("unsupported cron usage state")
@@ -121,26 +106,13 @@ func validateCronUsage(usage generated.RunUsage) error {
 }
 
 func writeCronUsage(out io.Writer, usage generated.RunUsage) error {
-	total := "no sessions"
-	switch usage.State {
-	case "unknown":
-		total = "unknown"
-	case "complete", "partial":
-		if usage.CostMicrodollars == nil {
-			total = "unknown"
-			break
-		}
-		total = usageAmount(*usage.CostMicrodollars, usage.Estimated)
-		if usage.State == "partial" {
-			missing := 0
-			for _, s := range usage.Sessions {
-				if s.State != "priced" {
-					missing++
-				}
-			}
-			total += fmt.Sprintf("+ (%d of %d sessions not priced)", missing, len(usage.Sessions))
+	missing := 0
+	for _, s := range usage.Sessions {
+		if s.State != "priced" {
+			missing++
 		}
 	}
+	total := agentsview.TotalText(string(usage.State), usage.CostMicrodollars, usage.Estimated, missing, len(usage.Sessions))
 	if _, err := fmt.Fprintln(out, "Cost:", total); err != nil {
 		return err
 	}
@@ -150,29 +122,11 @@ func writeCronUsage(out io.Writer, usage generated.RunUsage) error {
 		}
 	}
 	for _, s := range usage.Sessions {
-		desc := "AgentsView unavailable"
-		switch s.State {
-		case "priced":
-			if s.CostMicrodollars != nil {
-				desc = usageAmount(*s.CostMicrodollars, s.CostSource != nil && (*s.CostSource == "computed" || *s.CostSource == "mixed"))
-			}
-		case "unpriced":
-			desc = "unpriced"
-			if len(s.UnpricedModels) > 0 {
-				desc += " (" + textsafe.Line(strings.Join(s.UnpricedModels, ", ")) + ")"
-			}
-		case "no_usage":
-			desc = "no usage recorded"
-		case "not_found":
-			desc = "not in AgentsView yet"
-		case "ambiguous":
-			desc = "ambiguous session"
-			if len(s.Candidates) > 0 {
-				desc += " (" + textsafe.Line(strings.Join(s.Candidates, ", ")) + ")"
-			}
-		case "unauthorized":
-			desc = "AgentsView rejected Kata's token"
+		costSource := ""
+		if s.CostSource != nil {
+			costSource = *s.CostSource
 		}
+		desc := agentsview.SessionText(string(s.State), s.CostMicrodollars, costSource, s.UnpricedModels, s.Candidates)
 		step := ""
 		if s.Step != nil {
 			step = " " + textsafe.Line(*s.Step)

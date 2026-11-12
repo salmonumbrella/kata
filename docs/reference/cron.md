@@ -737,6 +737,13 @@ seconds. Kata includes descendant usage and deduplicates matching canonical
 session IDs. If one recorded session is a descendant of another, its cost can
 be counted twice; this is an accepted limitation.
 
+In `kata tui`, opening a run on the Runs tab reads its cost once and shows it
+after the run's sessions, or explains why it is unavailable. Press `r` to
+refresh it; the last amount stays visible, marked refreshing, until the new
+answer arrives. Leaving the run discards its cost, and a late answer for a run
+or project you have left is ignored. A daemon without AgentsView usage shows
+no cost line and receives no usage request.
+
 ## Native issue planning dates
 
 `kata show <issue-ref> --planning-dates --json` and GET
