@@ -45,23 +45,36 @@ func (h toolHandlers) cronJob(ctx context.Context, _ *sdkmcp.CallToolRequest, in
 	}
 	return cronResult(h.options.Client.ShowCronJob(ctx, &generated.ShowCronJobRequestOptions{PathParams: &generated.ShowCronJobPath{ProjectID: p.ID, CronUID: id}}))
 }
-func (h toolHandlers) cronJobInputs(ctx context.Context, _ *sdkmcp.CallToolRequest, in CronIdentityInput) (*sdkmcp.CallToolResult, generated.GetCronJobInputsResponse, error) {
+type CronJobInputsInput struct {
+	CronIdentityInput
+	RequestUID string `json:"request_uid,omitempty" jsonschema:"Optional retained run request UID"`
+}
+
+func (h toolHandlers) cronJobInputs(ctx context.Context, _ *sdkmcp.CallToolRequest, in CronJobInputsInput) (*sdkmcp.CallToolResult, generated.GetCronJobInputsResponse, error) {
 	id, err := cronUID(in.UID)
 	if err != nil {
 		return nil, generated.GetCronJobInputsResponse{}, err
 	}
-	supported, err := h.daemonSupportsAPIVersion(ctx, cron.APIVersionJobInputs)
+	minimum := cron.APIVersionJobInputs
+	if in.RequestUID != "" {
+		in.RequestUID, err = cronUID(in.RequestUID)
+		if err != nil { return nil, generated.GetCronJobInputsResponse{}, err }
+		minimum = cron.APIVersionRequestInputs
+	}
+	supported, err := h.daemonSupportsAPIVersion(ctx, minimum)
 	if err != nil {
 		return nil, generated.GetCronJobInputsResponse{}, err
 	}
 	if !supported {
-		return nil, generated.GetCronJobInputsResponse{}, fmt.Errorf("cron job inputs requires daemon API %s or newer", cron.APIVersionJobInputs)
+		return nil, generated.GetCronJobInputsResponse{}, fmt.Errorf("cron job inputs requires daemon API %s or newer", minimum)
 	}
 	p, err := h.createTarget(ctx, in.Project)
 	if err != nil {
 		return nil, generated.GetCronJobInputsResponse{}, err
 	}
-	return cronResult(h.options.Client.GetCronJobInputs(ctx, &generated.GetCronJobInputsRequestOptions{PathParams: &generated.GetCronJobInputsPath{ProjectID: p.ID, CronUID: id}}))
+	options := &generated.GetCronJobInputsRequestOptions{PathParams: &generated.GetCronJobInputsPath{ProjectID: p.ID, CronUID: id}}
+	if in.RequestUID != "" { options.Query = &generated.GetCronJobInputsQuery{RequestUID: &in.RequestUID} }
+	return cronResult(h.options.Client.GetCronJobInputs(ctx, options))
 }
 func (h toolHandlers) cronJobCreate(ctx context.Context, _ *sdkmcp.CallToolRequest, in CronJobCreateInput) (*sdkmcp.CallToolResult, generated.ReplaceCronJobResponse, error) {
 	return h.cronPutJob(ctx, in, nil)

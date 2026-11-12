@@ -2,8 +2,10 @@ package mcpserver
 
 import (
 	"context"
+	"fmt"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+	"go.kenn.io/kata/internal/cron"
 	"go.kenn.io/kata/pkg/client/generated"
 )
 
@@ -12,6 +14,12 @@ type CronRuntimeRequestInput struct {
 	CronIdentityInput
 	RequestUID string `json:"request_uid" jsonschema:"Fresh request ULID; generate just before first submission and retain for retry"`
 	TTLSeconds *int64 `json:"ttl_seconds,omitempty" jsonschema:"Lifetime in seconds, 60..86400; default 600. Retain the same TTL for retry"`
+}
+
+// CronJobRuntimeRequestInput adds typed values only to run admission.
+type CronJobRuntimeRequestInput struct {
+	CronRuntimeRequestInput
+	Inputs map[string]any `json:"inputs,omitempty" jsonschema:"Declared scalar input values for this request"`
 }
 
 // CronRequestListInput selects a current derived state without changing requests.
@@ -40,12 +48,18 @@ func (h toolHandlers) cronRuntimeRequest(ctx context.Context, in CronRuntimeRequ
 	id, err := cronUID(in.RequestUID)
 	return project.ID, target, &generated.CronRequestBody{UID: id, Actor: &h.options.Actor, TTLSeconds: in.TTLSeconds}, err
 }
-func (h toolHandlers) cronJobRequestRun(ctx context.Context, _ *sdkmcp.CallToolRequest, in CronRuntimeRequestInput) (*sdkmcp.CallToolResult, generated.RequestCronJobRunResponse, error) {
-	projectID, target, body, err := h.cronRuntimeRequest(ctx, in)
+func (h toolHandlers) cronJobRequestRun(ctx context.Context, _ *sdkmcp.CallToolRequest, in CronJobRuntimeRequestInput) (*sdkmcp.CallToolResult, generated.RequestCronJobRunResponse, error) {
+	projectID, target, body, err := h.cronRuntimeRequest(ctx, in.CronRuntimeRequestInput)
 	if err != nil {
 		return nil, generated.RequestCronJobRunResponse{}, err
 	}
-	return cronResult(h.options.Client.RequestCronJobRun(ctx, &generated.RequestCronJobRunRequestOptions{PathParams: &generated.RequestCronJobRunPath{ProjectID: projectID, CronUID: target}, Body: body}))
+	if in.Inputs != nil {
+		supported, err := h.daemonSupportsAPIVersion(ctx, cron.APIVersionRequestInputs)
+		if err != nil { return nil, generated.RequestCronJobRunResponse{}, err }
+		if !supported { return nil, generated.RequestCronJobRunResponse{}, fmt.Errorf("cron request inputs requires daemon API %s or newer", cron.APIVersionRequestInputs) }
+	}
+	runBody := &generated.CronJobRequestRunBody{UID: body.UID, Actor: body.Actor, TTLSeconds: body.TTLSeconds, Inputs: in.Inputs}
+	return cronResult(h.options.Client.RequestCronJobRun(ctx, &generated.RequestCronJobRunRequestOptions{PathParams: &generated.RequestCronJobRunPath{ProjectID: projectID, CronUID: target}, Body: runBody}))
 }
 func (h toolHandlers) cronRunRequestCancel(ctx context.Context, _ *sdkmcp.CallToolRequest, in CronRuntimeRequestInput) (*sdkmcp.CallToolResult, generated.RequestCronRunCancelResponse, error) {
 	projectID, target, body, err := h.cronRuntimeRequest(ctx, in)

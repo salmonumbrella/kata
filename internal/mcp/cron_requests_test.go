@@ -28,3 +28,19 @@ func TestCronRequestTools(t *testing.T) {
 	require.Equal(t, runID, cancel["run_uid"])
 	require.Len(t, cronOK(t, f.session, "cron_request_list", map[string]any{"state": "pending"})["requests"], 2)
 }
+
+// Contract: run request inputs are visible through request-aware resolution.
+func TestCronRequestInputsTools(t *testing.T) {
+	f := newCronFixture(t)
+	definition := cronDefinition()
+	definition["enabled"] = true
+	definition["options"] = map[string]any{"inputs": map[string]any{"flag": map[string]any{"type": "bool", "required": true}}}
+	job := cronRecord(t, f.session, "cron_job_create", map[string]any{"uid": cronNewUID(t, f.session), "name": "Execute review", "definition": definition}, "job")
+	id := cronNewUID(t, f.session)
+	request := cronRecord(t, f.session, "cron_job_request_run", map[string]any{"uid": job["uid"], "request_uid": id, "inputs": map[string]any{"flag": false}}, "request")
+	require.Equal(t, false, request["inputs"].(map[string]any)["flag"])
+	resolution := cronOK(t, f.session, "cron_job_inputs", map[string]any{"uid": job["uid"], "request_uid": id})
+	input := resolution["inputs"].([]any)[0].(map[string]any)
+	require.Equal(t, "request", input["source"])
+	require.Equal(t, false, input["value"])
+}

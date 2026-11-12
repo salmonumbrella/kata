@@ -79,7 +79,7 @@ type cronCLIOptions struct {
 	includeDeleted                   bool
 	discardMissed                    bool
 	limit                            int64
-	beforeUID, jobUID                string
+	beforeUID, jobUID, requestUID    string
 }
 
 func (o cronCLIOptions) mutation() bool {
@@ -123,6 +123,9 @@ func newCronOperationCmd(resource, action string) *cobra.Command {
 		if resource == "job" && (action == "create" || action == "update") {
 			command.Flags().StringVar(&options.parent, "parent", "", "parent issue ref for a per-run job (stores the full UID)")
 		}
+	}
+	if resource == "job" && action == "inputs" {
+		command.Flags().StringVar(&options.requestUID, "request-uid", "", "resolve values from a retained run request")
 	}
 	if resource == "job" && action == "resume" {
 		command.Flags().BoolVar(&options.discardMissed, "discard-missed", false, "discard all undelivered scheduled occurrences through the resume cutoff (root only)")
@@ -279,7 +282,13 @@ func (o *cronCLIOptions) execute(cmd *cobra.Command) error {
 		return err
 	}
 	if o.resource == "job" && o.action == "inputs" {
-		if err := requireDaemonAPIVersion(cmd.Context(), daemon.client, daemon.baseURL, cron.APIVersionJobInputs, "cron job inputs"); err != nil {
+		minimum := cron.APIVersionJobInputs
+		if o.requestUID != "" {
+			o.requestUID, err = normalizedCronCLIUID(o.requestUID)
+			if err != nil { return err }
+			minimum = cron.APIVersionRequestInputs
+		}
+		if err := requireDaemonAPIVersion(cmd.Context(), daemon.client, daemon.baseURL, minimum, "cron job inputs"); err != nil {
 			return err
 		}
 	}
@@ -680,7 +689,9 @@ func (o cronCLIOptions) callRead(a daemonAPI, c *kataclient.Client, projectID in
 		}
 		return cronCLIResponse(response.StatusCode, response.Body, err)
 	case o.resource == "job" && o.action == "inputs":
-		response, err := c.GetCronJobInputsWithResponse(a.ctx, &generated.GetCronJobInputsRequestOptions{PathParams: &generated.GetCronJobInputsPath{ProjectID: projectID, CronUID: o.identity}})
+		options := &generated.GetCronJobInputsRequestOptions{PathParams: &generated.GetCronJobInputsPath{ProjectID: projectID, CronUID: o.identity}}
+		if o.requestUID != "" { options.Query = &generated.GetCronJobInputsQuery{RequestUID: &o.requestUID} }
+		response, err := c.GetCronJobInputsWithResponse(a.ctx, options)
 		if response == nil {
 			return nil, externalCLITransportError(response, err)
 		}

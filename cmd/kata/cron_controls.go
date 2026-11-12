@@ -15,6 +15,12 @@ import (
 // runCronProjectCommand resolves the selected project, sends one request, and
 // prints the daemon's raw response. honorQuiet lets --quiet suppress it.
 func runCronProjectCommand(cmd *cobra.Command, honorQuiet bool, call func(context.Context, *kataclient.Client, int64, string) ([]byte, error)) error {
+	return runCronProjectCommandWithDaemon(cmd, honorQuiet, func(ctx context.Context, _ daemonAPI, client *kataclient.Client, projectID int64, actor string) ([]byte, error) {
+		return call(ctx, client, projectID, actor)
+	})
+}
+
+func runCronProjectCommandWithDaemon(cmd *cobra.Command, honorQuiet bool, call func(context.Context, daemonAPI, *kataclient.Client, int64, string) ([]byte, error)) error {
 	daemon, err := dialDaemon(cmd.Context())
 	if err != nil {
 		return err
@@ -28,7 +34,7 @@ func runCronProjectCommand(cmd *cobra.Command, honorQuiet bool, call func(contex
 	if err != nil {
 		return err
 	}
-	raw, err := call(cmd.Context(), client, project.ID, actor)
+	raw, err := call(cmd.Context(), daemon, client, project.ID, actor)
 	if err != nil {
 		return err
 	}

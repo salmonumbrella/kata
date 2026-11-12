@@ -196,3 +196,23 @@ func TestCronRequestInputsIntegerPrecision(t *testing.T) {
 	require.Contains(t, string(raw), `9007199254740993`)
 	require.Contains(t, string(raw), `"source":"request"`)
 }
+
+// Contract: request-aware reads are scoped to a retained run and its job.
+func TestCronRequestInputsResolutionScope(t *testing.T) {
+	env := testenv.New(t, testenv.WithAuthToken("tok"))
+	p := seedProject(t, env, "request-project")
+	definition := cronHTTPDefinition(t)
+	job, _, err := env.DB.PutCronJob(t.Context(), db.PutCronJob{ProjectID: p.ID, Actor: "operator", Name: "First", Definition: definition})
+	require.NoError(t, err)
+	other, _, err := env.DB.PutCronJob(t.Context(), db.PutCronJob{ProjectID: p.ID, Actor: "operator", Name: "Second", Definition: definition})
+	require.NoError(t, err)
+	id := cronHTTPUID(t)
+	base := fmt.Sprintf("/api/v1/projects/%d/cron", p.ID)
+	status, raw := cronHTTP(t, env, http.MethodPost, base+"/jobs/"+job.UID+"/requests", map[string]any{"uid": id, "actor": "operator"})
+	require.Equal(t, 200, status, string(raw))
+	for _, path := range []string{base+"/jobs/"+other.UID+"/inputs?request_uid="+id, base+"/jobs/"+job.UID+"/inputs?request_uid="+cronHTTPUID(t)} {
+		status, raw = cronHTTP(t, env, http.MethodGet, path, nil)
+		require.Equal(t, 404, status, string(raw))
+		require.Contains(t, string(raw), "request_not_found")
+	}
+}

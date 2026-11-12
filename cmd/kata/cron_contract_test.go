@@ -195,3 +195,25 @@ func TestCronControlCommands(t *testing.T) {
 	require.NoError(t, run(&list, "request", "list", "--state", "pending"))
 	require.Len(t, list.Requests, 2)
 }
+
+// Contract: CLI input values follow declarations and resolve on the request.
+func TestCronRequestInputCommands(t *testing.T) {
+	t.Setenv("KATA_AUTHOR", "operator")
+	env := testenv.New(t)
+	project, err := env.DB.CreateProject(t.Context(), "spoke-project")
+	require.NoError(t, err)
+	definition := cron.JobDefinition{Version: 1, Kind: "job", Enabled: true, Trigger: cron.Trigger{Kind: "manual"}, Action: cron.Action{Kind: "execute", Prompt: "Inspect"}, Issue: &cron.IssuePolicy{Kind: "per-run", Title: "Result"}, Overlap: "forbid", Catchup: "skip", Options: jsontext.Value(`{"inputs":{"batch":{"type":"int"},"note":{"type":"string"}}}`)}
+	job, _, err := env.DB.PutCronJob(t.Context(), db.PutCronJob{ProjectID: project.ID, Name: "Inspect", Actor: "operator", Definition: definition})
+	require.NoError(t, err)
+	id := cronCLIUID(t)
+	out, _, err := executeCronCLI(t, env.URL, nil, "job", "request-run", job.UID, "--request-uid", id, "--input", "batch=9007199254740993", "--input", "note=true")
+	require.NoError(t, err)
+	require.Contains(t, out, `9007199254740993`)
+	require.Contains(t, out, `"note":"true"`)
+	out, _, err = executeCronCLI(t, env.URL, nil, "job", "inputs", job.UID, "--request-uid", id)
+	require.NoError(t, err)
+	require.Contains(t, out, `9007199254740993`)
+	require.Contains(t, out, `"source":"request"`)
+	_, _, err = executeCronCLI(t, env.URL, nil, "job", "request-run", job.UID, "--request-uid", cronCLIUID(t), "--input", "unknown=value")
+	require.ErrorContains(t, err, "unknown")
+}
