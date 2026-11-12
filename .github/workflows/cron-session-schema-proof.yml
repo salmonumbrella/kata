@@ -2,7 +2,7 @@ name: Cron session schema proof
 
 on:
   push:
-    branches: [proof/cron-session-schema-s1-be604b57]
+    branches: [proof/cron-session-schema-s1-d8d25df74]
 
 permissions:
   contents: read
