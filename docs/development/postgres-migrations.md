@@ -10,6 +10,12 @@ This applies to canonical DDL, schema-version changes, migration assets and
 registries, extensions, functions, triggers, indexes, and other persisted
 objects. Approval for a feature is not approval for its database design.
 
+## Schema version markers
+
+Each schema version has a marker in `internal/db/testdata/schema-contracts` named `NNNNNN-<digest>.txt`. Its contents are a one-line summary. Run `make api-breaking BASE_REF=origin/main` to check the database layouts and migration history against the base branch.
+
+If the schema check names a replacement for your draft marker, replace that file and keep the version. If the marker already exists on the base branch, preserve it and use the next schema version and the marker named by the check.
+
 ## Adding a migration
 
 After the persisted-state change is approved:
@@ -296,7 +302,7 @@ Stop serving daemons and imports, back up the database, and run
 indexes reads `issues` and blocks issue writes; allow an offline window that
 fits the table's size. Existing table grants remain sufficient. Validation-only
 runtime credentials cannot migrate. Versions 25–41 follow the existing
-immutable migration chain first. SQLite uses its normal JSONL cutover.
+immutable migration chain first. SQLite stores at schema 41 or later upgrade [in place](../operations/backup-restore.md#slow-or-interrupted-upgrade-startup).
 
 Start the matching schema 42 binary after migration. Older binaries cannot open
 schema 42. Rollback requires the pre-upgrade backup and matching older binary;
@@ -315,9 +321,151 @@ Stop serving daemons and imports, back up the database, and run
 `kata storage postgres migrate` with schema-owner credentials. Building the
 index reads `events` and blocks event writes; allow an offline window that fits
 the event log's size. Existing table grants remain sufficient. Validation-only
-runtime credentials cannot migrate. Versions 25–41 follow the existing immutable
-migration chain first. SQLite uses its normal JSONL cutover.
+runtime credentials cannot migrate. Versions 25–42 follow the existing immutable
+migration chain first. SQLite stores at schema 41 or later upgrade [in place](../operations/backup-restore.md#slow-or-interrupted-upgrade-startup).
 
 Start the matching schema 43 binary after migration. Older binaries cannot open
 schema 43. Rollback requires the pre-upgrade backup and matching older binary;
+there is no down migration.
+
+## Schema 44: reset reference lookup index
+
+The 43→44 migration adds the partial `idx_events_reset_from` index on `events`
+for `sync.reset_required` rows, keyed by the payload's `from_project_uid` and
+`from_short_id`. It speeds up lookups of receiver-local former issue references.
+Fresh PostgreSQL and SQLite databases include the index.
+
+Stop serving daemons and imports, back up the database, and run
+`kata storage postgres migrate` with schema-owner credentials. Building the
+index reads `events` and blocks event writes; allow an offline window that fits
+the table's size. Existing table grants remain sufficient. Validation-only
+runtime credentials cannot migrate. SQLite stores at schema 41 or later upgrade [in place](../operations/backup-restore.md#slow-or-interrupted-upgrade-startup).
+
+Start the matching schema 44 binary after migration. Older binaries cannot open
+schema 44. Rollback requires the pre-upgrade backup and matching older binary;
+there is no down migration.
+
+## Schema 45: issue UID prefix index
+
+UID prefix lookups can seek matching issues without scanning unrelated issues.
+The 44→45 migration adds `idx_issues_uid_prefix` on `issues(uid text_pattern_ops)`
+and `idx_issues_project_uid_prefix` on `(project_id, uid text_pattern_ops)`,
+then analyzes `issues`. Fresh PostgreSQL installs include the same indexes.
+SQLite uses indexes on `(uid COLLATE NOCASE, uid)` and
+`(project_id, uid COLLATE NOCASE, uid)` to seek global and project-scoped
+prefixes. Matching stays case-insensitive. SQLite orders candidates by their
+case-insensitive UID value, then original bytes. PostgreSQL matching stays
+case-sensitive and candidates use byte order in every database locale. This
+can change the order of mixed-case candidates on locale-based databases.
+
+Stop serving daemons and imports, back up the database, and run
+`kata storage postgres migrate` with schema-owner credentials. Building the
+index reads `issues` and blocks issue writes; allow an offline window that
+fits the table's size. Existing table grants remain sufficient. Validation-only
+runtime credentials cannot migrate. SQLite stores at schema 41 or later upgrade [in place](../operations/backup-restore.md#slow-or-interrupted-upgrade-startup).
+
+Start the matching schema 45 binary after migration. Older binaries cannot open
+schema 45. Rollback requires the pre-upgrade backup and matching older binary;
+there is no down migration.
+
+## Schema 46: ready priority indexes
+
+`kata next` and MCP `kata.next` can walk ready issues in priority order within
+one project or across all projects. The 45→46 migration adds
+`idx_issues_project_ready_priority` on
+`issues(project_id, COALESCE(priority, 5), updated_at DESC, id DESC)` and
+`idx_issues_ready_priority` without `project_id`. Both indexes contain only
+open issues where `deleted_at IS NULL`. It then runs `ANALYZE issues`.
+Unset priorities sort after P4. Fresh PostgreSQL and SQLite databases include
+these indexes; SQLite stores at schema 41 or later upgrade [in place](../operations/backup-restore.md#slow-or-interrupted-upgrade-startup).
+
+Stop serving daemons and imports, back up the database, and run
+`kata storage postgres migrate` with schema-owner credentials. Building the
+indexes reads `issues` and blocks issue writes; allow an offline window that
+fits the table's size. Existing table grants remain sufficient. Validation-only
+runtime credentials cannot migrate. Versions 25–44 follow the existing
+immutable migration chain first.
+
+Start the matching schema 46 binary after migration. Older binaries cannot open
+schema 46. Rollback requires the pre-upgrade backup and matching older binary;
+there is no down migration.
+
+## Schema 47: cross-project ready update-order index
+
+Limited cross-project ready lists can read issues in update order without
+sorting every open issue. The 46→47 migration adds `idx_issues_ready_updated`
+on `issues(updated_at DESC, id DESC)` for open issues where
+`deleted_at IS NULL`, then runs `ANALYZE issues`. It supports
+`kata ready --all --limit N`, MCP `kata.ready`, and `GET /api/v1/ready`.
+Fresh PostgreSQL and SQLite databases include the index.
+
+Stop serving daemons and imports, back up the database, and run
+`kata storage postgres migrate` with schema-owner credentials. Building the
+index reads `issues` and blocks issue writes; allow an offline window that
+fits the table's size. Existing table grants remain sufficient. Validation-only
+runtime credentials cannot migrate. Earlier versions follow the existing
+migration chain first. SQLite stores at schema 41 or later upgrade [in place](../operations/backup-restore.md#slow-or-interrupted-upgrade-startup).
+
+Start the matching schema 47 binary after migration. Older binaries cannot open
+schema 47. Rollback requires the pre-upgrade backup and matching older binary;
+there is no down migration.
+
+## Schema 48: project departure cursor index
+
+SQLite project event polling and streaming can seek past earlier departures
+with `idx_events_moved_from_id`. The 47→48 PostgreSQL migration adds the same
+partial index on `events`, keyed by the payload's `from_project_uid` and `id`
+for `issue.moved` rows. PostgreSQL's event query stays unchanged. Fresh databases
+include the index. SQLite stores at schema 41 or later upgrade [in place](../operations/backup-restore.md#slow-or-interrupted-upgrade-startup).
+
+Stop serving daemons and imports, back up the database, and run
+`kata storage postgres migrate` with schema-owner credentials. Building the
+index reads `events` and blocks event writes; allow an offline window that fits
+the table's size. Existing table grants remain sufficient. Validation-only
+runtime credentials cannot migrate.
+
+Start the matching schema 48 binary after migration. Older binaries cannot open
+schema 48. Rollback requires the pre-upgrade backup and matching older binary;
+there is no down migration.
+
+## Schema 49: cron run history index
+
+Cron replay looks up each incoming run's observation history by UID. The 48→49
+migration adds `idx_events_cron_run_uid` on `events`, keyed by project, event
+type, and the payload's run UID for `cron.%` events. Fresh databases include
+the index. SQLite adds it in place, with an atomic schema-version update.
+
+Stop serving daemons and imports, back up the database, and run
+`kata storage postgres migrate` with schema-owner credentials. Building the
+index reads `events` and blocks event writes; reserve an offline window sized
+for the table. Existing runtime grants remain sufficient. Validation-only
+runtime credentials cannot migrate.
+
+Start the matching schema 49 binary after migration. Older binaries cannot open
+schema 49. Rollback requires the pre-upgrade backup and matching older binary;
+there is no down migration.
+
+## Schema 50: MCP Events subscriptions
+
+The 49→50 migration adds the `mcp_event_subscriptions` table, with a text
+primary key `id`, and three indexes: `idx_mcp_event_subscriptions_due` on
+`(state, next_attempt_at)`, `idx_mcp_event_subscriptions_principal_callback`
+on `(principal_key, callback_url)`, and `idx_mcp_event_subscriptions_ended` on
+`(state, ended_at)`. The table holds one row per daemon-owned MCP Events
+subscription, including callback delivery and retry state. It has no CHECK
+constraints; Go validates rows before they are stored or imported. An upgraded
+database starts with the table empty. The delivery worker's scan position is a
+`meta` row, `mcp_events_scan_position`, written when Events first starts.
+
+Stop serving daemons and imports, back up the database, and run
+`kata storage postgres migrate` with schema-owner credentials. The migration
+creates a new table and indexes without scanning existing data. Reapply the
+runtime role grants in [PostgreSQL operations](../operations/postgres.md) so
+the runtime role can read and write the new table. Validation-only credentials
+cannot migrate. Versions 25–49 follow the existing immutable migration chain
+before applying schema 50. SQLite adds the empty table and its indexes in
+place, with an atomic schema-version update.
+
+Start the matching schema 50 binary after migration. Older binaries cannot open
+schema 50. Rollback requires the pre-upgrade backup and matching older binary;
 there is no down migration.

@@ -101,6 +101,7 @@ var storageScenarios = []scenario{
 	{name: "issues by uids", methods: []string{"CreateProject", "CreateIssue", "SoftDeleteIssue", "IssueByUID", "IssuesByUIDs"}, run: checkIssuesByUIDs},
 	{name: "comment replies", methods: []string{"CreateProject", "CreateIssue", "CreateComment", "EditComment", "CommentsByIssue"}, run: checkCommentReplies},
 	{name: "creation pagination precision", methods: []string{"ListIssues", "ListAllIssues", "SearchFTS"}, run: checkCreationPaginationPrecision},
+	{name: "list exact title", methods: []string{"ListIssues"}, run: checkListExactTitle},
 	{name: "list pagination", methods: []string{"ListIssues", "ListAllIssues", "CountIssues", "CountAllIssues"}, run: checkListPagination},
 	{name: "search pagination", methods: []string{"SearchFTS", "SearchFTSAny"}, run: checkSearchPagination},
 	{name: "relay ingress", methods: []string{"AcceptRelayDeliveries", "CreateAPIToken", "CreateIssue", "CreateProject", "CreateRelayEnrollment", "IssueByUID", "LinksByIssue", "MaterializeFederatedProject", "PinRootAuthority", "SetRelayBindingConfig", "UpsertFederationBinding"}, run: func(t *testing.T, store db.Storage) error {
@@ -141,6 +142,11 @@ var storageScenarios = []scenario{
 	}},
 	{name: "relay ingest returns local issue ids", methods: []string{"AcceptRelayDeliveries", "CreateAPIToken", "CreateProject", "CreateRelayEnrollment", "IssueByUID", "PinRootAuthority", "UpsertFederationBinding"}, run: func(t *testing.T, store db.Storage) error {
 		RunRelayIngestReturnsLocalIssueIDs(t, store)
+		return nil
+	}},
+	{name: "legacy relay admission", methods: []string{"IngestFederationEvents", "CreateRelayEnrollment", "RevokeFederationEnrollment"}, run: func(t *testing.T, store db.Storage) error {
+		RunLegacyRelayAdmission(t, store)
+		RunLegacyRelayParentUIDCollision(t, store)
 		return nil
 	}},
 	{name: "relay offers legacy ingested events", methods: []string{"IngestFederationEvents", "PendingRelayDeliveries", "PatchIssueMetadata"}, run: func(t *testing.T, store db.Storage) error {
@@ -208,6 +214,7 @@ var storageScenarios = []scenario{
 	{name: "run actor survives push enablement", methods: []string{"ObserveCronRun", "AdoptProjectIntoFederation", "EnableFederationPush"}, run: checkRunActorSurvivesPushEnablement},
 	{name: "hub accepts known run actor", methods: []string{"ObserveCronRun", "IngestFederationEvents"}, run: checkHubAcceptsKnownRunActor},
 	{name: "cron reads tolerate tightened rules", methods: []string{"PutCronJob", "CronJob", "ListCronJobs", "ExportCronJobs"}, run: checkCronReadsTolerateTightenedRules},
+	{name: "cron rejects impossible schedules", methods: []string{"PutCronJob", "CronJob", "ListCronJobs", "DispatchRecurringCron"}, run: checkCronRejectsImpossibleSchedules},
 	{name: "federation metadata requires enabled hub", methods: []string{"CreateProject", "AdoptProjectIntoFederation", "ReadFederation"}, run: checkFederationMetadataRequiresEnabledHub},
 	{name: "peer ingest committed events", methods: []string{"IngestFederationEvents"}, run: checkPeerIngestCommittedEvents},
 	{name: "independent run observations", methods: []string{"ObserveCronRun", "CronRun", "ListCronRuns", "ExportCronJobs", "ExportCronWorkflows", "ExportCronRuns"}, run: checkIndependentRunObservations},
@@ -230,6 +237,34 @@ var storageScenarios = []scenario{
 	{name: "native cron constraints", methods: []string{}, run: checkNativeCronConstraints},
 	{name: "native cron dormant storage", methods: []string{}, run: checkNativeCronDormancy},
 	{name: "cron project merge restore", methods: []string{"CreateProject", "PutCronJob", "PutCronWorkflow", "ObserveCronRun", "MergeProjects", "ImportReplay"}, runWithBackend: checkCronProjectMergeRestore},
+	{name: "mcp events activate", methods: []string{"ActivateMCPEventSubscription", "GetMCPEventSubscription", "ListMCPEventSubscriptions", "ImportMCPEventSubscription"}, run: checkMCPEventsActivate},
+	{name: "mcp events consent", methods: []string{"ImportMCPEventSubscription", "MCPEventConsentExists", "CountActiveMCPEventSubscriptions"}, run: checkMCPEventsConsent},
+	{name: "mcp events nullable round trip", methods: []string{"ImportMCPEventSubscription", "GetMCPEventSubscription", "ListDueMCPEventSubscriptions"}, run: checkMCPEventsNullableRoundTrip},
+	{name: "mcp events import", methods: []string{"ImportMCPEventSubscription", "GetMCPEventSubscription"}, run: checkMCPEventsImport},
+	{name: "mcp events quota race", methods: []string{"ActivateMCPEventSubscription", "ImportMCPEventSubscription", "EndMCPEventSubscription"}, run: checkMCPEventsQuotaRace},
+	{name: "mcp events daemon quota", methods: []string{"ActivateMCPEventSubscription"}, run: checkMCPEventsDaemonQuota},
+	{name: "mcp events refresh", methods: []string{"RefreshMCPEventSubscription", "ImportMCPEventSubscription"}, run: checkMCPEventsRefresh},
+	{name: "mcp events refresh settle interleave", methods: []string{"RefreshMCPEventSubscription", "UpdateMCPEventDelivery", "GetMCPEventSubscription"}, run: checkMCPEventsRefreshSettleInterleave},
+	{name: "mcp events claims", methods: []string{"ClaimMCPEventSubscription", "RenewMCPEventClaim", "UpdateMCPEventDelivery"}, run: checkMCPEventsClaims},
+	{name: "mcp events incarnation", methods: []string{"EndMCPEventSubscription", "ClaimMCPEventSubscription", "RenewMCPEventClaim", "UpdateMCPEventDelivery", "RefreshMCPEventSubscription"}, run: checkMCPEventsIncarnation},
+	{name: "mcp events delivery transitions", methods: []string{"UpdateMCPEventDelivery", "ClaimMCPEventSubscription"}, run: checkMCPEventsDeliveryTransitions},
+	{name: "mcp events end", methods: []string{"EndMCPEventSubscription"}, run: checkMCPEventsEnd},
+	{name: "mcp events list due", methods: []string{"ListDueMCPEventSubscriptions"}, run: checkMCPEventsListDue},
+	{name: "mcp events expiry maintenance", methods: []string{"ExpireMCPEventSubscriptions"}, run: checkMCPEventsExpiryMaintenance},
+	{name: "mcp events prune age", methods: []string{"PruneEndedMCPEventSubscriptions"}, run: checkMCPEventsPruneAge},
+	{name: "mcp events prune caps", methods: []string{"PruneEndedMCPEventSubscriptions"}, run: checkMCPEventsPruneCaps},
+	{name: "mcp events activate fenced by end", methods: []string{"ActivateMCPEventSubscription", "EndMCPEventSubscription", "GetMCPEventSubscription"}, run: checkMCPEventsActivateRaceWithEnd},
+	{name: "mcp events refresh after expiry", methods: []string{"RefreshMCPEventSubscription"}, run: checkMCPEventsRefreshAfterExpiry},
+	{name: "mcp events mark dirty", methods: []string{"MarkMCPEventSubscriptionsDirty", "ImportMCPEventSubscription"}, run: checkMCPEventsMarkDirty},
+	{name: "mcp events access changes", methods: []string{"MCPEventsAccessChangesAfter", "CreateTeam", "SetTeamMembership", "SetProjectAccessPolicy"}, run: checkMCPEventsAccessChanges},
+	{name: "mcp events update catalogs", methods: []string{"UpdateMCPEventCatalogs", "ForgetMCPEventCatalogs", "ImportMCPEventSubscription"}, run: checkMCPEventsUpdateCatalogs},
+	{name: "mcp events rematch", methods: []string{"MCPEventsRematch", "AcknowledgeMCPEventsRematch", "InitializeMCPEventsScanPosition"}, run: checkMCPEventsRematch},
+	{name: "mcp events scan position", methods: []string{"MCPEventsScanPosition", "InitializeMCPEventsScanPosition", "AdvanceMCPEventsScanPosition"}, run: checkMCPEventsScanPosition},
+	{name: "mcp events list due fairness", methods: []string{"ListDueMCPEventSubscriptions", "ClaimMCPEventSubscription"}, run: checkMCPEventsListDueFairness},
+	{name: "mcp events end releases claim", methods: []string{"EndMCPEventSubscription", "RenewMCPEventClaim"}, run: checkMCPEventsEndReleasesClaim},
+	{name: "mcp events end survives generation bump", methods: []string{"EndMCPEventSubscription", "ImportMCPEventSubscription", "GetMCPEventSubscription", "ClaimMCPEventSubscription", "UpdateMCPEventDelivery"}, run: checkMCPEventsEndSurvivesGenerationBump},
+	{name: "mcp events export", methods: []string{"ImportMCPEventSubscription", "ExportMCPEventSubscriptions"}, run: checkMCPEventsExport},
+	{name: "mcp events key check", methods: []string{"MCPEventsKeyCheck", "PutMCPEventsKeyCheckIfAbsent"}, run: checkMCPEventsKeyCheck},
 	{name: "purge attribution and gate", methods: []string{"PurgeIssue", "EntityAttribution", "AttributionReceiptsAfter"}, run: func(t *testing.T, store db.Storage) error {
 		RunPurgeAttributionAndGate(t, store)
 		return nil
@@ -290,6 +325,10 @@ var storageScenarios = []scenario{
 	{name: "federated move purge former streams", methods: []string{"PurgeIssue", "ReadFederation"}, run: checkFederatedMovePurgeFormerStreams},
 	{name: "federated move replay access revision", methods: []string{"IngestFederationEvents", "InsertRemoteEvents", "MaterializeFederatedProject"}, run: checkFederatedMoveReplayAccessRevision},
 	{name: "federated move replay embedding artifacts", methods: []string{"IngestFederationEvents", "InsertRemoteEvents", "MaterializeFederatedProject"}, run: checkFederatedMoveReplayEmbeddingArtifacts},
+	{name: "federated read pages", methods: []string{"ReadFederation"}, runWithBackend: func(t *testing.T, store db.Storage, backend Backend) error {
+		checkFederatedReadPages(t, store, backend)
+		return nil
+	}},
 	{name: "federated move payload-only history identity", methods: []string{"AdvanceFederationPushCursor", "CreateProject", "CreateIssue", "EditIssue", "EventsByUIDs", "MoveIssueProject", "InsertRemoteEvents", "MaterializeFederatedProject", "ResetFederatedProject", "UpsertFederationBinding", "IssueByUID", "ReadFederation"}, runWithBackend: checkFederatedMovePayloadOnlyHistory},
 	{name: "federated move snapshot payload-only comment edit", methods: []string{"CreateComment", "CreateFederationEnrollment", "CreateIssue", "CreateProject", "EnableProjectFederation", "IngestFederationEvents", "IssueByUID", "CommentsByIssue"}, run: checkFederatedMoveSnapshotPayloadOnlyCommentEdit},
 	{name: "federated move authoring gates", methods: []string{"MoveIssueProject", "SetRelayBindingConfig", "CreateRelayEnrollment", "InsertRemoteEvents"}, runWithBackend: checkFederatedMoveAuthoringGates},
@@ -338,6 +377,7 @@ var storageScenarios = []scenario{
 		run:     checkIssueRevisionAuthorRewrite,
 	},
 	{name: "search status", methods: []string{"SearchFTS", "SearchFTSAny"}, run: checkSearchStatus},
+	{name: "lookalike keeps rewritten body duplicate", methods: []string{"CreateProject", "CreateIssue", "SearchFTSAny"}, run: checkLookalikeKeepsRewrittenBodyDuplicate},
 	{name: "duplicate survives higher word count distractors", methods: []string{"CreateProject", "CreateIssue", "SearchFTSAny"}, run: checkDuplicateSurvivesHigherWordCountDistractors},
 	{name: "restricted search reads", methods: []string{"AddLabel", "CreateComment", "CreateIssue", "CreateProject", "SearchFTS", "SearchFTSAny"}, run: checkRestrictedSearchReads},
 	{
@@ -502,7 +542,7 @@ var storageScenarios = []scenario{
 		name: "issue lifecycle",
 		methods: []string{
 			"BatchProjectStats", "ClaimOwner", "CloseIssue", "CloseIssueGuarded", "CloseIssueWithEvents", "CreateIssue", "CreateProject", "EditIssue",
-			"IssueByShortID", "IssueUIDPrefixMatch", "ListAllIssues", "ReopenIssue", "RestoreIssue",
+			"InsertRemoteEvent", "IssueByShortID", "IssueUIDPrefixMatch", "ListAllIssues", "ReopenIssue", "RestoreIssue",
 			"SoftDeleteIssue", "UpdateOwner", "UpdatePriority",
 		},
 		run: checkIssueLifecycle,
@@ -670,6 +710,11 @@ var storageScenarios = []scenario{
 			"SearchFTSAny", "SoftDeleteIssue",
 		},
 		run: checkReadyQueuesAndDiscovery,
+	},
+	{
+		name:    "ready priority ordering",
+		methods: []string{"CreateProject", "CreateIssue", "ReadyIssues", "ReadyIssuesGlobal"},
+		run:     checkReadyPriorityOrder,
 	},
 	{
 		name: "api tokens and system project",
@@ -981,6 +1026,14 @@ var storageScenarios = []scenario{
 		run: checkFederationIngestLifecycle,
 	},
 	{
+		name: "federation ingest actor rebind retry",
+		methods: []string{
+			"CommentsByIssue", "CreateFederationEnrollment", "CreateProject", "EnableProjectFederation", "EventsByUIDs",
+			"IngestFederationEvents", "InsertRemoteEvent", "IssueByUID", "MaxEventID",
+		},
+		run: checkFederationIngestActorRebindRetry,
+	},
+	{
 		name: "federation adoption ingest lifecycle",
 		methods: []string{
 			"CreateFederationEnrollment", "CreateProject", "EnableProjectFederation",
@@ -1258,50 +1311,4 @@ func RunStorageConformance(t *testing.T, backend Backend) {
 			require.NoError(t, err)
 		})
 	}
-}
-
-// RunExternalRootConformance exercises only the external-root durable-state
-// scenario. It keeps the focused backend command fast while using the exact
-// same checks as the complete storage conformance suite.
-func RunExternalRootConformance(t *testing.T, backend Backend) {
-	t.Helper()
-	require.NotEmpty(t, backend.Name)
-	require.NotNil(t, backend.Open)
-
-	checks := []struct {
-		name string
-		run  func(*testing.T, db.Storage) error
-	}{
-		{name: "durable state", run: func(t *testing.T, store db.Storage) error {
-			return checkExternalRootBindings(t, store, backend)
-		}},
-		{name: "safety invariants", run: func(t *testing.T, store db.Storage) error {
-			return checkExternalRootSafetyInvariants(t, store, backend)
-		}},
-		{name: "content ownership", run: func(t *testing.T, store db.Storage) error {
-			return checkExternalRootContentOwnership(t, store, backend)
-		}},
-	}
-	for _, check := range checks {
-		t.Run(check.name, func(t *testing.T) {
-			store := backend.Open(t)
-			require.NotNil(t, store)
-			t.Cleanup(func() {
-				require.NoError(t, store.Close())
-			})
-			require.NoError(t, check.run(t, store))
-		})
-	}
-}
-
-// RunExternalRootContentOwnershipConformance exercises the native mutation
-// boundaries that must preserve externally owned title/body content.
-func RunExternalRootContentOwnershipConformance(t *testing.T, backend Backend) {
-	t.Helper()
-	require.NotEmpty(t, backend.Name)
-	require.NotNil(t, backend.Open)
-	store := backend.Open(t)
-	require.NotNil(t, store)
-	t.Cleanup(func() { require.NoError(t, store.Close()) })
-	require.NoError(t, checkExternalRootContentOwnership(t, store, backend))
 }

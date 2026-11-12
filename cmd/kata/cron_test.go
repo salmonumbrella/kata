@@ -528,6 +528,11 @@ func TestCronCLIRequestValidationLeavesStateUnchanged(t *testing.T) {
 	require.NoError(t, err)
 	job, _, err := env.DB.PutCronJob(t.Context(), db.PutCronJob{ProjectID: project.ID, Name: "Review", Definition: cronCLIJob(t).Definition.Native(), Actor: "worker"})
 	require.NoError(t, err)
+	parent, _, err := env.DB.CreateIssue(t.Context(), db.CreateIssueParams{ProjectID: project.ID, Title: "Recurring review", Author: "worker"})
+	require.NoError(t, err)
+	impossible := cronCLIRecurringJob(t)
+	impossible.Definition.Trigger = cron.Trigger{Kind: "cron", Cron: "0 0 30 2 *"}
+	impossible.Definition.Issue.ParentUID = parent.UID
 	createWithEvent := cronCLIJob(t)
 	createWithEvent.ExpectedEventUID = job.DefinitionEventUID
 	observe := api.ObserveCronRunBody{JobUID: &job.UID, DefinitionEventUID: &job.DefinitionEventUID, Status: "running", Summary: cron.Summary{Version: 1}}
@@ -541,6 +546,12 @@ func TestCronCLIRequestValidationLeavesStateUnchanged(t *testing.T) {
 		body string
 		want string
 	}{
+		{
+			name: "schedule that never fires",
+			args: []string{"job", "create", "--file", "-"},
+			body: string(mustCronJSON(t, impossible)),
+			want: "never fires",
+		},
 		{
 			name: "create with expected event",
 			args: []string{"job", "create", "--file", "-"},
@@ -798,4 +809,43 @@ func TestCronCLIParentUpdateKeepsBindingProtections(t *testing.T) {
 	stored, err := env.DB.CronJob(t.Context(), project.ID, jobUID)
 	require.NoError(t, err)
 	require.Equal(t, parents[0].UID, stored.Definition.Issue.ParentUID)
+}
+
+func TestCronCLIJobInputs(t *testing.T) {
+	t.Setenv("KATA_AUTHOR", "worker")
+	env := testenv.New(t)
+	_, err := env.DB.CreateProject(t.Context(), "spoke-project")
+	require.NoError(t, err)
+	jobUID := cronCLIUID(t)
+	input := cronCLIJob(t)
+	input.Definition.Options = api.JSONRawObject(`{"inputs":{"dry_run":{"type":"bool","default":true},"empty_default":{"type":"string","default":""},"empty_fixed":{"type":"string"}},"input_values":{"empty_fixed":""}}`)
+	_, _, err = executeCronCLI(t, env.URL, nil, "job", "create", "--uid", jobUID, "--file", cronCLIFile(t, input))
+	require.NoError(t, err)
+	out, _, err := executeCronCLI(t, env.URL, nil, "job", "inputs", jobUID)
+	require.NoError(t, err)
+	require.Contains(t, out, `"declared_by"`)
+	require.Contains(t, out, `"dry_run"`)
+	var resolved struct {
+		DeclaredBy string           `json:"declared_by"`
+		Inputs     []map[string]any `json:"inputs"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &resolved))
+	require.Equal(t, "job", resolved.DeclaredBy)
+	require.Equal(t, true, resolved.Inputs[0]["value"])
+	require.Equal(t, "", resolved.Inputs[1]["value"])
+	require.Equal(t, "", resolved.Inputs[2]["value"])
+}
+
+func TestCronCLIJobInputsRequiresAPI048(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/health" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true,"api_schema_version":"0.47.0"}`))
+			return
+		}
+		t.Errorf("unexpected request: %s", r.URL.Path)
+	}))
+	t.Cleanup(server.Close)
+	_, _, err := executeCronCLI(t, server.URL, nil, "job", "inputs", "01J00000000000000000000010")
+	require.ErrorContains(t, err, "requires daemon API 0.48.0 or newer")
 }

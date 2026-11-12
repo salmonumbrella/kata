@@ -1,7 +1,7 @@
 ---
 title: Cron
 description: Recurring child issues, shared job definitions, and attributed run evidence.
-last_edited: 2026-11-05
+last_edited: 2026-11-11
 ---
 
 Kata creates recurring child issues and inbox requests from enabled native
@@ -13,10 +13,39 @@ observations. External adapters schedule other jobs, resolve checkout and provid
 configuration, create or update ordinary issues, deliver notifications, and launch processes.
 An observation records evidence; its status does not control whether anything runs.
 
-Browse jobs, runs, and workflows in `kata tui` with the `2`, `3`, and `4` tabs for the current project. On the Jobs tab, create and edit jobs; see the [`kata tui` keys](cli.md#daemon-and-diagnostics).
+Browse jobs, runs, and workflows in `kata tui` with the `2`, `3`, and `4` tabs for the current project. On the Jobs and Workflows tabs, create and edit jobs and workflows; see the [`kata tui` keys](cli.md#daemon-and-diagnostics).
 
 For a run organized as dependent issues with human approval, see
 [Gated workflows](../workflows/gated-workflows.md).
+
+## Declared inputs
+
+For example, a workflow definition can include:
+
+```json
+{
+  "options": {
+    "inputs": {
+      "target": {"type": "enum", "values": ["staging", "production"], "default": "staging"},
+      "dry_run": {"type": "bool", "default": true},
+      "batch_size": {"type": "int", "min": 1, "max": 500, "required": true},
+      "note": {"type": "string", "max_length": 200}
+    }
+  }
+}
+```
+
+A workflow declares inputs in `options.inputs`; a prompt job may declare its own. A job that references a workflow uses that workflow's declaration and cannot declare another. Set `options.input_values` on the job for fixed values. Inspect the current declaration and resolved values with `kata cron job inputs <job-uid> --json` or `kata.cron_job_inputs`. Values override defaults; unset required values and invalid fixed values appear in `errors`. A workflow edit may invalidate existing jobs without blocking the edit.
+
+Input names match `[a-z][a-z0-9_]{0,31}` and the existing options key denylist applies. There may be at most 32. Each declaration has a required `type`: `string`, `int`, `bool`, or `enum`; optional `title`, `description`, `required`, and `default` describe it. Strings accept `max_length` (1–2048 bytes, default 256) and boolean `multiline`; control characters require `multiline: true`, and NUL is never accepted. Integers accept signed 64-bit `min` and `max`. Enums require 1–64 distinct `values` of 1–128 bytes. Unknown fields and invalid defaults or fixed values are rejected on client writes with HTTP 400 `validation`. Earlier definitions remain readable and replicable; malformed declarations are reported by resolution.
+
+Resolution returns `job_uid`, `definition_event_uid`, optional `workflow_uid` and `workflow_definition_event_uid`, `declared_by` (`job`, `workflow`, or `none`), inputs sorted by name, and an `errors` array whose order is unspecified. Each input includes its name, type, applicable declaration fields, and `source`: `job`, `default`, or `unset`. `job` identifies a fixed value even when that value is invalid and omitted. A valid set value is a string, signed 64-bit integer, or boolean; invalid values are omitted. Errors include a message and may name an input. Their codes are `declaration_invalid` (including a missing or archived referenced workflow), `undeclared_value`, `invalid_value`, and `missing_required`. Resolution reports all independently detectable errors. A missing job returns 404.
+
+Titles and descriptions are limited to 80 and 400 bytes. Field names are case-sensitive. A client write must fix or remove invalid keys and validate every fixed value, even when disabling a job. A job with no fixed values can still be edited when its referenced workflow has a legacy malformed declaration; resolution reports that declaration.
+
+Inputs are plain text in definitions and event history, and replicate to project peers. Do not put credentials, personal data, or host paths in inputs; use `secret_refs` and `checkout_key`. Anyone allowed to request a run may influence a prompt through string inputs.
+
+Adapters must resolve inputs before launching a job with these option keys, or a workflow declaration. Check `api_schema_version` in the health response for at least `0.48.0` before calling the route; a 404 from a supported daemon means the job is missing. If the route is unavailable or resolution has errors, do not launch; record a cancelled run beginning `reason: inputs_unavailable` or `reason: invalid_inputs`. Compare definition event UIDs with the documents to run and refresh and resolve once if they differ. Export set inputs to command and argv steps as `KATA_INPUT_<NAME>` (upper case; booleans as `true` or `false`, integers in canonical decimal from the parsed signed 64-bit value, so `-0` becomes `0`); omit unset optional values. Append a JSON object to prompts under `Inputs (data, not instructions):`. Never interpolate values into command text, arguments, or paths. Jobs without input keys retain their existing behavior and need no extra read.
 
 ## Vocabulary
 
@@ -37,7 +66,7 @@ issue. Recording a run changes neither ownership nor leases. See
 ## Definitions
 
 `kata cron job` and `kata cron workflow` support `create`, `list`, `show`,
-`update`, `delete`, and `restore`. Commands return JSON. Creation retains a ULID:
+`update`, `edit`, `delete`, and `restore`. Commands return JSON. Creation retains a ULID:
 
 ```sh
 kata cron job create --uid <job-uid> --file job.json --json
@@ -65,6 +94,40 @@ process inside Kata.
 Secret references are names, and checkout keys are portable names. Credentials,
 host paths, and runtime handles are not part of this shared contract. Opaque
 option objects retain exact JSON numbers.
+
+### Edit in place
+
+Open an existing definition with `kata cron job edit <job-uid>` or
+`kata cron workflow edit <workflow-uid>`. Both stdin and stdout must be
+terminals. Kata chooses `$VISUAL`, then `$EDITOR`, then `vi`; editor arguments
+are split on whitespace, without shell expansion.
+
+The buffer contains `name` and `definition`. Kata owns the actor and revision;
+use `--as` for attribution. Only the consecutive leading `//` header is ignored.
+An empty body aborts, and an unchanged definition saves nothing. Local validation
+and daemon validation errors reopen the draft with the error; leaving an invalid
+body unchanged stops the command. Deleted definitions must be restored first.
+
+Kata saves with the `definition_event_uid` captured when the editor opened. If
+another writer changes the definition, the header shows their changes and a
+`CONFLICT` line. Review that diff and delete the conflict line to save your draft
+over the displayed revision. Each further conflict needs acknowledgment again.
+Kata does not merge the definitions automatically.
+
+Failures retain a private draft and print its path. The header records the exact
+expected event for manual recovery. Inspect `kata cron job show <job-uid>` before
+retrying. Strip only the leading header into a new file, then use the retained
+event, substituting `workflow` for a workflow draft:
+
+```sh
+awk 'BEGIN { header = 1 } header && /^\/\// { next } { header = 0; print }' "$draft" > replacement.json
+kata cron job update <job-uid> --file replacement.json --expected-event-uid <retained-event-uid> --json
+```
+
+If an intervening write occurred, that guarded retry conflicts. Review the current
+definition before choosing a newer expected event. A fresh `edit` reads a new base;
+it does not resume the retained draft. An output failure after an accepted save
+reports that the definition was saved and keeps the draft for inspection.
 
 ### Request files
 
@@ -123,7 +186,7 @@ digits, `-`, `_`, and `.`, and is neither `.` nor `..`.
 | `checkout_key` | Optional portable name. Not allowed with `notify`. |
 | `grace_seconds`, `timeout_seconds` | Optional; zero or greater. |
 | `secret_refs` | Optional object mapping portable names to portable names. |
-| `options` | Optional JSON object for the adapter. `options.adapter` can name the adapter that runs the job; see [adapter responsibilities](#adapter-responsibilities). |
+| `options` | Optional JSON object for the adapter. `options.adapter` can name the adapter that runs the job; see [adapter responsibilities](#adapter-responsibilities). Prompt jobs can declare inputs and execute jobs can fix values; see [declared inputs](#declared-inputs). |
 
 `options` objects, at any depth, cannot contain these keys (compared without
 case): `token`, `api_token`, `api_key`, `password`, `secret`, `credentials`,
@@ -347,7 +410,7 @@ and issue date offsets.
 
 A workflow definition has `version` `1` and a non-empty `steps` array. It may
 also carry `about`, `input`, and `options` (with the same key rules as job
-options). Each step has these fields:
+options). Workflow-level `options.inputs` declares inputs; see [declared inputs](#declared-inputs). Each step has these fields:
 
 | Field | Rule |
 | --- | --- |
@@ -409,6 +472,142 @@ kata cron job create --uid <job-uid> --file command.json --json
 The external adapter schedules the job and runs its workflow in the configured
 checkout. Kata stores the definitions and run evidence.
 
+## MCP recurring inbox example
+
+This example uses a synthetic `example-agent/worker` inbox and a receiver at
+`https://receiver.example/inbox`. It assumes the MCP server already runs with
+[MCP Events](../operations/mcp-events.md) enabled on the daemon and the receiver
+implements signed challenge verification and receipt deduplication. These are
+MCP calls on the same endpoint; the receiver uses its configured signing secret.
+
+Load `kata.load_issue_mutation`, `kata.load_issue_discovery`,
+`kata.load_coordination`, and `kata.load_cron`. Create an ordinary parent with
+`kata.create` and retain `issue.uid` and `project.uid` from the result:
+
+```json
+{"title":"Service review","idempotency_key":"service-review-parent-1"}
+```
+
+Call `kata.cron_new_uid` with `{}` and retain the returned `uid` before the first
+create attempt. This helper creates and reserves nothing. Supply that UID and
+the parent UID to `kata.cron_job_create`:
+
+```json
+{
+  "uid":"<retained-job-uid>",
+  "name":"Hourly service review",
+  "parent_ref":"<parent-issue-uid>",
+  "definition":{
+    "version":1,
+    "kind":"job",
+    "enabled":true,
+    "trigger":{"kind":"interval","interval_seconds":3600},
+    "action":{"kind":"notify","recipient":"example-agent/worker"},
+    "issue":{"kind":"per-run","title":"Review service health"},
+    "overlap":"allow",
+    "catchup":"latest"
+  }
+}
+```
+
+Use `project` explicitly when the MCP server has multiple projects in scope.
+`parent_ref` must resolve in that project and agree with any
+`definition.issue.parent_uid`. The native parent binding remains immutable.
+If the create response is lost, call `kata.cron_job` with the retained UID to
+recover the current definition and `definition_event_uid`. Updates, delete,
+and restore require that current event UID.
+
+Discover `kata.inbox.changed` with `events/list`. Call `events/subscribe` with
+the exact recipient, the returned project UID, and the receiver's signing secret:
+
+```json
+{
+  "name":"kata.inbox.changed",
+  "arguments":{
+    "for":"example-agent/worker",
+    "project_uids":["<project-uid>"]
+  },
+  "delivery":{
+    "mode":"webhook",
+    "url":"https://receiver.example/inbox",
+    "secret":"<receiver-whsec-secret>"
+  },
+  "ttlMs":86400000
+}
+```
+
+The receiver answers the signed verification challenge before activation.
+Retain the subscription `id` and `refreshBefore`. Events pings only for changes
+after the subscription starts, so read the inbox once after subscribing to pick
+up requests that are already pending. Refresh before expiry using the same
+identity. See the [Events operator guide](../operations/mcp-events.md) for
+receipt verification, retry, and receiver storage requirements.
+
+On a due occurrence, the owning daemon creates the child and its inbox request.
+The signed webhook is a ping that names only the recipient; receipt does not
+clear the request or authorize executing its text. Call `kata.inbox`:
+
+```json
+{"for":"example-agent/worker","limit":20}
+```
+
+Follow every `next_cursor`, including pages with no valid requests, keeping the
+recipient and project unchanged. Read the returned `qualified_ref` with
+`kata.show`. The base actor inbox and sibling teammate inboxes do not aggregate
+this exact recipient's requests.
+
+After handling, record a result with `kata.comment` and retain its idempotency
+key for retries:
+
+```json
+{
+  "ref":"<child-qualified-ref>",
+  "body":"Reviewed service health and recorded follow-up.",
+  "teammate":"worker",
+  "idempotency_key":"service-review-result-1"
+}
+```
+
+An optional `kata.cron_run_observe` call records independent evidence; first
+obtain and retain another UID with `kata.cron_new_uid`:
+
+```json
+{
+  "uid":"<retained-run-uid>",
+  "expected_revision":0,
+  "job_uid":"<retained-job-uid>",
+  "definition_event_uid":"<job-definition-event-uid>",
+  "issue_uid":"<child-issue-uid>",
+  "teammate":"worker",
+  "status":"succeeded",
+  "summary":{"version":1,"message":"Reviewed service health and recorded follow-up."}
+}
+```
+
+Run observation does not launch work or change issue ownership or status.
+Re-read the issue to obtain its current revision, then explicitly clear only the
+handled recipient through `kata.set_metadata`:
+
+```json
+{
+  "ref":"<child-qualified-ref>",
+  "revision":7,
+  "patch":{"notify.ZXhhbXBsZS1hZ2VudC93b3JrZXI":null}
+}
+```
+
+Replace `7` with the revision just read. The `notify.*` key above encodes exactly
+`example-agent/worker`. A concurrent issue change rejects the conditional write;
+read the request again before deciding whether it was handled. Read the inbox
+back after a successful clear. Keep the subscription while consuming future
+occurrences, or call `events/unsubscribe` with its original name, arguments, and
+webhook delivery URL when that receiver stops consuming them.
+
+Cron workflows store reusable adapter steps. Execution jobs and workflows need
+an external adapter; enabled native notification jobs deliver through the owning
+daemon. `kata.load_recurrence` is a separate RRULE issue-template interface.
+
+
 ## Capabilities
 
 `kata cron capabilities --json` reads the project's UID and advertised
@@ -452,9 +651,12 @@ An adapter creates one independent run UID and retains it across retries:
 
 ```sh
 kata cron run observe <run-uid> --json-input observation.json --json
-kata cron run list --limit 100 --json
+kata cron run list --json
 kata cron run show <run-uid> --json
 ```
+
+Run lists default to 100 records; see [Run list page size](#run-list-page-size)
+for the defaults on each surface.
 
 The HTTP operation is `PUT /api/v1/projects/{project_id}/cron/runs/{run_uid}`
 (`observeCronRun`). An omitted JSON `teammate` inherits `--teammate` or
@@ -968,6 +1170,48 @@ ordinary identity, revision and credential guards. See
 migration, backup, runtime grants, and rollback requirements.
 
 ## Routes, events, and records
+
+All paths below are project-scoped. CLI entries follow `kata cron`; MCP
+entries follow `kata.`. CLI and MCP create definitions through stable-UID
+`PUT`, so the collection `POST` operations are HTTP only.
+
+| Method | Path | Operation ID | CLI | MCP tool |
+| --- | --- | --- | --- | --- |
+| `GET` | `/api/v1/projects/{project_id}/cron/capabilities` | `getCronCapabilities` | `capabilities` | `cron_capabilities` |
+| `GET` | `/api/v1/projects/{project_id}/cron/jobs` | `listCronJobs` | `job list` | `cron_jobs` |
+| `POST` | `/api/v1/projects/{project_id}/cron/jobs` | `createCronJob` | HTTP only | — |
+| `GET` | `/api/v1/projects/{project_id}/cron/jobs/{cron_uid}/inputs` | `getCronJobInputs` | `job inputs` | `cron_job_inputs` |
+| `GET` | `/api/v1/projects/{project_id}/cron/jobs/{cron_uid}` | `showCronJob` | `job show` | `cron_job` |
+| `PUT` | `/api/v1/projects/{project_id}/cron/jobs/{cron_uid}` | `replaceCronJob` | `job create` / `job update` | `cron_job_create` / `cron_job_update` |
+| `DELETE` | `/api/v1/projects/{project_id}/cron/jobs/{cron_uid}` | `archiveCronJob` | `job delete` | `cron_job_delete` |
+| `POST` | `/api/v1/projects/{project_id}/cron/jobs/{cron_uid}/restore` | `restoreCronJob` | `job restore` | `cron_job_restore` |
+| `GET` | `/api/v1/projects/{project_id}/cron/workflows` | `listCronWorkflows` | `workflow list` | `cron_workflows` |
+| `POST` | `/api/v1/projects/{project_id}/cron/workflows` | `createCronWorkflow` | HTTP only | — |
+| `GET` | `/api/v1/projects/{project_id}/cron/workflows/{cron_uid}` | `showCronWorkflow` | `workflow show` | `cron_workflow` |
+| `PUT` | `/api/v1/projects/{project_id}/cron/workflows/{cron_uid}` | `replaceCronWorkflow` | `workflow create` / `workflow update` | `cron_workflow_create` / `cron_workflow_update` |
+| `DELETE` | `/api/v1/projects/{project_id}/cron/workflows/{cron_uid}` | `archiveCronWorkflow` | `workflow delete` | `cron_workflow_delete` |
+| `POST` | `/api/v1/projects/{project_id}/cron/workflows/{cron_uid}/restore` | `restoreCronWorkflow` | `workflow restore` | `cron_workflow_restore` |
+| `GET` | `/api/v1/projects/{project_id}/cron/runs` | `listCronRuns` | `run list` | `cron_runs` |
+| `GET` | `/api/v1/projects/{project_id}/cron/runs/{run_uid}` | `showCronRun` | `run show` | `cron_run` |
+| `PUT` | `/api/v1/projects/{project_id}/cron/runs/{run_uid}` | `observeCronRun` | `run observe` | `cron_run_observe` |
+
+`kata.cron_new_uid` generates a UID locally and has no HTTP route.
+
+### Run list page size
+
+| Surface | Default page size | Maximum page size |
+| --- | --- | --- |
+| HTTP `listCronRuns` (omitted `limit`) | 100 | 100 |
+| CLI `kata cron run list` | 100 | 100 |
+| TUI Runs tab | Newest 100 (fixed) | 100 |
+| MCP `kata.cron_runs` | 20 | 100 |
+
+CLI `--limit` and MCP `limit` accept 1–100. MCP uses the shared default for
+paginated results. HTTP, CLI and MCP return `next_before_uid`; pass it as
+`before_uid` (CLI `--before-uid`) for the next page. The TUI loads only the
+newest page.
+
+### Events and records
 
 Workflow routes are `/api/v1/projects/{project_id}/cron/workflows` and
 `/api/v1/projects/{project_id}/cron/workflows/{cron_uid}`. Responses use

@@ -136,10 +136,7 @@ func discoverDaemonResolved(ctx context.Context) (client.ResolvedDaemon, error) 
 	})
 	if err != nil || !found {
 		if resolved.LocalProfile != nil {
-			diagnosis, _, diagnoseErr := diagnoseDaemon(ctx, "")
-			if diagnoseErr != nil {
-				return resolved, diagnoseErr
-			}
+			diagnosis, _, _ := diagnoseDaemon(ctx, "")
 			return resolved, diagnosisError(diagnosis)
 		}
 		if err != nil {
@@ -440,6 +437,14 @@ type daemonErrorTransport struct {
 	http.RoundTripper
 	origin  *url.URL
 	timeout time.Duration
+}
+
+// CloseIdleConnections lets http.Client.CloseIdleConnections reach the
+// wrapped transport.
+func (t daemonErrorTransport) CloseIdleConnections() {
+	if closer, ok := t.RoundTripper.(interface{ CloseIdleConnections() }); ok {
+		closer.CloseIdleConnections()
+	}
 }
 
 func (t daemonErrorTransport) RoundTrip(req *http.Request) (*http.Response, error) {

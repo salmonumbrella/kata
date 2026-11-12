@@ -6,8 +6,10 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.kenn.io/kata/internal/jsonutil"
 	"go.kenn.io/kata/internal/uid"
@@ -51,6 +53,7 @@ func registerCronTools(server *sdkmcp.Server, h toolHandlers) {
 	addCronTool(server, "kata.cron_capabilities", "Read cron capabilities", "Read the selected project's live cron capabilities under the configured daemon authority.", read, h.cronCapabilities)
 	addCronTool(server, "kata.cron_jobs", "List cron jobs", "List native notification and adapter execution definitions. Execution jobs need an external adapter; listing launches no work.", read, h.cronJobs)
 	addCronTool(server, "kata.cron_job", "Read cron job", "Read one retained job UID, including its current definition_event_uid and reversible tombstone.", read, h.cronJob)
+	addCronTool(server, "kata.cron_job_inputs", "Resolve cron job inputs", "Read resolved declarations, fixed values, and launch errors for one job.", read, h.cronJobInputs)
 	addCronTool(server, "kata.cron_job_create", "Create cron job", "Create a typed job with a caller-retained UID from kata.cron_new_uid. Native notification jobs use daemon delivery; execution jobs require an external adapter. Retry retains UID and daemon conflicts.", toolHints(false, false, false), h.cronJobCreate)
 	addCronTool(server, "kata.cron_job_update", "Replace cron job", "Replace a complete definition using its current expected_event_uid. Native parent bindings cannot change. Never launches an execution adapter.", toolHints(false, true, false), h.cronJobUpdate)
 	addCronTool(server, "kata.cron_job_delete", "Archive cron job", "Reversibly tombstone a cron definition using its current expected_event_uid.", toolHints(false, true, false), h.cronJobDelete)
@@ -60,15 +63,19 @@ func (h toolHandlers) cronNewUID(context.Context, *sdkmcp.CallToolRequest, CronP
 	id, err := kataclient.NewCronUID()
 	return successResult(), CronUIDOutput{UID: id}, err
 }
-func (h toolHandlers) cronCapabilities(ctx context.Context, _ *sdkmcp.CallToolRequest, in CronProjectInput) (*sdkmcp.CallToolResult, *generated.GetCronCapabilitiesResponse, error) {
+func (h toolHandlers) cronCapabilities(ctx context.Context, _ *sdkmcp.CallToolRequest, in CronProjectInput) (*sdkmcp.CallToolResult, generated.GetCronCapabilitiesResponse, error) {
 	project, err := h.createTarget(ctx, in.Project)
 	if err != nil {
-		return nil, nil, err
+		return nil, generated.GetCronCapabilitiesResponse{}, err
 	}
 	return cronResult(h.options.Client.GetCronCapabilities(ctx, &generated.GetCronCapabilitiesRequestOptions{PathParams: &generated.GetCronCapabilitiesPath{ProjectID: project.ID}}))
 }
-func cronResult[T any](value *T, err error) (*sdkmcp.CallToolResult, *T, error) {
-	return successResult(), value, err
+func cronResult[T any](value *T, err error) (*sdkmcp.CallToolResult, T, error) {
+	if err != nil {
+		var zero T
+		return nil, zero, err
+	}
+	return successResult(), *value, nil
 }
 func cronUID(value string) (string, error) {
 	value = strings.ToUpper(strings.TrimSpace(value))
@@ -85,11 +92,39 @@ func cronExpected(value string) (string, error) {
 	return id, nil
 }
 
+// cronOutputSchema replaces the generated union wrapper with its wire scalar schema.
+func cronOutputSchema[Out any](name string) *jsonschema.Schema {
+	schema := schemaFor[Out]()
+	if name == "kata.cron_job_inputs" {
+		inputs := schema.Properties["inputs"]
+		if inputs == nil || inputs.Items == nil {
+			panic("cron job inputs output schema lacks inputs items")
+		}
+		inputs.Items.Properties["value"] = &jsonschema.Schema{Types: []string{"string", "integer", "boolean"}}
+	}
+	return schema
+}
+
+// Preserve the presence of an optional scalar even when its JSON value is empty.
+var cronInputMarshalers = json.WithMarshalers(json.MarshalFunc(func(input generated.CronResolvedInput) ([]byte, error) {
+	type plainInput generated.CronResolvedInput
+	return json.Marshal(struct {
+		plainInput
+		Value *generated.CronResolvedInput_Value `json:"value,omitzero"`
+	}{plainInput: plainInput(input), Value: input.Value})
+}))
+
 // addCronTool retains original JSON bytes across validation. The SDK's generic
 // typed adapter re-marshals a float64 validation copy and rounds opaque options
 // and exact int64 evidence. Validate separately, then decode the original.
 func addCronTool[In, Out any](server *sdkmcp.Server, name, title, description string, hints *sdkmcp.ToolAnnotations, handler sdkmcp.ToolHandlerFor[In, Out]) {
-	inputSchema, outputSchema := inputSchemaFor[In](name), schemaFor[Out]()
+	inputSchema, outputSchema := inputSchemaFor[In](name), cronOutputSchema[Out](name)
+	// Generated response pointers infer a nullable root. MCP requires an
+	// object outputSchema; handler failures return IsError instead.
+	if len(outputSchema.Types) == 2 && slices.Contains(outputSchema.Types, "object") && slices.Contains(outputSchema.Types, "null") {
+		outputSchema.Type = "object"
+		outputSchema.Types = nil
+	}
 	resolved, err := inputSchema.Resolve(nil)
 	if err != nil {
 		panic(err)
@@ -117,7 +152,13 @@ func addCronTool[In, Out any](server *sdkmcp.Server, name, title, description st
 		if err != nil {
 			return failure(err)
 		}
-		encoded, err := json.Marshal(output)
+		var encoded []byte
+		if name == "kata.cron_job_inputs" {
+			// Generated optional scalar wrappers must retain an explicitly set empty string.
+			encoded, err = json.Marshal(output, cronInputMarshalers)
+		} else {
+			encoded, err = json.Marshal(output)
+		}
 		if err != nil {
 			return failure(err)
 		}

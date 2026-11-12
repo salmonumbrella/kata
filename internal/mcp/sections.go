@@ -8,6 +8,38 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// LoadedSections retains section selections across servers with the same
+// principal and options. Its zero value is ready to use; it holds no servers.
+type LoadedSections struct {
+	mu  sync.Mutex
+	ids map[string]bool
+}
+
+func (s *LoadedSections) selectSection(id string) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.ids == nil {
+		s.ids = make(map[string]bool)
+	}
+	s.ids[id] = true
+}
+
+func (s *LoadedSections) snapshot() []string {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ids := make([]string, 0, len(s.ids))
+	for id := range s.ids {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 // ToolSectionInput loads one section's typed tools into the MCP catalog.
 type ToolSectionInput struct{}
 
@@ -35,6 +67,18 @@ func registerSectionLoaders(server *sdkmcp.Server, options Options) error {
 		options.StorageAdmin != nil,
 		options.EnableTokenAdmin && options.Scope.Mode() == ScopeAll,
 	)
+	if options.Events {
+		for i := range sections {
+			if sections[i].section == "coordination" {
+				sections[i].tools = []string{"kata.assign", "kata.event_subscriptions", "kata.inbox", "kata.status", "kata.unassign"}
+				sections[i].description += " Native Events can signal exact-recipient inbox changes. Includes the principal's webhook delivery health from the daemon."
+				sections[i].register = func(server *sdkmcp.Server, h toolHandlers) {
+					registerCoordinationTools(server, h)
+					registerEventDeliveryTools(server, h)
+				}
+			}
+		}
+	}
 	byID := make(map[string]toolSection, len(sections))
 	for _, definition := range sections {
 		byID[definition.section] = definition
@@ -54,6 +98,9 @@ func registerSectionLoaders(server *sdkmcp.Server, options Options) error {
 				mutex.Lock()
 				defer mutex.Unlock()
 				load(definition)
+				if loaded[definition.section] {
+					options.LoadedSections.selectSection(definition.section)
+				}
 				return successResult(), ToolSectionOutput{
 					Section: definition.section, Available: definition.available,
 					Loaded: loaded[definition.section], Tools: append([]string(nil), definition.tools...),
@@ -73,6 +120,11 @@ func registerSectionLoaders(server *sdkmcp.Server, options Options) error {
 		}
 		load(definition)
 	}
+	for _, id := range options.LoadedSections.snapshot() {
+		if definition, ok := byID[id]; ok {
+			load(definition)
+		}
+	}
 	return nil
 }
 
@@ -85,13 +137,13 @@ func toolSections(storageAvailable, tokenAdminAvailable bool) []toolSection {
 		},
 		{
 			loader: "kata.load_coordination", section: "coordination", title: "Load coordination tools",
-			description: "Load typed assign, unassign, inbox, and issue-status tools for handing work between actors, then refresh the MCP tool list.",
+			description: "Load inbox, assign, unassign, and issue-status tools. Inbox reads are paginated. Refresh the MCP tool list.",
 			tools:       []string{"kata.assign", "kata.inbox", "kata.status", "kata.unassign"}, available: true, register: registerCoordinationTools,
 		},
 		{
 			loader: "kata.load_cron", section: "cron", title: "Load cron tools",
 			description: "Load native recurring notification jobs and external-adapter execution definitions. Run evidence does not launch work. Distinct from RRULE recurrence tools; refresh the MCP tool list.",
-			tools:       []string{"kata.cron_capabilities", "kata.cron_new_uid", "kata.cron_jobs", "kata.cron_job", "kata.cron_job_create", "kata.cron_job_update", "kata.cron_job_delete", "kata.cron_job_restore", "kata.cron_workflows", "kata.cron_workflow", "kata.cron_workflow_create", "kata.cron_workflow_update", "kata.cron_workflow_delete", "kata.cron_workflow_restore", "kata.cron_runs", "kata.cron_run", "kata.cron_run_observe"},
+			tools:       []string{"kata.cron_capabilities", "kata.cron_new_uid", "kata.cron_jobs", "kata.cron_job", "kata.cron_job_inputs", "kata.cron_job_create", "kata.cron_job_update", "kata.cron_job_delete", "kata.cron_job_restore", "kata.cron_workflows", "kata.cron_workflow", "kata.cron_workflow_create", "kata.cron_workflow_update", "kata.cron_workflow_delete", "kata.cron_workflow_restore", "kata.cron_runs", "kata.cron_run", "kata.cron_run_observe"},
 			available:   true, register: registerCronTools,
 		},
 		{

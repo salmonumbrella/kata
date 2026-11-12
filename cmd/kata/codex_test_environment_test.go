@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"go.kenn.io/kata/internal/testfix"
@@ -15,8 +19,12 @@ import (
 // from the developer's real Codex config; user-hook tests select their own homes
 // with t.Setenv. No production behavior or real user config is changed.
 func TestMain(m *testing.M) {
+	if os.Getenv("KATA_TEST_CLI_PANIC") != "" {
+		runCLIPanicFixture()
+		return
+	}
 	version.Version = "v1.2.3"
-	for _, key := range []string{"CI", "DO_NOT_TRACK", "TELEMETRY_ENABLED", "KATA_TELEMETRY_ENABLED"} {
+	for _, key := range []string{"CI", "DO_NOT_TRACK", "TELEMETRY_ENABLED", "KATA_TELEMETRY_ENABLED", "KATA_CLOSE_TRANSCRIPT_ENABLED"} {
 		if err := os.Unsetenv(key); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -34,6 +42,10 @@ func TestMain(m *testing.M) {
 				os.Exit(1)
 			}
 		}
+	}
+	if err := useSelectedNode(); err != nil {
+		fmt.Fprintf(os.Stderr, "select test Node executable: %v\n", err)
+		os.Exit(1)
 	}
 	home, err := os.MkdirTemp("", "kata-test-codex-")
 	if err != nil {
@@ -55,4 +67,20 @@ func TestMain(m *testing.M) {
 		code = 1
 	}
 	os.Exit(code)
+}
+
+// useSelectedNode puts the Node executable a version manager selects first
+// on PATH. The tests run Node under a temporary HOME, where the manager's
+// shim can no longer find its own configuration. Without Node on PATH the
+// tests that need it skip.
+func useSelectedNode() error {
+	output, err := exec.CommandContext(context.Background(), "node", "-p", "process.execPath").Output()
+	if err != nil {
+		return nil
+	}
+	executable := strings.TrimSpace(string(output))
+	if !filepath.IsAbs(executable) {
+		return nil
+	}
+	return os.Setenv("PATH", filepath.Dir(executable)+string(os.PathListSeparator)+os.Getenv("PATH"))
 }

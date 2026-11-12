@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"fmt"
 	"testing"
 	"time"
 
@@ -17,7 +18,8 @@ import (
 // relay push. Legacy ingest refuses a cron definition whose version names an
 // unrelated event; a relay push of the same document must be refused with the
 // same error class and leave no definition behind, while a well-formed
-// definition from the same sender is still accepted.
+// definition from the same sender is still accepted. Legacy admission also
+// rejects identity changes against pending run observations.
 func RunRelayIngestValidatesCronReplay(t *testing.T, store db.Storage) {
 	ctx := t.Context()
 	project, err := store.CreateProject(ctx, "hub-project")
@@ -48,7 +50,7 @@ func RunRelayIngestValidatesCronReplay(t *testing.T, store db.Storage) {
 	definition, err := json.Marshal(cron.JobDefinition{Version: 1, Kind: "job", Trigger: cron.Trigger{Kind: "manual"}, Action: cron.Action{Kind: "execute", Prompt: "Review open work"}, Issue: &cron.IssuePolicy{Kind: "per-run", Title: "Review"}, Overlap: "forbid", Catchup: "skip"})
 	require.NoError(t, err)
 	now := time.Now().UTC().Truncate(time.Millisecond)
-	cronEvent := func(target db.Project, kind, jobUID string, versionEventUID string) db.RemoteEvent {
+	cronEventWithDefinition := func(target db.Project, kind, jobUID string, versionEventUID string, definition []byte) db.RemoteEvent {
 		document := db.CronDefinitionEvent{UID: jobUID, ProjectUID: target.UID, Name: "Nightly review", Definition: definition, Author: "source-assistant", CreatedAt: now, UpdatedAt: now}
 		if versionEventUID != "" {
 			document.DefinitionEventUID = versionEventUID
@@ -57,6 +59,10 @@ func RunRelayIngestValidatesCronReplay(t *testing.T, store db.Storage) {
 		payload, err := json.Marshal(document)
 		require.NoError(t, err)
 		return newRemoteEvent(t, target, nil, kind, "source-assistant", downstream, 310, jsontext.Value(payload))
+	}
+
+	cronEvent := func(target db.Project, kind, jobUID string, versionEventUID string) db.RemoteEvent {
+		return cronEventWithDefinition(target, kind, jobUID, versionEventUID, definition)
 	}
 
 	issueUID, err := uid.New()
@@ -96,4 +102,83 @@ func RunRelayIngestValidatesCronReplay(t *testing.T, store db.Storage) {
 	require.NoError(t, err)
 	require.Equal(t, "Nightly review", job.Name)
 	require.Equal(t, created.EventUID, job.DefinitionEventUID)
+
+	// An older peer may have used options.inputs for a different shape.
+	legacyDefinition, err := json.Marshal(cron.JobDefinition{Version: 1, Kind: "job", Trigger: cron.Trigger{Kind: "manual"}, Action: cron.Action{Kind: "execute", Prompt: "Review"}, Issue: &cron.IssuePolicy{Kind: "per-run", Title: "Review"}, Overlap: "forbid", Catchup: "skip", Options: jsontext.Value(`{"inputs":42}`)})
+	require.NoError(t, err)
+	legacyUID, err := uid.New()
+	require.NoError(t, err)
+	legacyReplica, err := store.CreateProject(ctx, "legacy-replica")
+	require.NoError(t, err)
+	_, err = store.UpsertFederationBinding(ctx, db.FederationBinding{ProjectID: legacyReplica.ID, Role: db.FederationRoleSpoke, HubURL: "https://daemon.example", HubProjectID: legacyReplica.ID, HubProjectUID: legacyReplica.UID, Enabled: true})
+	require.NoError(t, err)
+	legacyInput := cronEventWithDefinition(legacyReplica, "cron.job.created", legacyUID, "", legacyDefinition)
+	inserted, err := store.InsertRemoteEvent(ctx, legacyReplica.ID, legacyInput)
+	require.NoError(t, err)
+	require.True(t, inserted)
+	require.NoError(t, store.MaterializeFederatedProject(ctx, legacyReplica.ID))
+	legacyStored, err := store.CronJob(ctx, legacyReplica.ID, legacyUID)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"inputs":42}`, string(legacyStored.Definition.Options))
+
+	// Replicated declarations over the client limit retain names and independent diagnostics.
+	fields := map[string]any{}
+	for i := range 33 {
+		fields[fmt.Sprintf("item_%02d", i)] = map[string]any{"type": "bool"}
+	}
+	fields["item_00"] = map[string]any{"type": "invalid"}
+	options, err := json.Marshal(map[string]any{"inputs": fields, "input_values": map[string]any{"item_00": true, "item_01": true}})
+	require.NoError(t, err)
+	updatedDefinition := legacyStored.Definition
+	updatedDefinition.Options = options
+	document, err := json.Marshal(updatedDefinition)
+	require.NoError(t, err)
+	overLimitUID, err := uid.New()
+	require.NoError(t, err)
+	overLimitEvent := cronEventWithDefinition(legacyReplica, "cron.job.created", overLimitUID, "", document)
+	inserted, err = store.InsertRemoteEvent(ctx, legacyReplica.ID, overLimitEvent)
+	require.NoError(t, err)
+	require.True(t, inserted)
+	require.NoError(t, store.MaterializeFederatedProject(ctx, legacyReplica.ID))
+	overLimit, err := store.CronJob(ctx, legacyReplica.ID, overLimitUID)
+	require.NoError(t, err)
+	resolution := cron.ResolveInputs(overLimit.Definition, nil)
+	require.Len(t, resolution.Inputs, 32)
+	require.Len(t, resolution.Errors, 2)
+	require.Equal(t, "declaration_invalid", resolution.Errors[0].Code)
+	require.Equal(t, "item_00", resolution.Errors[1].Name)
+	require.Equal(t, "declaration_invalid", resolution.Errors[1].Code)
+	relayUID, err := uid.New()
+	require.NoError(t, err)
+	relayInput := cronEventWithDefinition(project, "cron.job.created", relayUID, "", legacyDefinition)
+	_, err = store.AcceptRelayDeliveries(ctx, binding, db.RelayBatch{Stream: db.RelayStreamEvent, Envelopes: []db.RelayEnvelope{seal(relayInput, 3)}})
+	require.NoError(t, err)
+	relayed, err := store.CronJob(ctx, project.ID, relayUID)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"inputs":42}`, string(relayed.Definition.Options))
+
+	// Admission must compare pending run history before a projection exists.
+	jobUID, err = uid.New()
+	require.NoError(t, err)
+	legacyJob := cronEvent(legacy, "cron.job.created", jobUID, "")
+	_, err = store.InsertRemoteEvent(ctx, legacy.ID, legacyJob)
+	require.NoError(t, err)
+	runUID, err := uid.New()
+	require.NoError(t, err)
+	run := db.CronRun{UID: runUID, JobUID: &jobUID, DefinitionEventUID: &legacyJob.EventUID, Actor: "source-assistant", Status: "running", Summary: cron.Summary{Version: 1}, Revision: 1, CreatedAt: now, UpdatedAt: now}
+	body, err := json.Marshal(db.NewCronRunObservation(run, legacy.UID))
+	require.NoError(t, err)
+	observation := newRemoteEvent(t, legacy, nil, "cron.run.observed", "source-assistant", downstream, 320, body)
+	_, err = store.InsertRemoteEvent(ctx, legacy.ID, observation)
+	require.NoError(t, err)
+	_, err = store.CronRun(ctx, legacy.ID, runUID)
+	require.ErrorIs(t, err, db.ErrNotFound)
+	run.Actor = "other-assistant"
+	body, err = json.Marshal(db.NewCronRunObservation(run, legacy.UID))
+	require.NoError(t, err)
+	changed := newRemoteEvent(t, legacy, nil, "cron.run.observed", "source-assistant", downstream, 321, body)
+	_, err = store.InsertRemoteEvent(ctx, legacy.ID, changed)
+	require.ErrorIs(t, err, db.ErrFederationIngestValidation)
+	_, err = store.EventsByUIDs(ctx, legacy.ID, []string{changed.EventUID})
+	require.ErrorIs(t, err, db.ErrNotFound)
 }

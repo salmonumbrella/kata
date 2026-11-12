@@ -144,6 +144,8 @@ CREATE TABLE issues (
   CHECK (short_id !~ '[^0-9abcdefghjkmnpqrstvwxyz]'),
   CHECK (short_id = lower(substr(uid, 27 - length(short_id), length(short_id))))
 );
+CREATE INDEX idx_issues_uid_prefix ON issues(uid text_pattern_ops);
+CREATE INDEX idx_issues_project_uid_prefix ON issues(project_id, uid text_pattern_ops);
 CREATE INDEX idx_issues_project_status_updated
   ON issues(project_id, status, updated_at DESC) WHERE deleted_at IS NULL;
 CREATE INDEX idx_issues_project_updated
@@ -152,6 +154,15 @@ CREATE INDEX idx_issues_project_created
   ON issues(project_id, created_at, id) WHERE deleted_at IS NULL;
 CREATE INDEX idx_issues_created
   ON issues(created_at, id) WHERE deleted_at IS NULL;
+CREATE INDEX idx_issues_project_ready_priority
+  ON issues(project_id, COALESCE(priority, 5), updated_at DESC, id DESC)
+  WHERE status = 'open' AND deleted_at IS NULL;
+CREATE INDEX idx_issues_ready_priority
+  ON issues(COALESCE(priority, 5), updated_at DESC, id DESC)
+  WHERE status = 'open' AND deleted_at IS NULL;
+CREATE INDEX idx_issues_ready_updated
+  ON issues(updated_at DESC, id DESC)
+  WHERE status = 'open' AND deleted_at IS NULL;
 CREATE INDEX idx_issues_owner
   ON issues(owner) WHERE owner IS NOT NULL AND deleted_at IS NULL;
 CREATE INDEX idx_issues_assignment_expires_on
@@ -340,6 +351,8 @@ CREATE INDEX idx_events_resolved_issue_uid ON events (
     id
 );
 CREATE INDEX idx_events_moved_from ON events((payload::jsonb->>'from_project_uid'), (payload::jsonb->>'from_short_id')) WHERE type = 'issue.moved';
+CREATE INDEX idx_events_moved_from_id ON events((payload::jsonb->>'from_project_uid'), id) WHERE type = 'issue.moved';
+CREATE INDEX idx_events_reset_from ON events((payload::jsonb->>'from_project_uid'), (payload::jsonb->>'from_short_id')) WHERE type = 'sync.reset_required';
 CREATE INDEX idx_events_reply_to ON events((payload::jsonb->>'reply_to_uid')) WHERE type = 'issue.commented' AND (payload::jsonb->>'reply_to_uid') IS NOT NULL;
 CREATE INDEX idx_events_related_issue_uid ON events(related_issue_uid) WHERE related_issue_uid IS NOT NULL;
 CREATE INDEX idx_events_origin_instance ON events(origin_instance_uid);
@@ -854,6 +867,7 @@ CREATE TABLE cron_runs (
 CREATE INDEX idx_cron_runs_project_time ON cron_runs(project_id,created_at,uid);
 CREATE INDEX idx_cron_runs_job_time ON cron_runs(project_id,job_uid,created_at,uid);
 CREATE INDEX idx_events_project_cron ON events(project_id) WHERE type LIKE 'cron.%';
+CREATE INDEX idx_events_cron_run_uid ON events(project_id, type, (payload::jsonb->>'uid')) WHERE type LIKE 'cron.%';
 
 -- Teams are daemon-local actor groups; restricted empty policies stay restricted.
 CREATE TABLE teams (
@@ -972,3 +986,45 @@ CREATE TABLE federation_embedding_artifacts (
 );
 CREATE INDEX idx_embedding_artifacts_input ON federation_embedding_artifacts(project_uid,issue_uid,input_hash,recipe_fingerprint);
 CREATE INDEX idx_embedding_artifacts_staging ON federation_embedding_artifacts(project_uid,staging_expires_at) WHERE staging_expires_at IS NOT NULL;
+
+-- Daemon-owned MCP Events subscriptions. Callback delivery state, retry state
+-- and cursors live in one row per subscription. Validation is in Go.
+CREATE TABLE mcp_event_subscriptions (
+  id TEXT PRIMARY KEY,
+  principal_authority TEXT NOT NULL,
+  principal_subject TEXT NOT NULL,
+  principal_key TEXT NOT NULL,
+  actor TEXT NOT NULL DEFAULT '',
+  event_name TEXT NOT NULL,
+  arguments TEXT NOT NULL,
+  callback_url TEXT NOT NULL,
+  secret_enc BYTEA NOT NULL,
+  previous_secret_enc BYTEA,
+  previous_secret_until TEXT,
+  verified_at TEXT,
+  incarnation TEXT NOT NULL,
+  generation BIGINT NOT NULL DEFAULT 0,
+  state TEXT NOT NULL,
+  end_reason TEXT NOT NULL DEFAULT '',
+  expires_at TEXT,
+  dirty INTEGER NOT NULL DEFAULT 0,
+  catalog_version TEXT NOT NULL DEFAULT '',
+  pending_kind TEXT,
+  pending_message_id TEXT,
+  pending_body BYTEA,
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at TEXT,
+  claim_token TEXT,
+  claim_until TEXT,
+  failed_since TEXT,
+  failed_attempts INTEGER NOT NULL DEFAULT 0,
+  last_delivery_at TEXT,
+  last_error TEXT NOT NULL DEFAULT '',
+  dead_letter_count INTEGER NOT NULL DEFAULT 0,
+  ended_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX idx_mcp_event_subscriptions_due ON mcp_event_subscriptions(state, next_attempt_at);
+CREATE INDEX idx_mcp_event_subscriptions_principal_callback ON mcp_event_subscriptions(principal_key, callback_url);
+CREATE INDEX idx_mcp_event_subscriptions_ended ON mcp_event_subscriptions(state, ended_at);

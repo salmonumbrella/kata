@@ -58,7 +58,9 @@ api-check:
 # Fail when the committed OpenAPI contract introduces breaking changes for
 # existing clients relative to BASE_REF (default origin/main).
 api-breaking:
+	API_VERSION_BASE_REF="$(if $(BASE_REF),$(BASE_REF),origin/main)" go test ./internal/daemon -run '^TestAPIVersionBaseRecords$$' -count=1
 	bash scripts/openapi-breaking.sh $(BASE_REF)
+	SCHEMA_VERSION_BASE_REF=$(or $(BASE_REF),origin/main) go test ./internal/db/pgstore -run '^TestSchemaVersionContract$$'
 
 web-install:
 	cd web && bun install --frozen-lockfile
@@ -113,9 +115,7 @@ openapi: api-generate
 test-short:
 	env -u KATA_AUTH_TOKEN -u KATA_TRUST_PRIVATE_NETWORK go test -short $(GOFLAGS_TEST) ./...
 
-# gotestsum places packages after the go test flags, where go test would pass
-# them to the test binary after an unknown flag, so set rapid's checks through
-# its environment variable instead of -rapid.checks.
+# gotestsum places packages after Go flags, so use Rapid's environment setting.
 test-stress:
 	RAPID_CHECKS=5 go tool gotestsum --format pkgname-and-test-fails --format-icons text \
 		--jsonfile gotestsum/federation-stress.json --rerun-fails=2 \

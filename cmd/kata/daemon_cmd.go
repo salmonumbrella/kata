@@ -49,13 +49,14 @@ import (
 	kataweb "go.kenn.io/kata/internal/web"
 	kataclient "go.kenn.io/kata/pkg/client"
 	kitdaemon "go.kenn.io/kit/daemon"
+	"go.kenn.io/kit/embedlocal"
 	"go.kenn.io/kit/safefileio"
 	kitvec "go.kenn.io/kit/vector"
 )
 
 func newDaemonCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "daemon", Short: "manage the kata daemon"}
-	cmd.AddCommand(daemonStartCmd(), daemonStatusCmd(), daemonLocateCmd(), daemonStopCmd(), daemonRestartCmd(), daemonReloadCmd(), daemonLogsCmd(), daemonDiagnoseCmd(), daemonRecoverCmd())
+	cmd.AddCommand(daemonLocalEmbeddingsCmd(), daemonStartCmd(), daemonStatusCmd(), daemonLocateCmd(), daemonStopCmd(), daemonRestartCmd(), daemonReloadCmd(), daemonLogsCmd(), daemonDiagnoseCmd(), daemonRecoverCmd())
 	return cmd
 }
 
@@ -73,6 +74,10 @@ const (
 // daemonOwnerLockWait lets a replaced daemon finish its drain, which outlasts
 // its runtime record, before startup refuses its store. A var for tests.
 var daemonOwnerLockWait = daemonRestartProcessWaitTimeout
+
+// daemonReadinessWait is the ordinary budget for a detached daemon that can
+// open its store to publish readiness. A var for tests.
+var daemonReadinessWait = 5 * time.Second
 
 var newTelemetryReporter = func(opts telemetry.Options) telemetry.Client {
 	return telemetry.NewReporterOrDisabled(opts)
@@ -280,6 +285,7 @@ func daemonStartCmd() *cobra.Command {
 			if foreground {
 				ctx, cancel := context.WithCancel(cmd.Context())
 				defer cancel()
+				daemonProcessEntered = true
 				return runDaemonForeground(ctx, listen, insecureReadonly, noAutoToken)
 			}
 			out, err := startDetachedDaemonLocked(cmd.Context(), listen, insecureReadonly, noAutoToken)
@@ -503,7 +509,7 @@ func defaultLaunchDetachedDaemon(
 	var record kitdaemon.RuntimeRecord
 	adoptedConcurrentDaemon := false
 	// The child may first wait for a replaced daemon to release the store.
-	err = client.WaitForDaemonStartup(ctx, ownerLocks, daemonOwnerLockWait+5*time.Second, exited, func(context.Context) (bool, error) {
+	err = client.WaitForDaemonStartup(ctx, ownerLocks, daemonOwnerLockWait+daemonReadinessWait, exited, func(context.Context) (bool, error) {
 		var ok bool
 		record, ok = liveDaemonRecord(dataDir, pid)
 		if ok || !childExited.Load() {
@@ -660,17 +666,19 @@ func daemonStatusCmd() *cobra.Command {
 			}
 			out := daemonStatusOutput{Daemons: make([]daemonStatusEntry, 0, len(recs))}
 			selected, _, err := diagnoseDaemon(cmd.Context(), "")
-			if err != nil {
-				// Current-home inventory remains useful when workspace routing is
-				// invalid. This partial result never substitutes a selected target.
-				selected = selectionErrorDiagnosis(err)
-			}
 			out.Selected = &selected
+			var statusErr error
+			if err != nil {
+				statusErr = cliDaemonTargetError(err)
+			} else if selected.State != "ready" {
+				statusErr = diagnosisError(selected)
+			}
 			for _, r := range recs {
 				// Match discovery, which can select a record controls skip.
 				if daemonruntime.RuntimeRecordWorthProbing(r) {
 					out.Daemons = append(out.Daemons, daemonStatusEntry{
 						PID:           r.PID,
+						AutoStarted:   r.Metadata[daemonruntime.RuntimeAutoStartKey] == "1",
 						Version:       daemonRuntimeVersion(r),
 						Address:       r.Endpoint().ConfigAddress(),
 						WebURL:        r.Metadata["web_origin"],
@@ -694,6 +702,9 @@ func daemonStatusCmd() *cobra.Command {
 				if len(out.Daemons) == 1 && out.Daemons[0].MCP != "" {
 					daemonFields += " mcp=" + out.Daemons[0].MCP
 				}
+				if len(out.Daemons) == 1 && out.Daemons[0].AutoStarted {
+					daemonFields += " auto_started=true"
+				}
 				message := ""
 				if selected.Message != "" {
 					message = " message=" + agentValue(selected.Message)
@@ -701,10 +712,15 @@ func daemonStatusCmd() *cobra.Command {
 				if selected.RootSigning != nil {
 					message += " root_signing=unavailable"
 				}
-				_, err := fmt.Fprintf(cmd.OutOrStdout(), "OK daemon status=%s%s selected_state=%s selected_profile=%s%s\n", status, daemonFields, selected.State, agentValue(selected.Profile), message)
-				return err
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "OK daemon status=%s%s selected_state=%s selected_profile=%s%s\n", status, daemonFields, selected.State, agentValue(selected.Profile), message); err != nil {
+					return err
+				}
+				return statusErr
 			case outputJSON:
-				return emitJSON(cmd.OutOrStdout(), out)
+				if err := emitJSON(cmd.OutOrStdout(), out); err != nil {
+					return err
+				}
+				return statusErr
 			}
 			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Selected daemon: %s (source: %s)\n", selected.State, selected.Source); err != nil {
 				return err
@@ -721,7 +737,7 @@ func daemonStatusCmd() *cobra.Command {
 			}
 			if len(out.Daemons) == 0 {
 				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No kata daemon is running in the current KATA_HOME.")
-				return nil
+				return statusErr
 			}
 			for _, d := range out.Daemons {
 				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "kata running at %s\n", daemonStatusAddress(d.Address))
@@ -732,13 +748,16 @@ func daemonStatusCmd() *cobra.Command {
 					_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  MCP:     %s\n", d.MCP)
 				}
 				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  pid:     %d\n", d.PID)
+				if d.AutoStarted {
+					_, _ = fmt.Fprintln(cmd.OutOrStdout(), "  started: automatically by a kata command")
+				}
 				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  version: %s\n", d.Version)
 				if !d.StartedAt.IsZero() {
 					uptime := time.Since(d.StartedAt).Round(time.Second)
 					_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  uptime:  %s\n", uptime)
 				}
 			}
-			return nil
+			return statusErr
 		},
 	}
 }
@@ -764,6 +783,7 @@ type daemonStatusEntry struct {
 	StartedAt     time.Time         `json:"started_at"`
 	MCP           string            `json:"mcp,omitempty"` // "serving" or "unavailable" when [mcp] is enabled
 	ConfigSources map[string]string `json:"config_sources,omitempty"`
+	AutoStarted   bool              `json:"auto_started,omitzero"`
 }
 
 func runtimeConfigSources(metadata map[string]string) map[string]string {
@@ -901,10 +921,8 @@ func daemonRestartCmd() *cobra.Command {
 				return err
 			}
 			defer release()
-			for _, rec := range running {
-				if rec.Metadata[daemonruntime.RuntimeRestartExecutableKey] != "1" {
-					return unsupportedDaemonRestartError(rec)
-				}
+			if err := requireRestartable(running); err != nil {
+				return err
 			}
 			pids := make([]int, 0, len(running))
 			var out daemonStartOutput
@@ -917,23 +935,15 @@ func daemonRestartCmd() *cobra.Command {
 					return err
 				}
 			} else {
-				target := newDaemonRestart(io.Discard)
-				if target == nil {
-					return fmt.Errorf("cannot resolve the installed restart executable")
-				}
 				var flags []string
 				for _, name := range []string{"listen", "insecure-readonly", "no-auto-token"} {
 					if f := cmd.Flags().Lookup(name); f.Changed {
 						flags = append(flags, "--"+name+"="+f.Value.String())
 					}
 				}
-				for _, rec := range running {
-					replacement, err := requestDaemonRestart(cmd.Context(), ns, rec, target.executable, flags)
-					if err != nil {
-						return err
-					}
-					pids = append(pids, rec.PID)
-					out = daemonStartOutputFromRecord("restarted", replacement)
+				pids, out, err = restartRunningDaemons(cmd.Context(), ns, running, flags)
+				if err != nil {
+					return err
 				}
 			}
 			switch currentOutputMode() {
@@ -991,6 +1001,8 @@ type daemonStartupPreflight struct {
 	HookConfig     hooks.LoadedConfig
 	Embedder       *embedding.Client
 	VectorsPath    string
+	SavedEmbedding config.EmbeddingsConfig
+	ChoiceErr      error
 }
 
 func preflightDaemonStartup(ctx context.Context, listen string, insecureReadonly, noAutoToken bool) (daemonStartupPreflight, error) {
@@ -1081,7 +1093,17 @@ func preflightDaemonStartup(ctx context.Context, listen string, insecureReadonly
 	if err != nil {
 		return daemonStartupPreflight{}, fmt.Errorf("hooks: %w", err)
 	}
+	savedEmbeddings := dcfg.Search.Embeddings
+	chosen, choiceErr := applySharedEmbeddingChoice(ctx, savedEmbeddings, dbPath)
+	if choiceErr == nil {
+		dcfg.Search.Embeddings = chosen
+	}
 	embedder, vectorsPath, err := preflightEmbeddingStartup(dcfg.Search.Embeddings, dbPath)
+	if err != nil && chosen != savedEmbeddings {
+		choiceErr = fmt.Errorf("preflight: %w", err)
+		dcfg.Search.Embeddings = savedEmbeddings
+		embedder, vectorsPath, err = preflightEmbeddingStartup(savedEmbeddings, dbPath)
+	}
 	if err != nil {
 		return daemonStartupPreflight{}, err
 	}
@@ -1099,6 +1121,8 @@ func preflightDaemonStartup(ctx context.Context, listen string, insecureReadonly
 		HookConfig:     loadedHooks,
 		Embedder:       embedder,
 		VectorsPath:    vectorsPath,
+		SavedEmbedding: savedEmbeddings,
+		ChoiceErr:      choiceErr,
 	}, nil
 }
 
@@ -1466,11 +1490,18 @@ func runDaemonProcess(
 	rec := kitdaemon.NewRuntimeRecord("kata", version.Version, runtimeEndpoint)
 	rec.Address = runtimeEndpoint.ConfigAddress()
 	rec.Metadata = map[string]string{"db_path": redactRuntimeDSN(dbPath)}
+	if os.Getenv(daemonruntime.AutoStartMarkerEnv) == "1" {
+		rec.Metadata[daemonruntime.RuntimeAutoStartKey] = "1"
+	}
 	for key, source := range dcfg.Sources {
 		rec.Metadata["config_"+key+"_source"] = source
 	}
 	maps.Copy(rec.Metadata, webRuntime.Metadata())
 	maps.Copy(rec.Metadata, restart.metadata())
+
+	if startup.ChoiceErr != nil {
+		daemonLog.Printf("shared embeddings choice: %v", startup.ChoiceErr)
+	}
 
 	broadcaster := daemon.NewEventBroadcaster()
 	publisher := daemon.NewEventPublisher(broadcaster, disp)
@@ -1478,7 +1509,11 @@ func runDaemonProcess(
 		ctx, workers, waitableDrainAdmission, dcfg.Search.Embeddings, startup.Embedder, startup.VectorsPath, store, broadcaster, daemonLog, publisher,
 	)
 	if err != nil {
-		return err
+		if dcfg.Search.Embeddings == startup.SavedEmbedding {
+			return err
+		}
+		daemonLog.Printf("shared embeddings choice: %v", err)
+		dcfg.Search.Embeddings = startup.SavedEmbedding
 	}
 	defer func() {
 		if closeDependencies && vectorIndex != nil {
@@ -1496,7 +1531,7 @@ func runDaemonProcess(
 	sigs, reloadCleanup := installReloadSource(ctx, ns.DBHash)
 	workers.Go(func() {
 		runReloadLoop(ctx, sigs, hookCfgPath, disp, daemonLog, func() {
-			if err := reloadEmbeddingCredentials(dcfg.Search.Embeddings, embedder, embeddingWake); err != nil {
+			if err := reloadEmbeddingCredentials(ctx, dcfg.Search.Embeddings, startup.DBPath, embedder, embeddingWake); err != nil {
 				daemonLog.Printf("embedding credential reload failed: %v", err)
 			}
 		})
@@ -1621,10 +1656,7 @@ func runDaemonProcess(
 	if err != nil {
 		return fmt.Errorf("build embedded web handler: %w", err)
 	}
-	var docbankClient *docbank.Client
-	if dcfg.Docbank.Enabled() {
-		docbankClient = docbank.NewClient(dcfg.Docbank.URL, dcfg.Docbank.ResolveKey)
-	}
+	docbankClient := docbank.New(dcfg.Docbank)
 	var mcpHandler http.Handler
 	if dcfg.MCP.Enabled {
 		mcpHandler, err = newDaemonMCPHandler(ctx, store, dcfg.MCP, startup.MCPToken, runtimeEndpoint, dcfg.Auth)
@@ -1634,7 +1666,25 @@ func runDaemonProcess(
 			rec.Metadata["mcp"] = "unavailable"
 		}
 	}
+	localSetup := &localEmbeddingsSetup{
+		embeddings: dcfg.Search.Embeddings, idle: idleAdmission,
+		start: func(work func(context.Context)) bool { return workers.Go(func() { work(ctx) }) },
+	}
+	if pg, ok := store.(*pgstore.Store); ok {
+		localSetup.vectorReady = func(ctx context.Context) error {
+			idx, err := vector.OpenPostgres(ctx, pg.DB)
+			if err != nil {
+				return fmt.Errorf("install pgvector in this daemon's database, then try again: %w", err)
+			}
+			return idx.Close()
+		}
+	}
+
+	// Start the Events worker only after the last fallible startup step, so an
+	// earlier failure cannot leave it running past the store closing.
+	mcpEvents, mcpEventsReason := startDaemonMCPEvents(ctx, workers, dcfg, ns.DBHash, store, broadcaster, daemonLog)
 	srv := daemon.NewServer(daemon.ServerConfig{
+		LocalEmbeddings:           localSetup,
 		MCPHandler:                mcpHandler,
 		FederationSigning:         signingVerifier,
 		FederationSigningRequired: dcfg.Federation.Signing.Required,
@@ -1645,6 +1695,8 @@ func runDaemonProcess(
 		Endpoint:                  &endpoint,
 		Hooks:                     disp,
 		Broadcaster:               broadcaster,
+		MCPEvents:                 mcpEvents,
+		MCPEventsDisabledReason:   mcpEventsReason,
 		FederationWake:            federationWake,
 		FederationPullOnce: func(ctx context.Context, binding db.FederationBinding, credential config.FederationCredential) error {
 			return federation.SyncFederationPullOnlyOnceWithPulledEvents(ctx, store, binding, credential, client.Opts{}, publisher.Events)
@@ -2096,21 +2148,26 @@ func preflightEmbeddingStartup(
 	if !ec.Enabled() {
 		return nil, "", nil
 	}
-	embedder, err := embedding.New(embedding.Config{
-		BaseURL:             ec.BaseURL,
-		Model:               ec.Model,
-		Credential:          ec.ResolveCredential(),
-		Salt:                ec.FingerprintSalt,
-		DocumentPrefix:      ec.DocumentPrefix,
-		DocumentSuffix:      ec.DocumentSuffix,
-		QueryPrefix:         ec.QueryPrefix,
-		QuerySuffix:         ec.QuerySuffix,
-		RequestDimensions:   ec.RequestDimensions,
-		Dims:                ec.Dims,
-		BatchSize:           ec.BatchSize,
-		Timeout:             time.Duration(ec.TimeoutSeconds) * time.Second,
-		TrustPrivateNetwork: ec.TrustPrivateNetwork,
-	})
+	cfg := embeddingClientConfig(ec)
+	if ec.UsesLocal() {
+		cfg.Endpoint = func(ctx context.Context) (string, error) {
+			return resolveLocalEmbeddings(ctx, func(context.Context, int64) (bool, error) {
+				backend, err := storeopen.BackendForDSN(dbPath)
+				if err != nil {
+					return false, err
+				}
+				chosen := false
+				if backend == storeopen.BackendSQLite {
+					chosen, err = embedlocal.ChoiceRecorded()
+				}
+				if err == nil && !chosen {
+					err = errors.New("run kata daemon local-embeddings to approve the download")
+				}
+				return chosen, err
+			})
+		}
+	}
+	embedder, err := embedding.New(cfg)
 	if err != nil {
 		return nil, "", fmt.Errorf("embedding client: %w", err)
 	}
@@ -2125,6 +2182,33 @@ func preflightEmbeddingStartup(
 		return nil, "", fmt.Errorf("embedding index: %w", err)
 	}
 	return embedder, vectorsPath, nil
+}
+
+func embeddingClientConfig(ec config.EmbeddingsConfig) embedding.Config {
+	cfg := embedding.Config{
+		BaseURL:             ec.BaseURL,
+		Model:               ec.Model,
+		Credential:          ec.ResolveCredential(),
+		Salt:                ec.FingerprintSalt,
+		DocumentPrefix:      ec.DocumentPrefix,
+		DocumentSuffix:      ec.DocumentSuffix,
+		QueryPrefix:         ec.QueryPrefix,
+		QuerySuffix:         ec.QuerySuffix,
+		RequestDimensions:   ec.RequestDimensions,
+		Dims:                ec.Dims,
+		BatchSize:           ec.BatchSize,
+		Timeout:             time.Duration(ec.TimeoutSeconds) * time.Second,
+		TrustPrivateNetwork: ec.TrustPrivateNetwork,
+	}
+	if ec.UsesLocal() {
+		if cfg.BatchSize == 0 {
+			cfg.BatchSize = embedlocal.BatchItems
+		}
+		if cfg.Timeout == 0 {
+			cfg.Timeout = embedlocal.RequestTimeout
+		}
+	}
+	return cfg
 }
 
 func embeddingBatchOptions(ec config.EmbeddingsConfig, batchSize int) []kitvec.BatchOption {

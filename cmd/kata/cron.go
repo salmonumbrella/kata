@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"go.kenn.io/kata/internal/api"
+	"go.kenn.io/kata/internal/cron"
 	"go.kenn.io/kata/internal/db"
 	"go.kenn.io/kata/internal/uid"
 	kataclient "go.kenn.io/kata/pkg/client"
@@ -46,8 +47,11 @@ The full contract is in the Cron reference (docs/reference/cron.md).`,
 		case "workflow":
 			group.Long = "Manage reusable command or prompt steps. For issue stages with human approval, see docs/workflows/gated-workflows.md."
 		}
-		for _, action := range []string{"list", "show", "create", "update", "delete", "restore"} {
+		for _, action := range []string{"list", "show", "create", "update", "edit", "delete", "restore"} {
 			group.AddCommand(newCronOperationCmd(resource, action))
+		}
+		if resource == "job" {
+			group.AddCommand(newCronOperationCmd("job", "inputs"))
 		}
 		command.AddCommand(group)
 	}
@@ -71,7 +75,9 @@ type cronCLIOptions struct {
 	beforeUID, jobUID                string
 }
 
-func (o cronCLIOptions) mutation() bool   { return o.action != "list" && o.action != "show" }
+func (o cronCLIOptions) mutation() bool {
+	return o.action != "list" && o.action != "show" && o.action != "inputs" && o.action != "edit"
+}
 func (o cronCLIOptions) definition() bool { return o.resource == "job" || o.resource == "workflow" }
 func newCronOperationCmd(resource, action string) *cobra.Command {
 	options := cronCLIOptions{resource: resource, action: action, limit: 100}
@@ -80,7 +86,7 @@ func newCronOperationCmd(resource, action string) *cobra.Command {
 	command.Long, command.Example = cronOperationHelp(resource, action)
 	if resource == "job" {
 		command.Long += "\nEnabled recurring issue jobs create independent children and inbox requests on the owning hub. Other jobs use external adapters."
-		if options.mutation() {
+		if options.mutation() || action == "edit" {
 			command.Long += "\nDirect spokes forward native recurring job writes synchronously when push is enabled. Otherwise, run the same command against the project's owning hub with --daemon <hub-name>."
 		}
 	}
@@ -132,7 +138,9 @@ this project (cron_v1 covers all cron features). Reads only; creates no cron sta
 	case "run list":
 		return `List the project's recorded runs, newest first. --job-uid lists one job's runs.
 For the next page, pass the response's next_before_uid as --before-uid.`,
-			"  " + cmd + " --limit 20 --json\n  " + cmd + " --job-uid <job-uid> --before-uid <run-uid> --json"
+			"  " + cmd + " --json\n  " + cmd + " --job-uid <job-uid> --before-uid <run-uid> --json"
+	case "job inputs":
+		return "Show a job’s declared inputs, resolved values, and errors.", "  " + cmd + " <job-uid> --json"
 	case "run show":
 		return "Show one recorded run.", "  " + cmd + " <run-uid> --json"
 	case "run observe":
@@ -163,13 +171,24 @@ becomes an update.`
 			long += "\nUse --parent <ref> to set definition.issue.parent_uid from an issue ref."
 		}
 		return long + "\n\n" + cronRequestHelp(resource), cronRequestExamples(resource, action)
+	case "edit":
+		return "Edit an existing " + resource + ` in VISUAL, EDITOR, or vi (in that order).
+Both stdin and stdout must be terminals. The buffer holds name and definition;
+only its leading // header is ignored. Empty or unchanged bodies save nothing.
+Validation errors reopen the draft. An unchanged invalid retry stops.
+Saves use the definition_event_uid captured when the editor opened. A conflict
+shows the other changes: delete the CONFLICT line to save over that revision.
+Each further conflict requires acknowledgment. Failures print a retained draft
+path and its expected-event-uid for manual recovery with update --file.
+A new edit reads a new base; it does not resume a retained draft.`, "  " + cmd + " <" + resource + "-uid>"
 	case "update":
 		long := "Replace a " + resource + ` definition from a JSON request file. Pass the current
 definition_event_uid from kata cron ` + resource + ` show as --expected-event-uid
 (or as expected_event_uid in the file). If both are supplied they must match;
 a stale value fails with a conflict. Re-read show before retrying an edit.
 Send the complete name and definition, not a patch. The examples below use
-the flag, so their JSON bodies also work for create.`
+the flag, so their JSON bodies also work for create.
+For interactive changes, use kata cron ` + resource + ` edit.`
 		if resource == "job" {
 			long += "\nUse --parent <ref> to set definition.issue.parent_uid; an existing native parent binding cannot change."
 		}
@@ -199,6 +218,9 @@ func normalizedCronCLIUID(value string) (string, error) {
 	return value, nil
 }
 func (o *cronCLIOptions) execute(cmd *cobra.Command) error {
+	if o.action == "edit" && !cronEditTerminal(cmd) {
+		return cronCLIValidation("edit needs a terminal; use kata cron " + o.resource + " show and update --file")
+	}
 	if cmd.Flags().Changed("parent") && strings.TrimSpace(o.parent) == "" {
 		return cronCLIValidation("--parent must not be empty")
 	}
@@ -237,6 +259,11 @@ func (o *cronCLIOptions) execute(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
+	if o.resource == "job" && o.action == "inputs" {
+		if err := requireDaemonAPIVersion(cmd.Context(), daemon.client, daemon.baseURL, cron.APIVersionJobInputs, "cron job inputs"); err != nil {
+			return err
+		}
+	}
 	var project projectRef
 	if o.parent != "" {
 		project, body, err = o.applyParent(cmd, daemon, body)
@@ -261,6 +288,9 @@ func (o *cronCLIOptions) execute(cmd *cobra.Command) error {
 	client, err := kataclient.NewWithHTTPClient(daemon.baseURL, mutationClient)
 	if err != nil {
 		return err
+	}
+	if o.action == "edit" {
+		return o.edit(cmd.Context(), cmd, daemon, client, project.ID)
 	}
 	raw, err := o.call(daemon, client, project.ID, body)
 	if err != nil {
@@ -580,7 +610,7 @@ func (o cronCLIOptions) call(a daemonAPI, c *kataclient.Client, projectID int64,
 	switch {
 	case o.resource == "capabilities":
 		return o.callCapabilities(a, c, projectID)
-	case o.action == "list" || o.action == "show":
+	case o.action == "list" || o.action == "show" || o.action == "inputs":
 		return o.callRead(a, c, projectID)
 	case o.action == "delete" || o.action == "restore":
 		return o.callLifecycle(a, c, projectID, raw)
@@ -593,6 +623,12 @@ func (o cronCLIOptions) callRead(a daemonAPI, c *kataclient.Client, projectID in
 	switch {
 	case o.resource == "job" && o.action == "list":
 		response, err := c.ListCronJobsWithResponse(a.ctx, &generated.ListCronJobsRequestOptions{PathParams: &generated.ListCronJobsPath{ProjectID: projectID}, Query: &generated.ListCronJobsQuery{IncludeDeleted: &o.includeDeleted}})
+		if response == nil {
+			return nil, externalCLITransportError(response, err)
+		}
+		return cronCLIResponse(response.StatusCode, response.Body, err)
+	case o.resource == "job" && o.action == "inputs":
+		response, err := c.GetCronJobInputsWithResponse(a.ctx, &generated.GetCronJobInputsRequestOptions{PathParams: &generated.GetCronJobInputsPath{ProjectID: projectID, CronUID: o.identity}})
 		if response == nil {
 			return nil, externalCLITransportError(response, err)
 		}
