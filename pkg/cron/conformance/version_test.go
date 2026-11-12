@@ -3,9 +3,13 @@ package conformance
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	stdjson "encoding/json"
 	"encoding/json/v2"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -176,5 +180,28 @@ func TestInputSuiteVersionSelection(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestVersionedExportBytes(t *testing.T) {
+	for _, tc := range []struct{ schema, hashes string }{
+		{SchemaV2, "v2-export-sha256.json"},
+		{SchemaV3, "v3-export-sha256.json"},
+	} {
+		t.Run(tc.schema, func(t *testing.T) {
+			suite, err := NewSuite(t.Context(), tc.schema, Reference{}.Declare())
+			if err != nil { t.Fatal(err) }
+			files, err := suite.ExportFiles(t.Context())
+			if err != nil { t.Fatal(err) }
+			raw, err := os.ReadFile(filepath.Join("testdata", tc.hashes))
+			if err != nil { t.Fatal(err) }
+			var hashes map[string]string
+			if err := json.Unmarshal(raw, &hashes); err != nil { t.Fatal(err) }
+			if len(files) != len(hashes) { t.Fatalf("files %d, want %d", len(files), len(hashes)) }
+			for name, data := range files {
+				sum := sha256.Sum256(data)
+				if hex.EncodeToString(sum[:]) != hashes[name] { t.Errorf("changed export bytes: %s", name) }
+			}
+		})
 	}
 }
