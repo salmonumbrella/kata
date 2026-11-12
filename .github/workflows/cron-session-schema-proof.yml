@@ -10,9 +10,9 @@ permissions:
 env:
   GOMAXPROCS: '2'
   GOFLAGS: '-p=1'
-  KATA_HOME: ${{ runner.temp }}/kata-proof/home
-  KATA_DB: ${{ runner.temp }}/kata-proof/home/kata.db
-  KATA_WORKSPACE: ${{ runner.temp }}/kata-proof/workspace
+  KATA_HOME: /tmp/kata-proof/home
+  KATA_DB: /tmp/kata-proof/home/kata.db
+  KATA_WORKSPACE: /tmp/kata-proof/workspace
 
 jobs:
   schema:
