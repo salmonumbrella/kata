@@ -220,3 +220,56 @@ func TestCronRequestInputsInvalidJobValueNeedsOverride(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, jsontext.Value(`"staging"`), values["target"])
 }
+
+func TestCronRequestInputsMouseKeepsDraft(t *testing.T) {
+	m, api := runtimeFixture(t, false)
+	m.opts.Mouse = true
+	m.width = 80
+	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"count": map[string]any{"type": "int"}}}
+	api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "count", Type: "int", Source: "unset"}}}}
+	m, cmd := press(m, keyRune('R'))
+	m = runtimeDone(t, m, cmd)
+	m, _ = press(m, keyRune('7'))
+	m, _ = m.routeMouse(tea.MouseClickMsg{X: 1, Y: 2, Button: tea.MouseLeft})
+	require.False(t, m.cron.filtering)
+	m, cmd = press(m, ctrlKey('o'))
+	m = runtimeDone(t, m, cmd)
+	require.Len(t, api.calls, 1)
+	require.Equal(t, jsontext.Value("7"), api.inputValues[0]["count"])
+}
+
+func TestCronRequestInputsUnreadableLiveCheckKeepsDraft(t *testing.T) {
+	for _, readErr := range []error{errors.New("connection lost"), &APIError{Status: http.StatusServiceUnavailable, Message: "unavailable"}} {
+		t.Run(readErr.Error(), func(t *testing.T) {
+			m, api := runtimeFixture(t, false)
+			m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"count": map[string]any{"type": "int"}}}
+			api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "count", Type: "int", Source: "unset"}}}}
+			m, cmd := press(m, keyRune('R'))
+			m = runtimeDone(t, m, cmd)
+			m, _ = press(m, keyRune('7'))
+			api.showErr = readErr
+			m, cmd = press(m, ctrlKey('o'))
+			m = runtimeDone(t, m, cmd)
+			require.NotNil(t, m.cron.action)
+			require.Empty(t, m.cron.action.requestUID)
+			require.False(t, m.cron.action.inflight)
+			require.NotContains(t, m.cron.action.inputs.general, "Request refused")
+			require.Empty(t, api.calls)
+			m, _ = press(m, keyRune('8'))
+			api.showErr = nil
+			m, cmd = press(m, ctrlKey('o'))
+			m = runtimeDone(t, m, cmd)
+			require.Equal(t, jsontext.Value("78"), api.inputValues[0]["count"])
+		})
+	}
+}
+
+func TestCronRequestInputsUnnamedDiagnostic(t *testing.T) {
+	m, api := runtimeFixture(t, false)
+	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"count": map[string]any{"type": "int"}}}
+	api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{Errors: []cron.InputError{{Code: "declaration_invalid", Message: "invalid declaration"}}}}
+	m, cmd := press(m, keyRune('R'))
+	m = runtimeDone(t, m, cmd)
+	require.NotContains(t, m.toast.text, ": : ")
+	require.Contains(t, m.toast.text, ": invalid declaration; fix the definition")
+}
