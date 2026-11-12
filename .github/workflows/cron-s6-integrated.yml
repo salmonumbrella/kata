@@ -1,0 +1,52 @@
+name: Cron S6 integrated S5 proof
+on:
+  push:
+    branches: [proof/cron-s6-integrated-492b13a2e]
+permissions:
+  contents: read
+env:
+  GOMAXPROCS: '2'
+  GOFLAGS: '-p=1'
+  KATA_HOME: /tmp/kata-proof/home
+  KATA_DB: /tmp/kata-proof/home/kata.db
+  KATA_WORKSPACE: /tmp/kata-proof/workspace
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+      - name: goldens regenerate with zero diff
+        run: |
+          go test ./internal/tui -run '^TestSnapshot_Cron(RequestInputs|RuntimeRequests)$' -count=1 -update-goldens
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+      - name: focused TUI cron view/action/client/snapshot
+        run: go test ./internal/tui -run '^Test(Cron|Snapshot_Cron)' -count=1 -v 2>&1 | tee /tmp/tui.log | grep -E '^(--- |ok|FAIL|PASS)' ; test ${PIPESTATUS[0]} -eq 0
+      - run: go test ./internal/cron -count=1
+      - run: go test ./internal/mcp -run 'Cron' -count=1
+      - run: go test ./cmd/kata -run 'Cron' -count=1
+      - run: go test ./internal/daemon -run 'CronRequest|CronJobInputs|CronDefinition' -count=1
+      - run: go test ./internal/db/sqlitestore -run 'Resolution|CronRequest' -count=1
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+      - run: |
+          gofmt -w $(git diff --name-only fd2099618b5175f4cc5c8b47aa94dbe0d68414c0 HEAD -- '*.go')
+          git diff --binary > /tmp/gofmt-s6-integrated.patch; cat /tmp/gofmt-s6-integrated.patch
+          go vet ./internal/tui ./internal/cron
+          python3 docs/scripts/check_frontmatter.py
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: gofmt-s6-integrated
+          path: /tmp/gofmt-s6-integrated.patch
