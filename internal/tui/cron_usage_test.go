@@ -180,6 +180,10 @@ func TestCronRunUsageOpenDetail(t *testing.T) {
 			}
 			require.False(t, strings.Contains(body, "Cost:"), body)
 			require.Zero(t, usage.Load())
+			m, cmd = updateModel(m, keyRune('r'))
+			m = cronUsageSettle(t, m, cmd)
+			require.NotContains(t, stripANSI(m.viewBody()), "Cost:")
+			require.Zero(t, usage.Load(), "r with usage off reads no usage")
 		})
 	}
 }
@@ -263,10 +267,11 @@ func cronUsageSessions(source string, cost int64, states ...generated.RunSession
 }
 
 // The open run's cost through refresh and a newer daemon's state, then the
-// stale-result fence: a late answer never replaces a newer one.
+// stale-result fence: a late answer never replaces a newer one, including an
+// answer for an earlier revision of the same run.
 func TestCronRunUsageStates(t *testing.T) {
 	complete := generated.RunUsage{State: generated.Complete, CostMicrodollars: new(int64(2410000)), Sessions: cronUsageSessions("reported", 1205000, generated.Priced, generated.Priced)}
-	for _, name := range []string{"refresh", "newer state", "incomplete list", "leave and reopen", "project", "daemon", "row removed"} {
+	for _, name := range []string{"refresh", "newer state", "incomplete list", "revised after answer", "revised while pending", "leave and reopen", "project", "daemon", "row removed"} {
 		t.Run(name, func(t *testing.T) {
 			m, a, cmd := cronUsageModel(t, complete)
 			switch name {
@@ -278,6 +283,22 @@ func TestCronRunUsageStates(t *testing.T) {
 			first := cronUsageRead(cmd)
 			require.Len(t, first, 1)
 			body := func() string { return stripANSI(m.viewBody()) }
+			// revise loads a later observation of the open run that records a
+			// third session, as a reporting executor would, and makes the daemon
+			// price all three. It returns the reload's commands.
+			revise := func() tea.Cmd {
+				data := *m.cron.data
+				data.runs = slices.Clone(data.runs)
+				run := &data.runs[0]
+				run.Revision++
+				run.UpdatedAt = run.UpdatedAt.Add(time.Minute)
+				run.Summary.Sessions = append(slices.Clone(run.Summary.Sessions), generated.SessionResponse{Agent: "claude", SessionID: "00000000-0000-4000-8000-000000000003", Step: new("fix")})
+				third := generated.RunSession{Agent: "claude", SessionID: "00000000-0000-4000-8000-000000000003", State: generated.Priced, CostMicrodollars: new(int64(1205000)), CostSource: new("reported")}
+				a.usage = generated.RunUsage{State: generated.Complete, CostMicrodollars: new(int64(3615000)), Sessions: append(cronUsageSessions("reported", 1205000, generated.Priced, generated.Priced), third)}
+				var reload tea.Cmd
+				m, reload = updateModel(m, cronLoadedMsg(data))
+				return reload
+			}
 			switch name {
 			case "refresh":
 				m, _ = updateModel(m, first[0])
@@ -300,10 +321,40 @@ func TestCronRunUsageStates(t *testing.T) {
 			case "incomplete list":
 				m, _ = updateModel(m, first[0])
 				require.Contains(t, body(), "Cost:       $2.41+ (session list incomplete)")
+			case "revised after answer", "revised while pending":
+				if name == "revised after answer" {
+					m, _ = updateModel(m, first[0])
+					require.Contains(t, body(), "Cost:       $2.41")
+				}
+				require.Empty(t, cronUsageRead(revise()), "a revised run is not read again until r")
+				require.Contains(t, body(), "Cost:       unavailable: run changed · r: refresh")
+				m, _ = updateModel(m, first[0])
+				require.NotContains(t, body(), "$2.41")
+				require.Contains(t, body(), "Cost:       unavailable: run changed · r: refresh")
+				m, cmd = updateModel(m, keyRune('r'))
+				revised := cronUsageRead(cmd)
+				require.Len(t, revised, 1)
+				m, _ = updateModel(m, revised[0])
+				require.Contains(t, body(), "Cost:       $3.62")
+				require.Equal(t, []string{"01ARZ3NDEKTSV4RRFFQ69G5FAY false", "01ARZ3NDEKTSV4RRFFQ69G5FAY true"}, a.usageReads)
 			case "leave and reopen":
+				// Switch to run B while A's read is pending; A's late answer
+				// must not land on B.
 				m = sendRune(m, 'h')
+				m = sendRune(m, 'j')
+				m, cmd = updateModel(m, tea.KeyPressMsg{Code: tea.KeyEnter})
+				other := cronUsageRead(cmd)
+				require.Len(t, other, 1)
+				m, _ = updateModel(m, first[0])
+				require.Contains(t, body(), "runs / 01ARZ3NDEKTSV4RRFFQ69G5FAZ")
+				require.Contains(t, body(), "Cost:       loading… · press r after it loads")
+				m, _ = updateModel(m, other[0])
+				require.Contains(t, body(), "Cost:       $2.41")
+				m = sendRune(m, 'h')
+				m = sendRune(m, 'k')
 				m, cmd = updateModel(m, tea.KeyPressMsg{Code: tea.KeyEnter})
 				m, _ = updateModel(m, first[0])
+				require.Contains(t, body(), "runs / 01ARZ3NDEKTSV4RRFFQ69G5FAY")
 				require.Contains(t, body(), "Cost:       loading… · press r after it loads")
 				var again tea.Cmd
 				m, again = updateModel(m, keyRune('r'))
@@ -313,6 +364,7 @@ func TestCronRunUsageStates(t *testing.T) {
 				m, _ = updateModel(m, latest[0])
 				require.Contains(t, body(), "Cost:       $2.41")
 			case "project", "daemon":
+				data := *m.cron.data
 				if name == "daemon" {
 					m.connGen++
 				} else {
@@ -321,6 +373,17 @@ func TestCronRunUsageStates(t *testing.T) {
 				m, _ = updateModel(m, tea.FocusMsg{})
 				m, _ = updateModel(m, first[0])
 				require.Equal(t, cronUsage{}, m.cron.usage)
+				// Reopening the same run after the reset starts its sequence
+				// again, so the old answer differs only by daemon or project.
+				data.conn, data.scope = m.connGen, m.scopeGen
+				m, _ = updateModel(m, cronLoadedMsg(data))
+				m, cmd = updateModel(m, tea.KeyPressMsg{Code: tea.KeyEnter})
+				reopened := cronUsageRead(cmd)
+				require.Len(t, reopened, 1)
+				m, _ = updateModel(m, first[0])
+				require.Contains(t, body(), "Cost:       loading… · press r after it loads")
+				m, _ = updateModel(m, reopened[0])
+				require.Contains(t, body(), "Cost:       $2.41")
 			case "row removed":
 				data := *m.cron.data
 				data.runs = data.runs[1:]
