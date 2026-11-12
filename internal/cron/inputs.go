@@ -329,7 +329,7 @@ func ValidateInputs(options []byte, workflowUID string, workflowOptions []byte) 
 }
 
 // ResolveInputs reports all usable values and errors without changing stored definitions.
-func ResolveInputs(job JobDefinition, workflow *WorkflowDefinition, requestInputs ...map[string]jsontext.Value) InputResolution {
+func ResolveInputs(job JobDefinition, workflow *WorkflowDefinition, requestInputs map[string]jsontext.Value) InputResolution {
 	r := InputResolution{DeclaredBy: "none", Inputs: []ResolvedInput{}, Errors: []InputError{}}
 	o, err := inputObject(job.Options)
 	if err != nil {
@@ -377,15 +377,13 @@ func ResolveInputs(job JobDefinition, workflow *WorkflowDefinition, requestInput
 		values = map[string]any{}
 	}
 	request := map[string]any{}
-	if len(requestInputs) > 0 {
-		for name, raw := range requestInputs[0] {
-			var value any
-			if err := json.Unmarshal(raw, &value, jsonutil.PreserveNumberLiterals()); err != nil {
-				r.Errors = append(r.Errors, InputError{Name: name, Code: "invalid_value", Message: "invalid input value"})
-				continue
-			}
-			request[name] = value
+	for name, raw := range requestInputs {
+		var value any
+		if err := json.Unmarshal(raw, &value, jsonutil.PreserveNumberLiterals()); err != nil {
+			r.Errors = append(r.Errors, InputError{Name: name, Code: "invalid_value", Message: "invalid input value"})
+			continue
 		}
+		request[name] = value
 	}
 	names := make([]string, 0, len(ds))
 	for n := range ds {

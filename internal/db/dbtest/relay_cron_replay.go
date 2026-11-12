@@ -142,7 +142,7 @@ func RunRelayIngestValidatesCronReplay(t *testing.T, store db.Storage) {
 	require.NoError(t, store.MaterializeFederatedProject(ctx, legacyReplica.ID))
 	overLimit, err := store.CronJob(ctx, legacyReplica.ID, overLimitUID)
 	require.NoError(t, err)
-	resolution := cron.ResolveInputs(overLimit.Definition, nil)
+	resolution := cron.ResolveInputs(overLimit.Definition, nil, nil)
 	require.Len(t, resolution.Inputs, 32)
 	require.Len(t, resolution.Errors, 2)
 	require.Equal(t, "declaration_invalid", resolution.Errors[0].Code)
