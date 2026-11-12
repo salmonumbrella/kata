@@ -136,7 +136,9 @@ func (d *cronRequestInputs) freeze() (map[string]jsontext.Value, error) {
 func (d *cronRequestInputs) validate() {
 	_, err := d.values(false)
 	d.general = ""
-	if err != nil { d.general = err.Error() }
+	if err != nil {
+		d.general = err.Error()
+	}
 }
 func (d *cronRequestInputs) values(focusError bool) (map[string]jsontext.Value, error) {
 	d.syncEditor()
@@ -147,7 +149,9 @@ func (d *cronRequestInputs) values(focusError bool) (map[string]jsontext.Value, 
 		}
 		if !f.set {
 			if f.input.Required || f.jobInvalid {
-				if focusError { d.focusField(i) }
+				if focusError {
+					d.focusField(i)
+				}
 				return nil, fmt.Errorf("%s: required or invalid job value", f.input.Name)
 			}
 			continue
@@ -157,13 +161,17 @@ func (d *cronRequestInputs) values(focusError bool) (map[string]jsontext.Value, 
 		case "int":
 			n, err := strconv.ParseInt(f.text, 10, 64)
 			if err != nil {
-				if focusError { d.focusField(i) }
+				if focusError {
+					d.focusField(i)
+				}
 				return nil, fmt.Errorf("%s: invalid whole number", f.input.Name)
 			}
 			v = jsontext.Value(strconv.FormatInt(n, 10))
 		case "bool":
 			if f.text != "true" && f.text != "false" {
-				if focusError { d.focusField(i) }
+				if focusError {
+					d.focusField(i)
+				}
 				return nil, fmt.Errorf("%s: invalid boolean", f.input.Name)
 			}
 			v = f.text == "true"
@@ -171,11 +179,15 @@ func (d *cronRequestInputs) values(focusError bool) (map[string]jsontext.Value, 
 			v = f.text
 		}
 		if !cron.ValidInputValue(f.input, v) {
-			if focusError { d.focusField(i) }
+			if focusError {
+				d.focusField(i)
+			}
 			return nil, fmt.Errorf("%s: invalid input value", f.input.Name)
 		}
 		if f.jobInvalid && f.text == f.prefill && f.set == f.prefillSet {
-			if focusError { d.focusField(i) }
+			if focusError {
+				d.focusField(i)
+			}
 			return nil, fmt.Errorf("%s: job value is invalid", f.input.Name)
 		}
 		if f.set != f.prefillSet || f.text != f.prefill {

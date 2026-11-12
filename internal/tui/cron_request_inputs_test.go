@@ -4,8 +4,8 @@ import (
 	"encoding/json/jsontext"
 	"errors"
 	"fmt"
-	"strings"
 	"net/http"
+	"strings"
 	"testing"
 
 	"go.kenn.io/kata/internal/cron"
@@ -136,9 +136,14 @@ func TestCronRequestInputsChangedFieldsAndLimit(t *testing.T) {
 
 	maxLength := int64(4096)
 	inputs := make([]cron.ResolvedInput, 2)
-	for i := range inputs { inputs[i] = cron.ResolvedInput{Name: fmt.Sprintf("field%d", i), Type: "string", MaxLength: &maxLength, Source: "unset"} }
+	for i := range inputs {
+		inputs[i] = cron.ResolvedInput{Name: fmt.Sprintf("field%d", i), Type: "string", MaxLength: &maxLength, Source: "unset"}
+	}
 	d = newCronRequestInputs(cron.InputResolution{Inputs: inputs})
-	for i := range d.fields { d.fields[i].set = true; d.fields[i].text = strings.Repeat("x", 2200) }
+	for i := range d.fields {
+		d.fields[i].set = true
+		d.fields[i].text = strings.Repeat("x", 2200)
+	}
 	_, err = d.freeze()
 	require.ErrorContains(t, err, "4 KiB")
 }
