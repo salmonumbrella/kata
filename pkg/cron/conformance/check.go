@@ -298,8 +298,11 @@ func (suite FixtureSuite) Check(ctx context.Context, answers []Answer) (Report, 
 				}
 				if actual, ok := got.(InputDeliveryOutput); ok {
 					expected := want.(InputDeliveryOutput)
-					if expected.Status == "cancelled" && (expected.Message == "reason: invalid_inputs" || expected.Message == "reason: inputs_unavailable") && strings.HasPrefix(actual.Message, expected.Message) {
-						actual.Message = expected.Message
+					if expected.Status == "cancelled" && actual.Status == "cancelled" {
+						if (expected.Message == "reason: invalid_inputs" || expected.Message == "reason: inputs_unavailable") && strings.HasPrefix(actual.Message, expected.Message) {
+							actual.Message = expected.Message
+						}
+						actual.Env, actual.Command, actual.Argv, actual.Prompt = expected.Env, expected.Command, expected.Argv, expected.Prompt
 						got = actual
 					}
 				}

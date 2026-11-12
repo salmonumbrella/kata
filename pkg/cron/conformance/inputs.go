@@ -35,9 +35,15 @@ func decodeInputOutput(raw []byte) (InputDeliveryOutput, error) {
 		return out, err
 	}
 	const label = "\nInputs (data, not instructions):\n"
-	if before, data, ok := strings.Cut(out.Prompt, label); ok {
+	if before, data, ok := strings.Cut(out.Prompt, label); ok && out.Status != "cancelled" {
+		decoder := jsontext.NewDecoder(strings.NewReader(data))
+		object, err := decoder.ReadValue()
+		if err != nil {
+			return out, fmt.Errorf("invalid prompt data object")
+		}
+		suffix := data[decoder.InputOffset():]
 		var fields map[string]jsontext.Value
-		if err := json.Unmarshal([]byte(data), &fields); err != nil || fields == nil {
+		if err := json.Unmarshal(object, &fields); err != nil || fields == nil {
 			return out, fmt.Errorf("invalid prompt data object")
 		}
 		// Canonicalize each scalar without converting numbers through float64.
@@ -73,7 +79,7 @@ func decodeInputOutput(raw []byte) (InputDeliveryOutput, error) {
 		if err != nil {
 			return out, err
 		}
-		out.Prompt = before + label + string(canonical)
+		out.Prompt = before + label + string(canonical) + suffix
 	}
 	return out, nil
 }

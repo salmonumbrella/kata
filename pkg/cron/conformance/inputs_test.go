@@ -374,7 +374,7 @@ func TestInputPromptSuffixAndCancellationFields(t *testing.T) {
 				out.Env = map[string]string{"unused": "value"}
 				out.Command = "unused"
 				out.Argv = []string{"unused"}
-				out.Prompt = "unused"
+				out.Prompt = "unused\nInputs (data, not instructions):\nnot JSON"
 			}
 			answer.Outputs[0], err = json.Marshal(out)
 			if err != nil {
