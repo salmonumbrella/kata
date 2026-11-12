@@ -860,6 +860,9 @@ func projectIDFromMutation(m Model, mut mutationDoneMsg) int64 {
 // open/key. ok=true means the message was handled here.
 func (m Model) routeTopLevel(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 	switch msg := msg.(type) {
+	case cronInputsMsg:
+		next, cmd := m.cronInputsAnswered(msg)
+		return next, cmd, true
 	case cronActionMsg:
 		next, cmd := m.cronActionAnswered(msg)
 		return next, cmd, true
@@ -883,6 +886,13 @@ func (m Model) routeTopLevel(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		}
 		return m, nil, true
 	case tea.PasteMsg:
+		if m.view == viewCron && m.cron.action != nil && m.cron.action.inputs != nil {
+			a := m.cron.action; d := a.inputs
+			if !d.loading && !a.inflight && a.requestUID == "" && !d.choice() && !d.externalText() {
+				d.ed, _ = d.ed.delegateToField(msg); d.syncEditor(); d.general = ""
+			}
+			return m, nil, true
+		}
 		if m.view == viewCron && m.cron.filtering && m.modal == modalNone {
 			return m.cronFilter(m.cron.lists[m.cron.tab].query + msg.Content), nil, true
 		}
@@ -943,6 +953,10 @@ func (m Model) routeTopLevel(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		}
 		if m.input.kind != inputNone {
 			next, cmd := m.routeInputKey(msg)
+			return next, cmd, true
+		}
+		if m.view == viewCron && m.cron.action != nil && m.cron.action.inputs != nil {
+			next, cmd := m.routeCronRequestInputsKey(msg)
 			return next, cmd, true
 		}
 		if next, cmd, ok := m.routeGlobalKey(msg); ok {
@@ -1950,6 +1964,13 @@ func (m Model) routeFormMutation(mut mutationDoneMsg) (tea.Model, tea.Cmd) {
 // status line. The textarea is NOT repopulated — preserves what the
 // user typed before the editor opened.
 func (m Model) routeEditorReturn(msg editorReturnedMsg) (Model, tea.Cmd) {
+	if a := m.cron.action; a != nil && a.inputs != nil && msg.formGen != 0 && msg.formGen == a.inputs.formGen {
+		d := a.inputs
+		if msg.err != nil { d.general = "editor: " + msg.err.Error() } else if !a.inflight && a.requestUID == "" {
+			f := &d.fields[d.focus]; f.text, f.set = msg.content, true; d.general = ""
+		}
+		return m, nil
+	}
 	if f := m.cron.form; f != nil && msg.formGen != 0 && msg.formGen == f.formGen {
 		if msg.err != nil {
 			f.general = "editor: " + msg.err.Error()
@@ -3237,7 +3258,7 @@ func toastExpireCmd(d time.Duration) tea.Cmd {
 // /forms) or a confirm modal (quit or draft discard) is open. Both
 // gates redirect global keys into the field instead of firing.
 func (m Model) canQuit() bool {
-	if m.view == viewCron && (m.cron.filtering || m.cron.form != nil) {
+	if m.view == viewCron && (m.cron.filtering || m.cron.form != nil || (m.cron.action != nil && m.cron.action.inputs != nil)) {
 		return false
 	}
 	if m.modal != modalNone {

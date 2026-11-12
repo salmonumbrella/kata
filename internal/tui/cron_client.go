@@ -15,6 +15,8 @@ import (
 	kataapi "go.kenn.io/kata/internal/api"
 	"go.kenn.io/kata/internal/cron"
 	"go.kenn.io/kata/internal/db"
+	"go.kenn.io/kata/internal/jsonutil"
+	"golang.org/x/mod/semver"
 	"go.kenn.io/kata/pkg/client/generated"
 )
 
@@ -29,7 +31,8 @@ type cronAPI interface {
 	ListCronRuns(context.Context, int64) ([]generated.CronRun, error)
 	ShowCronRun(context.Context, int64, string) (db.CronRun, error)
 	ListCronRequests(context.Context, int64) ([]db.CronRequest, error)
-	RequestCron(ctx context.Context, projectID int64, uid, kind, target, actor string) error
+	CronJobInputs(ctx context.Context, projectID int64, uid string) (cronInputsRead, error)
+	RequestCron(ctx context.Context, projectID int64, uid, kind, target, actor string, values map[string]jsontext.Value) error
 	readCronProjectState(context.Context, int64) (cronProjectState, error)
 	readCronParent(ctx context.Context, projectID int64, parentUID string) (cronParent, error)
 }
@@ -389,8 +392,32 @@ func (c *Client) PutCronWorkflow(ctx context.Context, projectID int64, uid strin
 	return decodeGeneratedResponse(wire.HTTPResponse, wire.Body, callErr, nil)
 }
 
+// cronInputsRead keeps numeric values as JSON literals, including int64 extremes.
+type cronInputsRead struct {
+	DefinitionEventUID string `json:"definition_event_uid"`
+	cron.InputResolution
+}
+
+var errCronInputsUnsupported = errors.New("request inputs require daemon API 0.49.0")
+
+func (c *Client) CronJobInputs(ctx context.Context, pid int64, uid string) (cronInputsRead, error) {
+	var out cronInputsRead
+	client, err := c.generatedClient()
+	if err != nil { return out, err }
+	health, err := client.Health(ctx)
+	if err != nil { return out, err }
+	version := ""
+	if health.APISchemaVersion != nil { version = *health.APISchemaVersion }
+	if !semver.IsValid("v"+version) || semver.Compare("v"+version, "v"+cron.APIVersionRequestInputs) < 0 { return out, errCronInputsUnsupported }
+	wire, err := client.GetCronJobInputsWithResponse(ctx, &generated.GetCronJobInputsRequestOptions{PathParams: &generated.GetCronJobInputsPath{ProjectID: pid, CronUID: uid}})
+	if wire == nil { return out, err }
+	if err = decodeGeneratedResponse(wire.HTTPResponse, wire.Body, err, nil); err != nil { return out, err }
+	err = json.Unmarshal(wire.Body, &out, jsonutil.PreserveNumberLiterals())
+	return out, err
+}
+
 // RequestCron submits one caller-retained identity without implicit new retries.
-func (c *Client) RequestCron(ctx context.Context, pid int64, id, kind, target, actor string) error {
+func (c *Client) RequestCron(ctx context.Context, pid int64, id, kind, target, actor string, values map[string]jsontext.Value) error {
 	client, err := c.generatedClient()
 	if err != nil {
 		return err
@@ -398,6 +425,10 @@ func (c *Client) RequestCron(ctx context.Context, pid int64, id, kind, target, a
 	body := generated.CronRequestBody{UID: id, Actor: &actor}
 	if kind == db.CronRequestKindRun {
 		runBody := generated.CronJobRequestRunBody{UID: id, Actor: &actor}
+		if len(values) > 0 {
+			runBody.Inputs = make(map[string]any, len(values))
+			for name, value := range values { runBody.Inputs[name] = value }
+		}
 		wire, callErr := client.RequestCronJobRunWithResponse(ctx, &generated.RequestCronJobRunRequestOptions{PathParams: &generated.RequestCronJobRunPath{ProjectID: pid, CronUID: target}, Body: &runBody})
 		if wire == nil {
 			return callErr

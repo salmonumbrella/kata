@@ -5,6 +5,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -222,10 +223,10 @@ func TestCronClientRuntimeRequestsRoundTrip(t *testing.T) {
 
 	runRequest, err := uid.New()
 	require.NoError(t, err)
-	require.NoError(t, c.RequestCron(ctx, project.ID, runRequest, db.CronRequestKindRun, job.UID, "operator"))
+	require.NoError(t, c.RequestCron(ctx, project.ID, runRequest, db.CronRequestKindRun, job.UID, "operator", nil))
 	cancelRequest, err := uid.New()
 	require.NoError(t, err)
-	require.NoError(t, c.RequestCron(ctx, project.ID, cancelRequest, db.CronRequestKindCancel, runID, "operator"))
+	require.NoError(t, c.RequestCron(ctx, project.ID, cancelRequest, db.CronRequestKindCancel, runID, "operator", nil))
 	requests, err := c.ListCronRequests(ctx, project.ID)
 	require.NoError(t, err)
 	byUID := map[string]db.CronRequest{}
@@ -238,4 +239,26 @@ func TestCronClientRuntimeRequestsRoundTrip(t *testing.T) {
 	require.Equal(t, "pending", byUID[runRequest].State)
 	require.Equal(t, db.CronRequestKindCancel, byUID[cancelRequest].Kind)
 	require.Equal(t, runID, *byUID[cancelRequest].RunUID)
+}
+
+func TestCronClientRequestInputsExactLiterals(t *testing.T) {
+	var body string
+	hc := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		response := `{"api_schema_version":"0.49.0"}`
+		if strings.Contains(req.URL.Path, "/inputs") {
+			response = `{"job_uid":"job","definition_event_uid":"event","declared_by":"job","inputs":[{"name":"count","type":"int","value":9007199254740993,"source":"job"}],"errors":[]}`
+		} else if req.Method == http.MethodPost {
+			raw, err := io.ReadAll(req.Body)
+			require.NoError(t, err)
+			body = string(raw)
+			response = `{}`
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(response)), Request: req}, nil
+	})}
+	c := NewClient("https://daemon.example", hc)
+	read, err := c.CronJobInputs(t.Context(), 7, "job")
+	require.NoError(t, err)
+	require.Equal(t, jsontext.Value("9007199254740993"), read.Inputs[0].Value)
+	require.NoError(t, c.RequestCron(t.Context(), 7, "01ARZ3NDEKTSV4RRFFQ69G5FAV", db.CronRequestKindRun, "job", "operator", map[string]jsontext.Value{"count": []byte("9007199254740993")}))
+	require.Contains(t, body, `"count":9007199254740993`)
 }

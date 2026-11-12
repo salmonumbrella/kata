@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"net/http"
@@ -31,6 +32,8 @@ type cronPending struct {
 	allowDiscard, discard, invalidated  bool
 	revision                            int64 // cancel: the running observation admitted
 	requestUID                          string
+	inputs                              *cronRequestInputs
+	values                              map[string]jsontext.Value
 	inflight                            bool
 	err                                 error // request: the ambiguous outcome offered for retry
 }
@@ -208,7 +211,11 @@ func (m Model) routeCronRuntimeKey(kind string) (Model, tea.Cmd) {
 	if next, cmd, blocked := m.blockMutation(false); blocked {
 		return next, cmd
 	}
-	m, _ = m.startCronAction(a)
+	m, a = m.startCronAction(a)
+	if kind == db.CronRequestKindRun && m.cronMayHaveInputs(a.target) {
+		m.cron.action.inputs = &cronRequestInputs{loading: true}
+		return m, m.readCronRequestInputs(a)
+	}
 	m.modal = modalCronAction
 	return m, nil
 }
@@ -222,6 +229,10 @@ func (m Model) recheckCronAction(a cronPending) (Model, tea.Cmd, bool) {
 		return next, cmd, false
 	}
 	if a.requestUID == "" && !m.cronActionCurrent(a) {
+		if a.inputs != nil {
+			next, cmd := m.dropCronAction().undoNotice("The job changed; press R to reload its inputs", toastError)
+			return next, cmd, false
+		}
 		return m.dropCronAction(), nil, false
 	}
 	if next, cmd, blocked := m.blockMutation(false); blocked {
@@ -305,7 +316,7 @@ func (m Model) sendCronAction(a cronPending) tea.Cmd {
 			}
 		}
 		if err == nil {
-			err = api.RequestCron(ctx, pid, a.requestUID, a.kind, a.target, a.actor)
+			err = api.RequestCron(ctx, pid, a.requestUID, a.kind, a.target, a.actor, a.values)
 		}
 		return cronActionMsg{action: a, err: err, done: true}
 	}
@@ -331,6 +342,13 @@ func cronRequestTargetLive(ctx context.Context, api cronAPI, pid int64, a cronPe
 func (m Model) cronActionDone(a cronPending, err error) (Model, tea.Cmd) {
 	if apiErr, known := errors.AsType[*APIError](err); err != nil && a.requestUID != "" && (!known || apiErr.Status >= 500) {
 		a.inflight, a.err = false, err
+		m.cron.action = &a
+		return m, nil
+	}
+	if err != nil && a.inputs != nil && a.requestUID != "" {
+		a.requestUID, a.inflight, a.err = "", false, nil
+		a.values = nil
+		a.inputs.general = "Request refused: " + err.Error()
 		m.cron.action = &a
 		return m, nil
 	}

@@ -229,6 +229,9 @@ func (m Model) cronFilter(text string) Model {
 
 func (m Model) routeCronKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	key := msg.String()
+	if m.cron.action != nil && m.cron.action.inputs != nil {
+		return m.routeCronRequestInputsKey(msg)
+	}
 	if m.cron.form != nil {
 		return m.routeCronFormKey(msg)
 	}

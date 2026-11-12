@@ -212,6 +212,10 @@ func validInputValue(d inputDeclaration, v any) bool {
 	}
 	return false
 }
+// ValidInputValue applies the declaration's existing scalar validation to a resolved input.
+func ValidInputValue(in ResolvedInput, v any) bool {
+	return validInputValue(inputDeclaration{Type: in.Type, Values: in.Values, MaxLength: in.MaxLength, Multiline: in.Multiline, Min: in.Min, Max: in.Max}, v)
+}
 func inputValues(raw jsontext.Value) (map[string]any, error) {
 	if raw == nil {
 		return map[string]any{}, nil

@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"encoding/json/v2"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"net/http"
@@ -26,16 +27,25 @@ type cronRuntimeTestAPI struct {
 	errs   []error
 	run    db.CronRun
 	runErr error
+	inputsRead cronInputsRead
+	inputsErr error
+	inputCalls int
+	inputValues []map[string]jsontext.Value
 }
 
-func (a *cronRuntimeTestAPI) RequestCron(_ context.Context, pid int64, id, kind, target, actor string) error {
+func (a *cronRuntimeTestAPI) RequestCron(_ context.Context, pid int64, id, kind, target, actor string, values map[string]jsontext.Value) error {
 	a.calls = append(a.calls, runtimeRequestCall{pid, id, kind, target, actor})
+	a.inputValues = append(a.inputValues, values)
 	if len(a.errs) > 0 {
 		err := a.errs[0]
 		a.errs = a.errs[1:]
 		return err
 	}
 	return nil
+}
+func (a *cronRuntimeTestAPI) CronJobInputs(context.Context, int64, string) (cronInputsRead, error) {
+	a.inputCalls++
+	return a.inputsRead, a.inputsErr
 }
 func (a *cronRuntimeTestAPI) ShowCronRun(context.Context, int64, string) (db.CronRun, error) {
 	return a.run, a.runErr
