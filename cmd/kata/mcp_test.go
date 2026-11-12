@@ -1029,7 +1029,9 @@ func TestMCPCronUsage(t *testing.T) {
 			var schema map[string]any
 			require.NoError(t, json.Unmarshal(schemaJSON, &schema))
 			require.Equal(t, "object", schema["type"])
-			result, err := session.CallTool(t.Context(), &sdkmcp.CallToolParams{Name: "kata.cron_run_usage", Arguments: map[string]any{"project": "spoke-project", "uid": runUID, "refresh": true}})
+			callCtx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			result, err := session.CallTool(callCtx, &sdkmcp.CallToolParams{Name: "kata.cron_run_usage", Arguments: map[string]any{"project": "spoke-project", "uid": runUID, "refresh": true}})
 			require.NoError(t, err)
 			require.False(t, result.IsError)
 			select {
