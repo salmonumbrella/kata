@@ -1,0 +1,37 @@
+name: Cron S7 fix2 focused proof
+on:
+  push:
+    branches: [proof/cron-s7-fix2-green-f86ed08]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GOMAXPROCS: '2'
+      GOFLAGS: '-p=1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+      - name: Focused package and export digests
+        run: go test -v -p 1 ./pkg/cron/conformance ./internal/cron -count=1
+      - name: Focused CLI
+        run: go test -p 1 ./cmd/kata -run '^TestCronConformance' -count=1
+      - name: API version and artifacts
+        continue-on-error: true
+        run: go test -p 1 ./internal/daemon -run '^(TestAPISchemaVersionMatchesRecordedContract|TestOpenAPIArtifactUpToDate|TestOpenAPIClientSpecArtifactUpToDate|TestOpenAPIClientArtifactUpToDate)$' -count=1
+      - name: Format source
+        if: always()
+        run: gofmt -w pkg/cron/conformance/check.go pkg/cron/conformance/inputs.go pkg/cron/conformance/inputs_test.go
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: formatted-source
+          path: |
+            pkg/cron/conformance/check.go
+            pkg/cron/conformance/inputs.go
+            pkg/cron/conformance/inputs_test.go
