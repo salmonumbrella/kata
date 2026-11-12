@@ -208,7 +208,7 @@ func TestMCPServeCronNotificationDeliversSignedWebhookThroughTheDaemon(t *testin
 	t.Setenv("KATA_AUTHOR", "example-agent")
 	project, err := env.DB.CreateProject(t.Context(), "spoke-project")
 	require.NoError(t, err)
-	endpoint := startMCPHTTPTestServerWithScope(t, env.URL, []string{"--projects", "spoke-project"})
+	endpoint := startMCPHTTPTestServerWithScope(t, env.URL, []string{"--projects", "spoke-project"}, nil)
 
 	discovered, discoveryBody := mcpRPC(t, endpoint, "server/discover", map[string]any{})
 	require.Equal(t, http.StatusOK, discovered, "%v", discoveryBody)
@@ -292,7 +292,7 @@ func TestMCPServeBoundProjectRefusesDynamicSubscriptionFromTheDaemon(t *testing.
 	require.NoError(t, err)
 	_, err = env.DB.CreateProject(t.Context(), "other-project")
 	require.NoError(t, err)
-	endpoint := startMCPHTTPTestServerWithScope(t, env.URL, []string{"--project", "spoke-project"})
+	endpoint := startMCPHTTPTestServerWithScope(t, env.URL, []string{"--project", "spoke-project"}, nil)
 
 	_, refused := mcpRPC(t, endpoint, "events/subscribe", eventsSubscribeParams("example-agent/worker", nil))
 	refusal, ok := refused["error"].(map[string]any)
@@ -310,7 +310,7 @@ func TestMCPServeBoundProjectRefusesDynamicSubscriptionFromTheDaemon(t *testing.
 func TestMCPServeListsNoEventsWhenTheDaemonHasEventsDisabled(t *testing.T) {
 	env := testenv.New(t)
 	t.Setenv("KATA_AUTHOR", "example-agent")
-	endpoint := startMCPHTTPTestServerWithScope(t, env.URL, []string{"--all"})
+	endpoint := startMCPHTTPTestServerWithScope(t, env.URL, []string{"--all"}, nil)
 
 	status, listed := mcpRPC(t, endpoint, "events/list", map[string]any{})
 	require.Equal(t, http.StatusOK, status, "%v", listed)
