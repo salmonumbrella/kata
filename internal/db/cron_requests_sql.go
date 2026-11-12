@@ -207,7 +207,7 @@ func (a CronSQL) Requests(ctx context.Context, in CronRequestList) ([]CronReques
 			return err
 		}
 		for key, value := range values {
-			if !strings.HasPrefix(key, CronRequestMetadataPrefix) {
+			if !strings.HasPrefix(key, CronRequestMetadataPrefix) || (in.UID != "" && key != CronRequestMetadataPrefix+in.UID) {
 				continue
 			}
 			request, err := decodeCronRequest(strings.TrimPrefix(key, CronRequestMetadataPrefix), value)

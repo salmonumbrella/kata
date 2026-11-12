@@ -145,6 +145,7 @@ func sameCronRequestValue(a, b CronRequest) bool {
 // Now is the server read time; zero uses the current time.
 type CronRequestList struct {
 	ProjectID int64
+	UID       string
 	State     string
 	Now       time.Time
 }

@@ -258,13 +258,14 @@ func registerCronJobHandlers(h huma.API, cfg ServerConfig) {
 		}
 		var inputs map[string]jsontext.Value
 		if in.RequestUID != "" {
-			requests, err := cfg.DB.ListCronRequests(ctx, db.CronRequestList{ProjectID: in.ProjectID})
+			requestedUID := strings.ToUpper(in.RequestUID)
+			requests, err := cfg.DB.ListCronRequests(ctx, db.CronRequestList{ProjectID: in.ProjectID, UID: requestedUID})
 			if err != nil {
 				return nil, cronAPIError(ctx, cfg, err, in.ProjectID, in.UID, true)
 			}
 			found := false
 			for _, request := range requests {
-				if request.UID == strings.ToUpper(in.RequestUID) && request.Kind == db.CronRequestKindRun && request.JobUID == job.UID {
+				if request.UID == requestedUID && request.Kind == db.CronRequestKindRun && request.JobUID == job.UID {
 					found, inputs = true, request.Inputs
 					break
 				}
