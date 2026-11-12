@@ -2,12 +2,14 @@ package mcpserver
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
@@ -16,7 +18,7 @@ import (
 
 func TestCronRunUsageWireAndVersion(t *testing.T) {
 	const uid = "01HAAAAAAAAAAAAAAAAAAAAAAA"
-	const body = `{"run_uid":"01HAAAAAAAAAAAAAAAAAAAAAAA","state":"complete","sessions":[],"sessions_incomplete":false,"estimated":false,"fetched_at":"2026-08-11T00:00:00Z","cost_microdollars":9007199254740993}`
+	const body = `{"run_uid":"01HAAAAAAAAAAAAAAAAAAAAAAA","state":"complete","sessions":[{"agent":"pi","session_id":"example-session","state":"priced","canonical_session_id":"example-session","cost_microdollars":9007199254740993,"cost_source":"reported"}],"sessions_incomplete":false,"estimated":false,"fetched_at":"2026-08-11T00:00:00Z","cost_microdollars":9007199254740993}`
 	version := "0.46.0"
 	requests := 0
 	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -35,7 +37,7 @@ func TestCronRunUsageWireAndVersion(t *testing.T) {
 	t.Cleanup(daemon.Close)
 	client, err := kataclient.NewWithHTTPClient(daemon.URL, daemon.Client())
 	require.NoError(t, err)
-	server, err := New(Options{Client: client, ProjectID: 42, ProjectName: "spoke-project", CronUsage: true, StartupSections: []string{"cron"}})
+	server, err := New(Options{Client: client, ProjectID: 42, ProjectName: "spoke-project", Actor: "example-agent", CronUsage: true, StartupSections: []string{"cron"}})
 	require.NoError(t, err)
 	var wire bytes.Buffer
 	session := connectServerSession(t, server, nil, &wire)
@@ -84,10 +86,25 @@ func TestCronRunUsageCatalogs(t *testing.T) {
 	for _, enabled := range []bool{true, false, true} {
 		options := defaultCatalogOptions(inertTestClient(t))
 		options.CronUsage = enabled
-		session := connectRawTestServerWithOptions(t, options)
+		changed := make(chan struct{}, 1)
+		session := connectRawTestServerWithClientOptions(t, options, &sdkmcp.ClientOptions{
+			ToolListChangedHandler: func(context.Context, *sdkmcp.ToolListChangedRequest) {
+				select {
+				case changed <- struct{}{}:
+				default:
+				}
+			},
+		})
 		for _, loaded := range []bool{false, true} {
 			if loaded {
 				cronOK(t, session, "load_cron", map[string]any{})
+				select {
+				case <-changed:
+				case <-time.After(time.Second):
+					t.Fatal("cron loader did not announce its catalog change")
+				case <-t.Context().Done():
+					t.Fatal("context canceled waiting for catalog change")
+				}
 			}
 			search := searchToolSession(t, session, "cron run usage", 10)
 			var names []string
