@@ -133,6 +133,10 @@ func cronRequestInputLines(m Model, d *cronRequestInputs, locked bool) (lines []
 			continue
 		}
 		hints := termtext.Wrap(cronRequestInputHint(f), valueWidth)
+		if choice := sanitizeForLine(f.text); f.input.Type == "enum" && f.set && ansi.StringWidth(choice)+4 > valueWidth {
+			// The row truncates a long choice; show all of it so similar ones differ.
+			hints = append(termtext.Wrap(choice, valueWidth), hints...)
+		}
 		if f.input.Description != "" {
 			hints = append(hints, termtext.Wrap(sanitizeForLine(f.input.Description), valueWidth)...)
 		}
