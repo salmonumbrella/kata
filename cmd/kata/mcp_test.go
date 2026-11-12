@@ -952,3 +952,105 @@ func TestMCPServeBindsProjectAndUsesStdoutOnlyForProtocol(t *testing.T) {
 	require.Equal(t, "kata", response.Result.Meta.ServerInfo.Name)
 	require.Equal(t, version.Version, response.Result.Meta.ServerInfo.Version)
 }
+
+// The usage catalog follows the serving daemon's advertised source; an enabled
+// tool forwards the endpoint body and an explicit refresh without reshaping it.
+func TestMCPCronUsage(t *testing.T) {
+	const runUID = "01HAAAAAAAAAAAAAAAAAAAAAAA"
+	const body = `{"run_uid":"01HAAAAAAAAAAAAAAAAAAAAAAA","state":"complete","sessions":[],"sessions_incomplete":false,"estimated":false,"fetched_at":"2026-08-11T00:00:00Z","cost_microdollars":12345}`
+	for _, source := range []string{"agentsview", "none"} {
+		t.Run(source, func(t *testing.T) {
+			setupKataEnv(t)
+			t.Setenv("KATA_AUTHOR", "example-agent")
+			usageRequests := make(chan string, 1)
+			daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case "/api/v1/health":
+					_, _ = io.WriteString(w, `{"ok":true,"api_schema_version":"0.46.0"}`)
+				case "/api/v1/projects":
+					_, _ = io.WriteString(w, `{"projects":[{"id":42,"uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","name":"spoke-project","metadata":{},"revision":1,"created_at":"2026-08-11T00:00:00Z"}]}`)
+				case "/api/v1/projects/42/cron/capabilities":
+					_, _ = fmt.Fprintf(w, `{"project_uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","event_features":[],"usage":{"source":%q}}`, source)
+				case "/api/v1/projects/42/cron/runs/" + runUID + "/usage":
+					usageRequests <- r.URL.RawQuery
+					_, _ = io.WriteString(w, body)
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			t.Cleanup(daemon.Close)
+			endpoint := startMCPHTTPTestServer(t, daemon.URL)
+			session, err := newMCPHTTPTestClient().Connect(t.Context(), newAuthenticatedMCPHTTPTestTransport(endpoint), nil)
+			require.NoError(t, err)
+			defer func() { _ = session.Close() }()
+
+			search, err := session.CallTool(t.Context(), &sdkmcp.CallToolParams{Name: "kata.search_tools", Arguments: map[string]any{"query": "cron run usage", "limit": 10}})
+			require.NoError(t, err)
+			require.False(t, search.IsError)
+			searchJSON, err := json.Marshal(search.StructuredContent)
+			require.NoError(t, err)
+			var searchOutput struct {
+				Results []struct {
+					Name string `json:"name"`
+				} `json:"results"`
+			}
+			require.NoError(t, json.Unmarshal(searchJSON, &searchOutput))
+			var searchNames []string
+			for _, result := range searchOutput.Results {
+				searchNames = append(searchNames, result.Name)
+			}
+
+			loaded, err := session.CallTool(t.Context(), &sdkmcp.CallToolParams{Name: "kata.load_cron", Arguments: map[string]any{}})
+			require.NoError(t, err)
+			require.False(t, loaded.IsError)
+			loadedJSON, err := json.Marshal(loaded.StructuredContent)
+			require.NoError(t, err)
+			tools, err := session.ListTools(t.Context(), nil)
+			require.NoError(t, err)
+			var usageTool *sdkmcp.Tool
+			for _, tool := range tools.Tools {
+				if tool.Name == "kata.cron_run_usage" {
+					usageTool = tool
+				}
+			}
+			if source == "none" {
+				require.NotContains(t, searchNames, "kata.cron_run_usage")
+				require.NotContains(t, string(loadedJSON), "kata.cron_run_usage")
+				require.Nil(t, usageTool)
+				return
+			}
+			require.NotNil(t, usageTool, "enabled daemon must advertise kata.cron_run_usage")
+			require.Contains(t, searchNames, "kata.cron_run_usage")
+			require.Contains(t, string(loadedJSON), "kata.cron_run_usage")
+			schemaJSON, err := json.Marshal(usageTool.OutputSchema)
+			require.NoError(t, err)
+			var schema map[string]any
+			require.NoError(t, json.Unmarshal(schemaJSON, &schema))
+			require.Equal(t, "object", schema["type"])
+			result, err := session.CallTool(t.Context(), &sdkmcp.CallToolParams{Name: "kata.cron_run_usage", Arguments: map[string]any{"project": "spoke-project", "uid": runUID, "refresh": true}})
+			require.NoError(t, err)
+			require.False(t, result.IsError)
+			require.Equal(t, "refresh=true", <-usageRequests)
+			structured, err := json.Marshal(result.StructuredContent)
+			require.NoError(t, err)
+			// Compare the endpoint body in both MCP representations.
+			require.Contains(t, string(structured), `"cost_microdollars":12345`)
+			var expected, actual any
+			decoder := json.NewDecoder(strings.NewReader(body))
+			decoder.UseNumber()
+			require.NoError(t, decoder.Decode(&expected))
+			decoder = json.NewDecoder(bytes.NewReader(structured))
+			decoder.UseNumber()
+			require.NoError(t, decoder.Decode(&actual))
+			require.Equal(t, expected, actual)
+			require.Len(t, result.Content, 1)
+			text, ok := result.Content[0].(*sdkmcp.TextContent)
+			require.True(t, ok)
+			decoder = json.NewDecoder(strings.NewReader(text.Text))
+			decoder.UseNumber()
+			require.NoError(t, decoder.Decode(&actual))
+			require.Equal(t, expected, actual)
+		})
+	}
+}
