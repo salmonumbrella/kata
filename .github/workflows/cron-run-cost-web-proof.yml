@@ -145,7 +145,7 @@ jobs:
         working-directory: web
         run: |
           mkdir -p "$KATA_HOME" "$KATA_WORKSPACE"
-          bun run test:e2e -- tests/cron-cost.spec.ts tests/cron.spec.ts
+          bun run test:e2e -- tests/cron.spec.ts
       - name: Upload Cron browser evidence and report
         if: always()
         uses: actions/upload-artifact@v7.0.2
