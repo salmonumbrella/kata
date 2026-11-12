@@ -37,7 +37,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - run: go test -p 1 ./internal/daemon ./internal/federation -run '^Test(Rejoin|Adoption|FederationAdoption|RebindFederation|FederationRebind|CronAdmissionOutlivesProbeContextAcrossPostgresStores|CronSessionObservation|EnsureFederationReplica(RekeysCredentialBeforeAdoption|RejectsDistinctCredentialAtAdoptionSource|CredentialWriteFailureRetriesAdoption)|ReconcileMapping(ManualH2JoinWinsBeforeH1ReservationWithoutEnrollment|AtomicRekeyCrashBeforeAdoptionReusesHubKeyOnRestart))' -count=1
+      - run: go test -p 1 ./internal/daemon ./internal/federation -run '^Test(Rejoin|Adoption|FederationAdoption|FederationReplicaWaitsForCommittedObservation|FederationReplicaProbeHoldsAdmissionOutsideReplicaMutex|RebindFederation|FederationRebind|CronAdmissionOutlivesProbeContextAcrossPostgresStores|CronSessionObservation|EnsureFederationReplica(RekeysCredentialBeforeAdoption|RejectsDistinctCredentialAtAdoptionSource|CredentialWriteFailureRetriesAdoption)|ReconcileMapping(ManualH2JoinWinsBeforeH1ReservationWithoutEnrollment|AtomicRekeyCrashBeforeAdoptionReusesHubKeyOnRestart))' -count=1
       - if: always()
         run: go test -p 1 ./internal/cron ./internal/db -run '^Test(SummarySessionsContract|RecurringFeaturesCachePositiveProject)$' -count=1
       - if: always()
@@ -47,7 +47,7 @@ jobs:
       - if: always()
         run: go test -p 1 ./cmd/kata -run '^TestCronCLIObservationSessionsRoundTrip$' -count=1
       - if: always()
-        run: go test -p 1 -v ./internal/daemon ./internal/federation ./internal/mcp -run '^(TestCronSessionProbeClassifiesHubFailures|TestRelaySession.*|TestReconcileSessionProbeClassificationAndGuidance|TestReconcileReadOnlyAdoptionGuidance|TestCronRunObserveHelpExplainsSessionReplacement|TestCronRunObserveSessionInputSchema)$' -count=1
+        run: go test -p 1 -v ./internal/daemon ./internal/federation ./internal/mcp -run '^(TestCronSessionProbeClassifiesHubFailures|TestRelaySession.*|TestReconcileSessionProbeClassificationAndGuidance|TestCronRunSessionsPassThrough|TestCronRunObserveSessionInputSchema)$' -count=1
       - if: always()
         run: go test -p 1 ./cmd/kata -run '^TestCronCLIRejectsInvalidInputBeforeNetwork$' -count=1
       - if: always()
