@@ -169,8 +169,9 @@ describe('CronPage', () => {
     await refresh()
     await screen.findByText(/^example-project-1: cron records could not be loaded\./)
     expect(screen.getByRole('button', { name: 'Review example-project-1' })).not.toBeNull()
+    // Each project's refresh lands on its own, so wait for project 2's answer.
     expect(
-      screen.getByText('example-project-2: this connection cannot read its cron records.'),
+      await screen.findByText('example-project-2: this connection cannot read its cron records.'),
     ).not.toBeNull()
     expect(screen.queryByRole('button', { name: 'Review example-project-2' })).toBeNull()
 

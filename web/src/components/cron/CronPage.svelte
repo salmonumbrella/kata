@@ -198,11 +198,9 @@
       const next = await readProject(project, signal)
       if (signal.aborted) return
       const settled = refreshed(records.find((entry) => entry.project.uid === project.uid), next)
-      records = targets.flatMap((target) =>
-        target.uid === project.uid
-          ? [settled]
-          : records.filter((entry) => entry.project.uid === target.uid),
-      )
+      const merged = [settled, ...records.filter((entry) => entry.project.uid !== project.uid)]
+      const order = targets.map((target) => target.uid)
+      records = merged.sort((a, b) => order.indexOf(a.project.uid) - order.indexOf(b.project.uid))
     })
     if (!signal.aborted) loading = false
   }
