@@ -111,3 +111,38 @@ func TestCronRequestsStrictBodyAndClock(t *testing.T) {
 		require.Contains(t, string(raw), "clock")
 	}
 }
+
+// Contract: a run request retains declared inputs alongside its request in
+// the same committed metadata event and exposes them in the response and list.
+func TestCronRequestInputsAdmission(t *testing.T) {
+	env := testenv.New(t, testenv.WithAuthToken("tok"))
+	p := seedProject(t, env, "request-project")
+	definition := cronHTTPDefinition(t)
+	definition.Options = []byte(`{"inputs":{"batch":{"type":"int","min":1,"max":5}}}`)
+	job, _, err := env.DB.PutCronJob(t.Context(), db.PutCronJob{ProjectID: p.ID, Actor: "operator", Name: "Execute review", Definition: definition})
+	require.NoError(t, err)
+	before, err := env.DB.MaxEventID(t.Context())
+	require.NoError(t, err)
+	requestUID := cronHTTPUID(t)
+	base := fmt.Sprintf("/api/v1/projects/%d/cron", p.ID)
+	status, raw := cronHTTP(t, env, http.MethodPost, base+"/jobs/"+job.UID+"/requests", map[string]any{
+		"uid": requestUID, "actor": "operator", "inputs": map[string]any{"batch": 3},
+	})
+	require.Equal(t, 200, status, string(raw))
+	var response struct {
+		Request struct {
+			Inputs map[string]any `json:"inputs"`
+		} `json:"request"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &response))
+	require.Equal(t, float64(3), response.Request.Inputs["batch"])
+	events, err := env.DB.EventsAfter(t.Context(), db.EventsAfterParams{ProjectID: p.ID, AfterID: before, Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	eventJSON, err := json.Marshal(events[0])
+	require.NoError(t, err)
+	require.Contains(t, string(eventJSON), "cron.request_inputs."+requestUID)
+	status, raw = cronHTTP(t, env, http.MethodGet, base+"/requests", nil)
+	require.Equal(t, 200, status, string(raw))
+	require.Contains(t, string(raw), `"inputs":{"batch":3}`)
+}
