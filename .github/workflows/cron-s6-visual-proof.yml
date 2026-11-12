@@ -1,0 +1,114 @@
+name: Cron S6 visual proof
+on:
+  push:
+    branches: [proof/cron-s6-visual-9c5aea557]
+permissions:
+  contents: read
+env:
+  GOMAXPROCS: '2'
+  GOFLAGS: '-p=1'
+  KATA_HOME: /tmp/kata-proof/home
+  KATA_DB: /tmp/kata-proof/home/kata.db
+  KATA_WORKSPACE: /tmp/kata-proof/workspace
+jobs:
+  goldens:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+      - name: existing request goldens unchanged
+        run: go test ./internal/tui -run '^TestSnapshot_CronRuntimeRequests$' -count=1 -v
+      - name: generate new request form goldens
+        run: |
+          go test ./internal/tui -run '^TestSnapshot_CronRequestInputs$' -count=1 -update-goldens
+          git status --porcelain
+          test -z "$(git status --porcelain -- . ':!internal/tui/testdata/golden/cron-request-inputs-*.txt')"
+          for f in internal/tui/testdata/golden/cron-request-inputs-*.txt; do echo "== $f"; cat "$f"; done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: goldens-s6
+          path: internal/tui/testdata/golden/cron-request-inputs-*.txt
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+      - name: core repair explicit
+        run: go test ./internal/tui -run '^TestCronRequestInputsChangedJobAndEditor$' -count=1 -v
+      - run: go test ./internal/tui -run '^Test(Cron|Snapshot_Cron)' -skip '^TestSnapshot_CronRequestInputs$' -count=1
+      - run: go test ./internal/cron -run 'Input' -count=1
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+      - run: |
+          gofmt -w internal/tui/cron_request_inputs_ui.go internal/tui/cron_request_inputs_ui_test.go internal/tui/cron_request_inputs_test.go internal/tui/model.go
+          git diff --binary > /tmp/gofmt-s6-visual.patch
+          cat /tmp/gofmt-s6-visual.patch
+      - run: go vet ./internal/tui
+      - run: python3 docs/scripts/check_frontmatter.py
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: gofmt-s6-visual
+          path: /tmp/gofmt-s6-visual.patch
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          path: after
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: fd2099618b5175f4cc5c8b47aa94dbe0d68414c0
+          path: before
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: after/go.mod
+          cache-dependency-path: after/go.sum
+      - name: tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg fonts-dejavu-core fonts-liberation fonts-noto-cjk
+          go install github.com/charmbracelet/freeze@v0.2.2
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: after capture
+        working-directory: after
+        run: |
+          S=$RUNNER_TEMP/s6; mkdir -p $S/after $S/before
+          cp .github/s6-proof/capture_test.go .github/s6-proof/*.sh $S/
+          printf '{"Replace":{"%s/internal/tui/zz_s6_capture_test.go":"%s/capture_test.go"}}\n' "$PWD" "$S" > $S/overlay.json
+          KATA_COLOR_MODE=dark S6_FRAMES=$S/after go test ./internal/tui -count=1 -overlay $S/overlay.json -run '^TestS6CaptureFrames$' -v
+          bash $S/render.sh $S/after "$PWD"
+      - name: before capture
+        working-directory: before
+        run: |
+          S=$RUNNER_TEMP/s6
+          printf '{"Replace":{"%s/internal/tui/zz_s6_capture_test.go":"%s/capture_test.go"}}\n' "$PWD" "$S" > $S/overlay-before.json
+          KATA_COLOR_MODE=dark S6_FRAMES=$S/before go test ./internal/tui -count=1 -overlay $S/overlay-before.json -run '^TestS6CaptureBefore$' -v
+          bash $S/render.sh $S/before "$GITHUB_WORKSPACE/after"
+      - name: mp4
+        run: |
+          S=$RUNNER_TEMP/s6
+          bash $S/mp4.sh $S/after 80 $S/s6-form-80.mp4
+          bash $S/mp4.sh $S/after 60 $S/s6-form-60.mp4
+          cat $S/after/transcript-80.txt
+          sha256sum $S/*.mp4 $S/after/*.png $S/before/*.png
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: s6-capture
+          path: ${{ runner.temp }}/s6
