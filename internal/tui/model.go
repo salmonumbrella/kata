@@ -3783,6 +3783,11 @@ func (m Model) viewContent() string {
 		case viewCredentials:
 			body = renderCredentials(m)
 		default:
+			if m.cronRequestInputsOpen() {
+				// The request form wraps to the width itself.
+				body = renderCronRequestInputs(m)
+				break
+			}
 			if m.modal == modalCronAction {
 				footer := renderFooterHelpTable(m.activeModalHelpRows(), m.width)
 				bodyHeight := max(0, m.height-lipgloss.Height(footer))
@@ -3923,6 +3928,9 @@ func (m Model) cacheEntryForPrompt(s inputState) labelCacheEntry {
 func (m Model) viewBody() string {
 	switch m.view {
 	case viewCron:
+		if m.cronRequestInputsOpen() {
+			return renderCronRequestInputs(m)
+		}
 		if m.cron.help {
 			return cronHelp(m)
 		}
