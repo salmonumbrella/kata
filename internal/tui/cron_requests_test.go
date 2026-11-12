@@ -2,8 +2,8 @@ package tui
 
 import (
 	"context"
-	"encoding/json/v2"
 	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -23,13 +23,13 @@ type runtimeRequestCall struct {
 }
 type cronRuntimeTestAPI struct {
 	*cronEnabledTestAPI
-	calls  []runtimeRequestCall
-	errs   []error
-	run    db.CronRun
-	runErr error
-	inputsRead cronInputsRead
-	inputsErr error
-	inputCalls int
+	calls       []runtimeRequestCall
+	errs        []error
+	run         db.CronRun
+	runErr      error
+	inputsRead  cronInputsRead
+	inputsErr   error
+	inputCalls  int
 	inputValues []map[string]jsontext.Value
 }
 

@@ -16,8 +16,8 @@ import (
 	"go.kenn.io/kata/internal/cron"
 	"go.kenn.io/kata/internal/db"
 	"go.kenn.io/kata/internal/jsonutil"
-	"golang.org/x/mod/semver"
 	"go.kenn.io/kata/pkg/client/generated"
+	"golang.org/x/mod/semver"
 )
 
 type cronAPI interface {
@@ -403,15 +403,27 @@ var errCronInputsUnsupported = errors.New("request inputs require daemon API 0.4
 func (c *Client) CronJobInputs(ctx context.Context, pid int64, uid string) (cronInputsRead, error) {
 	var out cronInputsRead
 	client, err := c.generatedClient()
-	if err != nil { return out, err }
+	if err != nil {
+		return out, err
+	}
 	health, err := client.Health(ctx)
-	if err != nil { return out, err }
+	if err != nil {
+		return out, err
+	}
 	version := ""
-	if health.APISchemaVersion != nil { version = *health.APISchemaVersion }
-	if !semver.IsValid("v"+version) || semver.Compare("v"+version, "v"+cron.APIVersionRequestInputs) < 0 { return out, errCronInputsUnsupported }
+	if health.APISchemaVersion != nil {
+		version = *health.APISchemaVersion
+	}
+	if !semver.IsValid("v"+version) || semver.Compare("v"+version, "v"+cron.APIVersionRequestInputs) < 0 {
+		return out, errCronInputsUnsupported
+	}
 	wire, err := client.GetCronJobInputsWithResponse(ctx, &generated.GetCronJobInputsRequestOptions{PathParams: &generated.GetCronJobInputsPath{ProjectID: pid, CronUID: uid}})
-	if wire == nil { return out, err }
-	if err = decodeGeneratedResponse(wire.HTTPResponse, wire.Body, err, nil); err != nil { return out, err }
+	if wire == nil {
+		return out, err
+	}
+	if err = decodeGeneratedResponse(wire.HTTPResponse, wire.Body, err, nil); err != nil {
+		return out, err
+	}
 	err = json.Unmarshal(wire.Body, &out, jsonutil.PreserveNumberLiterals())
 	return out, err
 }
@@ -427,7 +439,9 @@ func (c *Client) RequestCron(ctx context.Context, pid int64, id, kind, target, a
 		runBody := generated.CronJobRequestRunBody{UID: id, Actor: &actor}
 		if len(values) > 0 {
 			runBody.Inputs = make(map[string]any, len(values))
-			for name, value := range values { runBody.Inputs[name] = value }
+			for name, value := range values {
+				runBody.Inputs[name] = value
+			}
 		}
 		wire, callErr := client.RequestCronJobRunWithResponse(ctx, &generated.RequestCronJobRunRequestOptions{PathParams: &generated.RequestCronJobRunPath{ProjectID: pid, CronUID: target}, Body: &runBody})
 		if wire == nil {

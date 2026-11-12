@@ -1,12 +1,12 @@
 package tui
 
 import (
-	"testing"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"strings"
 	"net/http"
-	"encoding/json/jsontext"
+	"testing"
 
 	"go.kenn.io/kata/internal/cron"
 
@@ -79,7 +79,11 @@ func TestCronRequestInputsRefusalAndRetry(t *testing.T) {
 }
 
 func TestCronRequestInputsResolutionOutcomes(t *testing.T) {
-	for _, tc := range []struct { name string; problem cron.InputError; form bool }{
+	for _, tc := range []struct {
+		name    string
+		problem cron.InputError
+		form    bool
+	}{
 		{"required", cron.InputError{Name: "count", Code: "missing_required", Message: "required"}, true},
 		{"invalid field", cron.InputError{Name: "count", Code: "invalid_value", Message: "invalid"}, true},
 		{"undeclared", cron.InputError{Name: "other", Code: "undeclared_value", Message: "undeclared"}, false},
@@ -91,7 +95,12 @@ func TestCronRequestInputsResolutionOutcomes(t *testing.T) {
 			api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "count", Type: "int", Source: "unset"}}, Errors: []cron.InputError{tc.problem}}}
 			m, cmd := press(m, keyRune('R'))
 			m = runtimeDone(t, m, cmd)
-			if tc.form { require.NotNil(t, m.cron.action.inputs) } else { require.Nil(t, m.cron.action); require.Contains(t, m.toast.text, "fix the definition") }
+			if tc.form {
+				require.NotNil(t, m.cron.action.inputs)
+			} else {
+				require.Nil(t, m.cron.action)
+				require.Contains(t, m.toast.text, "fix the definition")
+			}
 		})
 	}
 }

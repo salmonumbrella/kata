@@ -887,9 +887,12 @@ func (m Model) routeTopLevel(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		return m, nil, true
 	case tea.PasteMsg:
 		if m.view == viewCron && m.cron.action != nil && m.cron.action.inputs != nil {
-			a := m.cron.action; d := a.inputs
+			a := m.cron.action
+			d := a.inputs
 			if !d.loading && !a.inflight && a.requestUID == "" && !d.choice() && !d.externalText() {
-				d.ed, _ = d.ed.delegateToField(msg); d.syncEditor(); d.general = ""
+				d.ed, _ = d.ed.delegateToField(msg)
+				d.syncEditor()
+				d.general = ""
 			}
 			return m, nil, true
 		}
@@ -1966,8 +1969,12 @@ func (m Model) routeFormMutation(mut mutationDoneMsg) (tea.Model, tea.Cmd) {
 func (m Model) routeEditorReturn(msg editorReturnedMsg) (Model, tea.Cmd) {
 	if a := m.cron.action; a != nil && a.inputs != nil && msg.formGen != 0 && msg.formGen == a.inputs.formGen {
 		d := a.inputs
-		if msg.err != nil { d.general = "editor: " + msg.err.Error() } else if !a.inflight && a.requestUID == "" {
-			f := &d.fields[d.focus]; f.text, f.set = msg.content, true; d.general = ""
+		if msg.err != nil {
+			d.general = "editor: " + msg.err.Error()
+		} else if !a.inflight && a.requestUID == "" {
+			f := &d.fields[d.focus]
+			f.text, f.set = msg.content, true
+			d.general = ""
 		}
 		return m, nil
 	}
