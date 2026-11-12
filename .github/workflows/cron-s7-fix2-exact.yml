@@ -1,0 +1,29 @@
+name: Cron S7 fix2 exact-source proof
+on:
+  push:
+    branches: [proof/cron-s7-fix2-exact-00540d8]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GOMAXPROCS: '2'
+      GOFLAGS: '-p=1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+      - name: Verify formatting
+        run: |
+          gofmt -w pkg/cron/conformance/check.go pkg/cron/conformance/inputs.go pkg/cron/conformance/inputs_test.go pkg/cron/conformance/version_test.go
+          git diff --exit-code -- pkg/cron/conformance
+      - name: Focused conformance and cron
+        run: go test -p 1 ./pkg/cron/conformance ./internal/cron -count=1
+      - name: Focused CLI
+        run: go test -p 1 ./cmd/kata -run '^TestCronConformance' -count=1
+      - name: Integrated API artifacts and marker
+        run: go test -p 1 ./internal/daemon -run '^(TestAPISchemaVersionMatchesRecordedContract|TestOpenAPIArtifactUpToDate|TestOpenAPIClientSpecArtifactUpToDate|TestOpenAPIClientArtifactUpToDate)$' -count=1
