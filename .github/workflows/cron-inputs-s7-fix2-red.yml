@@ -1,0 +1,17 @@
+name: Cron input conformance fix2 RED
+on:
+  push:
+    branches: [proof/cron-s7-fix2-red-302db96]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+      - run: go test -p 1 ./pkg/cron/conformance -run '^TestInputPromptSuffixAndCancellationFields$' -count=1
