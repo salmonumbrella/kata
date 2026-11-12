@@ -1706,6 +1706,44 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: 'All Open' })).not.toBeNull()
   })
 
+  it('opens a direct Cron link as the Cron page instead of a route error', async () => {
+    history.replaceState(null, '', '/kata?view=cron')
+    sessionStorage.setItem(
+      'kata.web.session.v1',
+      JSON.stringify({ session: 'tab-session', csrf: 'tab-csrf' }),
+    )
+    const snapshotViews: Array<string | null> = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const target = new URL(requestOf(input, init).url)
+        if (target.pathname === '/api/v1/ui/daemons') return Response.json(daemonRoster())
+        if (target.pathname === '/api/v1/ui/telemetry') return telemetryAccepted()
+        if (target.pathname === '/api/v1/ui/references') {
+          return Response.json({ issues: [], labels: [], owners: [], projects: [] })
+        }
+        if (target.pathname === '/api/v1/ui/snapshot') {
+          snapshotViews.push(target.searchParams.get('view'))
+          return Response.json(snapshot(), { headers: { ETag: '"snapshot-1"' } })
+        }
+        if (target.pathname === '/api/v1/projects/7/cron/jobs') return Response.json({ jobs: [] })
+        if (target.pathname === '/api/v1/projects/7/cron/runs') return Response.json({ runs: [] })
+        if (target.pathname === '/api/v1/projects/7/cron/workflows') {
+          return Response.json({ workflows: [] })
+        }
+        return Response.json({ error: { code: 'not_found' } }, { status: 404 })
+      }),
+    )
+
+    render(App)
+
+    expect(await screen.findByRole('heading', { name: 'Cron' })).not.toBeNull()
+    expect(screen.queryByRole('heading', { name: 'This Kata route is not valid' })).toBeNull()
+    expect(window.location.search).toBe('?view=cron')
+    expect(snapshotViews.length).toBeGreaterThan(0)
+    expect(snapshotViews.every((view) => view === 'all-open')).toBe(true)
+  })
+
   it('loads credential audit metadata without sending the credential route to snapshots and returns to the issue route', async () => {
     history.replaceState(null, '', '/kata?issue=01J00000000000000000000001&graph=1#direct=1')
     sessionStorage.setItem(

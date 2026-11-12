@@ -75,6 +75,20 @@ describe('canonical Kata routes', () => {
     },
   )
 
+  it('admits the Cron view without carrying issue workspace state', () => {
+    const route = parseRoute(
+      new URL(`https://daemon.example/kata?view=cron&issue=${issueUID}&label=ready`),
+    )
+    expect(route.kind).toBe('kata')
+    const shape = route as { view?: unknown; issueUID?: unknown }
+    expect(shape.view).toBe('cron')
+    expect(shape.issueUID).toBeUndefined()
+    const serialized = new URL(serializeRoute(route), 'https://daemon.example')
+    expect(serialized.searchParams.get('view')).toBe('cron')
+    expect(serialized.searchParams.has('issue')).toBe(false)
+    expect(serialized.searchParams.has('label')).toBe(false)
+  })
+
   it('keeps invalid issue UIDs routed and gives short refs one search action', () => {
     expect(parseRoute(new URL('https://daemon.example/kata?issue=abc4'))).toEqual({
       kind: 'route-error',
