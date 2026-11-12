@@ -1,0 +1,17 @@
+name: Cron S7 request producer proof
+on:
+  push:
+    branches: [proof/cron-s7-request-s5-58cf28]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+      - run: go test -p 1 ./internal/cron -run '^TestS7RequestFixtureAgainstProducer$' -count=1
