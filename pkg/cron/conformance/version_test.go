@@ -1,6 +1,8 @@
 package conformance
 
 import (
+	"bytes"
+	stdjson "encoding/json"
 	"context"
 	"encoding/json/v2"
 	"fmt"
@@ -128,6 +130,38 @@ func TestV2PreservesV1Decisions(t *testing.T) {
 			}
 			if string(a) != string(b) {
 				t.Fatalf("v2 changed %s", s.Name)
+			}
+		}
+	}
+}
+
+func TestInputSuiteVersionSelection(t *testing.T) {
+	suite, err := NewSuite(t.Context(), "kata.cron.adapter-conformance/v3", Reference{}.Declare())
+	if err != nil {
+		t.Fatalf("v3 input suite unavailable: %v", err)
+	}
+	files, err := suite.ExportFiles(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, ok := files["inputs.json"]
+	if !ok {
+		t.Fatal("v3 export is missing input delivery scenarios")
+	}
+	original, err := fixtures.ReadFile("testdata/adapter-v3/inputs.json")
+	if err != nil { t.Fatal(err) }
+	before, err := loadBundleVersion(original, SchemaV3)
+	if err != nil { t.Fatal(err) }
+	after, err := loadBundleVersion(raw, SchemaV3)
+	if err != nil { t.Fatal(err) }
+	for i, scenario := range before.Scenarios {
+		for j, step := range scenario.Steps {
+			for k, observation := range step.Inputs.Observations {
+				got := after.Scenarios[i].Steps[j].Inputs.Observations[k].Resolution
+				var a, b bytes.Buffer
+				if err := stdjson.Compact(&a, observation.Resolution); err != nil { t.Fatal(err) }
+				if err := stdjson.Compact(&b, got); err != nil { t.Fatal(err) }
+				if !bytes.Equal(a.Bytes(), b.Bytes()) { t.Fatalf("%s resolution changed: %s", scenario.Name, got) }
 			}
 		}
 	}

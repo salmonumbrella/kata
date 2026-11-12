@@ -1066,8 +1066,16 @@ data; it does not change stored definitions or launch a process.
 
 Input fixtures cover resolution and refresh calls, refused launches, environment
 values and the prompt data block. Adapters must preserve command and argv text,
-omit unset values, and compare prompt data as JSON. The reference launcher is
-not part of this kit; a launcher may adopt these vectors independently.
+omit unset values, and compare prompt data as JSON. The input decision supplies `job_options`, `workflow_options`, `has_workflow`,
+`request_inputs`, `api_version`, both definition event UIDs, `observations`,
+and a `step` with `kind`, `command`, `argv`, and `prompt`. Declared inputs
+require API 0.48.0; request inputs require 0.49.0. Cancellation messages begin
+with `reason: invalid_inputs` or `reason: inputs_unavailable`, respectively.
+Environment integers use canonical decimal; prompt JSON is structural, so `-0`
+and `0` compare equal. The kit covers a successful single refresh, not the
+adapter-specific missing-job, repeated-mismatch, or job-event outcomes. The
+reference launcher is not part of this kit; a launcher may adopt these vectors
+independently.
 The answers file starts with a
 schema/declaration header:
 

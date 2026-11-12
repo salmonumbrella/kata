@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"go.kenn.io/kata/internal/cron"
 )
 
 func decisionCount(step Decision) int {
@@ -94,28 +96,7 @@ func (in *InputDelivery) UnmarshalJSON(raw []byte) error {
 		return err
 	}
 	for _, observation := range value.Observations {
-		var response struct {
-			DeclaredBy string `json:"declared_by"`
-			Inputs     []struct {
-				Name        string         `json:"name"`
-				Type        string         `json:"type"`
-				Title       string         `json:"title"`
-				Description string         `json:"description"`
-				Required    bool           `json:"required"`
-				Values      []string       `json:"values"`
-				MaxLength   *int64         `json:"max_length"`
-				Multiline   bool           `json:"multiline"`
-				Min         *int64         `json:"min"`
-				Max         *int64         `json:"max"`
-				Value       jsontext.Value `json:"value"`
-				Source      string         `json:"source"`
-			} `json:"inputs"`
-			Errors []struct {
-				Name    string `json:"name"`
-				Code    string `json:"code"`
-				Message string `json:"message"`
-			} `json:"errors"`
-		}
+		var response cron.InputResolution
 		if _, err := requiredOutputFields(observation.Resolution, "declared_by", "inputs", "errors"); err != nil {
 			return err
 		}

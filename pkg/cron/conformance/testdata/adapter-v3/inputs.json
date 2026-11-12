@@ -129,7 +129,7 @@
               {
                 "definition_event_uid": "old",
                 "workflow_definition_event_uid": "",
-                "resolution": {"declared_by": "job", "inputs": [{"name": "choice", "type": "enum", "values": ["blue", "red"], "source": "default", "value": "blue"}, {"name": "empty", "type": "string", "source": "default", "value": ""}, {"name": "flag", "type": "bool", "source": "default", "value": false}, {"name": "number", "type": "int", "source": "default", "value": -9223372036854775808}, {"name": "optional", "type": "string", "source": "unset"}, {"name": "text", "type": "string", "source": "default", "value": "$(touch x)"}, {"name": "zero", "type": "int", "source": "default", "value": -0}], "errors": []}
+                "resolution": {"declared_by": "job", "inputs": [{"name": "choice", "type": "enum", "values": ["blue", "red"], "source": "default", "value": "blue"}, {"name": "empty", "type": "string", "source": "default", "value": ""}, {"name": "flag", "type": "bool", "source": "default", "value": false}, {"name": "number", "type": "int", "source": "default", "value": -9223372036854775808}, {"name": "optional", "type": "string", "source": "unset"}, {"name": "text", "type": "string", "source": "default", "value": "stale"}, {"name": "zero", "type": "int", "source": "default", "value": -0}], "errors": []}
               },
               {
                 "definition_event_uid": "job-1",

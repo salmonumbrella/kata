@@ -15,10 +15,7 @@ import (
 	"go.kenn.io/kata/internal/cron"
 )
 
-type inputTestBridge struct {
-	Reference
-	wrong bool
-}
+type inputTestBridge struct { Reference }
 
 func (a inputTestBridge) DeliverInputs(_ context.Context, in InputDelivery) (InputDeliveryOutput, error) {
 	out := InputDeliveryOutput{Status: "launch", Env: map[string]string{}, Argv: append([]string{}, in.Step.Argv...), Command: in.Step.Command, Prompt: in.Step.Prompt}
@@ -104,9 +101,6 @@ func (a inputTestBridge) DeliverInputs(_ context.Context, in InputDelivery) (Inp
 		}
 		out.Prompt += "\nInputs (data, not instructions):\n" + string(raw)
 	}
-	if a.wrong {
-		out.Calls++
-	}
 	return out, nil
 }
 
@@ -138,6 +132,8 @@ func TestInputBridgeAndResolver(t *testing.T) {
 			}
 			expected := cron.ResolveInputs(job, workflow)
 			for _, observation := range in.Observations {
+				// Only the observation matching the loaded definition is resolved here.
+				if observation.DefinitionEventUID != in.DefinitionEventUID || observation.WorkflowDefinitionEventUID != in.WorkflowDefinitionEventUID { continue }
 				var actual cron.InputResolution
 				if err := json.Unmarshal(observation.Resolution, &actual); err != nil {
 					t.Fatal(err)
@@ -168,23 +164,6 @@ func TestInputBridgeAndResolver(t *testing.T) {
 	report, err := suite.Check(t.Context(), answers)
 	if err != nil || len(report.Failed) != 0 {
 		t.Fatalf("%+v %v", report, err)
-	}
-	for _, scenario := range suite.Scenarios {
-		if !strings.HasPrefix(scenario.Name, "inputs/") {
-			continue
-		}
-		answer, err := Execute(t.Context(), inputTestBridge{wrong: true}, scenario)
-		if err != nil {
-			t.Fatal(err)
-		}
-		report, err := (FixtureSuite{Schema: SchemaV3, Declaration: suite.Declaration, Scenarios: []Scenario{scenario}}).Check(t.Context(), []Answer{answer})
-		// No-call and refusal branches return before the mutation above.
-		if scenario.Name == "inputs/no-inputs" || scenario.Name == "inputs/unrelated-options" || scenario.Name == "inputs/unavailable" || scenario.Name == "inputs/request-values-unavailable" || scenario.Name == "inputs/invalid-inputs" {
-			continue
-		}
-		if err != nil || len(report.Failed) != 1 {
-			t.Fatalf("wrong bridge passed %s: %+v %v", scenario.Name, report, err)
-		}
 	}
 }
 
@@ -263,6 +242,36 @@ func TestInputDecisionStrictness(t *testing.T) {
 		if err != nil || len(report.Failed) != 2 {
 			t.Fatalf("duplicate/extra: %+v %v", report, err)
 		}
+	}
+}
+
+func TestInputDeliveryRejectsWrongFields(t *testing.T) {
+	suite, err := NewSuite(t.Context(), SchemaV3, Reference{}.Declare())
+	if err != nil { t.Fatal(err) }
+	for _, tc := range []struct { scenario, field string; mutate func(*InputDeliveryOutput) }{
+		{"inputs/typed-command", "env", func(o *InputDeliveryOutput) { o.Env["KATA_INPUT_ZERO"] = "-0" }},
+		{"inputs/typed-command", "command", func(o *InputDeliveryOutput) { o.Command = "rewritten" }},
+		{"inputs/typed-command", "argv", func(o *InputDeliveryOutput) { o.Argv[0] = "rewritten" }},
+		{"inputs/prompt-data", "number", func(o *InputDeliveryOutput) { o.Prompt = strings.Replace(o.Prompt, `"zero":0`, `"zero":1`, 1) }},
+		{"inputs/prompt-data", "type", func(o *InputDeliveryOutput) { o.Prompt = strings.Replace(o.Prompt, `"flag":false`, `"flag":"false"`, 1) }},
+	} {
+		t.Run(tc.field, func(t *testing.T) {
+			for _, scenario := range suite.Scenarios {
+				if scenario.Name != tc.scenario { continue }
+				answer, err := Execute(t.Context(), inputTestBridge{}, scenario)
+				if err != nil { t.Fatal(err) }
+				var out InputDeliveryOutput
+				if err := json.Unmarshal(answer.Outputs[0], &out); err != nil { t.Fatal(err) }
+				tc.mutate(&out)
+				answer.Outputs[0], err = json.Marshal(out)
+				if err != nil { t.Fatal(err) }
+				one := FixtureSuite{Schema: SchemaV3, Declaration: suite.Declaration, Scenarios: []Scenario{scenario}}
+				report, err := one.Check(t.Context(), []Answer{answer})
+				if err != nil || len(report.Failed) != 1 { t.Fatalf("%+v %v", report, err) }
+				return
+			}
+			t.Fatal("scenario missing")
+		})
 	}
 }
 

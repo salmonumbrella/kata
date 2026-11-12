@@ -296,6 +296,13 @@ func (suite FixtureSuite) Check(ctx context.Context, answers []Answer) (Report, 
 				if err != nil {
 					return report, err
 				}
+				if actual, ok := got.(InputDeliveryOutput); ok {
+					expected := want.(InputDeliveryOutput)
+					if expected.Status == "cancelled" && (expected.Message == "reason: invalid_inputs" || expected.Message == "reason: inputs_unavailable") && strings.HasPrefix(actual.Message, expected.Message) {
+						actual.Message = expected.Message
+						got = actual
+					}
+				}
 				if diff == "" && !reflect.DeepEqual(got, want) {
 					diff = fmt.Sprintf("decision %d differs; expected %s; got %s", i+1, abbreviate(scenario.Steps[i].Expect), abbreviate(raw))
 				}
