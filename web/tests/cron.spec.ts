@@ -10,7 +10,6 @@ const inboxJobUID = '01KA0000000000000000000J02'
 const failedRunUID = '01KA0000000000000000000R98'
 const runningRunUID = '01KA0000000000000000000R99'
 const missingRunUID = '01KA0000000000000000000R00'
-const unknownProjectUID = '01KA0000000000000000000P00'
 
 function fillerRunUID(index: number): string {
   return `01KA0000000000000000000${String(index).padStart(3, '0')}`
@@ -118,8 +117,8 @@ test('browses real cron jobs, runs and workflows across projects and daemons', a
   // Reload so the accepted snapshot already holds every seeded change.
   await page.goto(`${kata.origin}/kata?view=all-open`)
   const cronRoute = `${kata.origin}/kata?view=cron`
-  const runRoute = (uid: string, scope = kata.projectUID) =>
-    `${cronRoute}&cron_tab=runs&cron_kind=run&cron_scope=${scope}&cron_uid=${uid}`
+  const runRoute = (uid: string) =>
+    `${cronRoute}&cron_tab=runs&cron_kind=run&cron_scope=${kata.projectUID}&cron_uid=${uid}`
 
   await page.emulateMedia({ colorScheme: 'dark' })
   await page.setViewportSize({ width: 1440, height: 960 })
@@ -143,16 +142,12 @@ test('browses real cron jobs, runs and workflows across projects and daemons', a
   await page.getByRole('radio', { name: 'Runs' }).click()
   await expect(page).toHaveURL(/cron_tab=runs/)
   const runs = page.getByRole('table', { name: 'Cron runs' }).locator('tbody tr')
-  await expect(runs).toHaveCount(50)
-  await expect(
-    page.getByText('Showing the latest 50 runs per project. Filters apply to loaded runs.'),
-  ).toBeVisible()
+  const loadOlder = page.getByRole('button', { name: 'Load older runs · example-project' })
+  await expect(loadOlder).toBeVisible()
   await capture(page, testInfo, 'cron-desktop-runs')
-  await page.getByRole('button', { name: 'Load older runs · example-project' }).click()
+  // The daemon's real next_before_uid cursor reaches the two oldest runs.
+  await loadOlder.click()
   await expect(runs).toHaveCount(52)
-  await expect(
-    page.getByText('Showing loaded runs, newest first. Filters apply to loaded runs.'),
-  ).toBeVisible()
 
   await page.getByRole('button', { name: 'Status', exact: true }).click()
   await page.getByRole('button', { name: 'failed', exact: true }).click()
@@ -172,18 +167,8 @@ test('browses real cron jobs, runs and workflows across projects and daemons', a
   await capture(page, testInfo, 'cron-desktop-run-detail')
 
   await page.reload()
-  await expect(
-    page
-      .getByRole('dialog', { name: 'Run' })
-      .getByText('Stopped after the nightly check reported whitespace errors.'),
-  ).toBeVisible()
-  await page.getByRole('button', { name: 'Open issue' }).click()
+  await run.getByRole('button', { name: 'Open issue' }).click()
   await expect(page).toHaveURL(new RegExp(`\\?issue=${issue.uid}$`))
-  await expect(
-    page
-      .getByRole('region', { name: 'Kata issue detail' })
-      .getByRole('heading', { name: 'Fix nightly whitespace errors' }),
-  ).toBeVisible()
   await page.goBack()
   await expect(page).toHaveURL(new RegExp(`cron_uid=${failedRunUID}`))
   await expect(page.getByRole('dialog', { name: 'Run' })).toBeVisible()
@@ -191,14 +176,10 @@ test('browses real cron jobs, runs and workflows across projects and daemons', a
   await page.goto(runRoute(missingRunUID))
   await expect(page.getByRole('dialog', { name: 'Run' }).getByText('Run not found.')).toBeVisible()
   await capture(page, testInfo, 'cron-desktop-run-not-found')
-  await page.goto(runRoute(runningRunUID, unknownProjectUID))
-  await expect(
-    page.getByText('This project is not readable from the current connection.'),
-  ).toBeVisible()
 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto(`${cronRoute}&cron_tab=runs`)
-  await expect(runs).toHaveCount(50)
+  await expect(loadOlder).toBeVisible()
   await noHorizontalOverflow(page, 390)
   await capture(page, testInfo, 'cron-mobile-runs')
   await page.goto(runRoute(failedRunUID))

@@ -59,6 +59,7 @@ func TestBrowserSession(t *testing.T) {
 }
 
 func TestWebLocalSessionIsLimitedToSPAOperations(t *testing.T) {
+	const cronRunUID = "01K00000000000000000000001"
 	manager := newDeterministicSessionManager(t, "http://127.0.0.1:27123", "instance_a")
 	issued, err := manager.IssueSession(Principal{Kind: PrincipalWebLocal}, "/kata")
 	require.NoError(t, err)
@@ -84,6 +85,18 @@ func TestWebLocalSessionIsLimitedToSPAOperations(t *testing.T) {
 		{name: "proxied project sync status", method: http.MethodGet, path: "/api/v1/ui/proxy/api/v1/projects/7/federation/status", want: http.StatusForbidden},
 		{name: "project federation mutation", method: http.MethodPost, path: "/api/v1/projects/7/federation/status", want: http.StatusForbidden},
 		{name: "credential audit", method: http.MethodGet, path: "/api/v1/tokens", want: http.StatusForbidden},
+		{name: "cron jobs", method: http.MethodGet, path: "/api/v1/projects/7/cron/jobs", want: http.StatusNoContent},
+		{name: "cron runs page", method: http.MethodGet, path: "/api/v1/projects/7/cron/runs?limit=50&before_uid=" + cronRunUID, want: http.StatusNoContent},
+		{name: "cron workflows", method: http.MethodGet, path: "/api/v1/projects/7/cron/workflows", want: http.StatusNoContent},
+		{name: "cron run detail", method: http.MethodGet, path: "/api/v1/projects/7/cron/runs/" + cronRunUID, want: http.StatusNoContent},
+		{name: "proxied cron jobs", method: http.MethodGet, path: "/api/v1/ui/proxy/api/v1/projects/7/cron/jobs", want: http.StatusNoContent},
+		{name: "cron capabilities", method: http.MethodGet, path: "/api/v1/projects/7/cron/capabilities", want: http.StatusForbidden},
+		{name: "cron job detail", method: http.MethodGet, path: "/api/v1/projects/7/cron/jobs/" + cronRunUID, want: http.StatusForbidden},
+		{name: "cron workflow detail", method: http.MethodGet, path: "/api/v1/projects/7/cron/workflows/" + cronRunUID, want: http.StatusForbidden},
+		{name: "cron run without uid", method: http.MethodGet, path: "/api/v1/projects/7/cron/runs/", want: http.StatusForbidden},
+		{name: "cron run subresource", method: http.MethodGet, path: "/api/v1/projects/7/cron/runs/" + cronRunUID + "/usage", want: http.StatusForbidden},
+		{name: "cron job creation", method: http.MethodPost, path: "/api/v1/projects/7/cron/jobs", want: http.StatusForbidden},
+		{name: "cron run observation", method: http.MethodPut, path: "/api/v1/projects/7/cron/runs/" + cronRunUID, want: http.StatusForbidden},
 		{name: "issue reference", method: http.MethodGet, path: "/api/v1/ui/issue-reference?project_id=7&ref=abc4", want: http.StatusNoContent},
 		{name: "proxied snapshot", method: http.MethodGet, path: "/api/v1/ui/proxy/api/v1/ui/snapshot", want: http.StatusNoContent},
 		{name: "proxied daemon roster", method: http.MethodGet, path: "/api/v1/ui/proxy/api/v1/ui/daemons", want: http.StatusForbidden},
@@ -108,56 +121,6 @@ func TestWebLocalSessionIsLimitedToSPAOperations(t *testing.T) {
 		{name: "issue purge", method: http.MethodPost, path: "/api/v1/projects/7/issues/abc4/actions/purge", want: http.StatusForbidden},
 		{name: "integration", method: http.MethodPost, path: "/api/v1/projects/7/issue-sync/github/enable", want: http.StatusForbidden},
 		{name: "path resolution", method: http.MethodPost, path: "/api/v1/projects/resolve", want: http.StatusForbidden},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			request := httptest.NewRequestWithContext(t.Context(), test.method, "http://127.0.0.1:27123"+test.path, nil)
-			request.AddCookie(manager.Cookie(issued.Cookie))
-			request.Header.Set(webSessionHeader, issued.Session)
-			request.Header.Set(webCSRFHeader, issued.CSRF)
-			response := httptest.NewRecorder()
-
-			handler.ServeHTTP(response, request)
-
-			assert.Equal(t, test.want, response.Code)
-		})
-	}
-}
-
-// The web Cron page reads jobs, run history and workflows through the
-// ordinary local-web principal. Only these exact project-scoped GETs pass;
-// capabilities, definition detail and every cron mutation stay denied, and
-// the full issue GET remains outside the browser allowlist.
-func TestWebLocalSessionAdmitsCronReads(t *testing.T) {
-	manager := newDeterministicSessionManager(t, "http://127.0.0.1:27123", "instance_a")
-	issued, err := manager.IssueSession(Principal{Kind: PrincipalWebLocal}, "/kata")
-	require.NoError(t, err)
-	handler := requireBrowserSession(manager, ListenerPolicy{
-		Kind: ListenerBrowser, Origin: "http://127.0.0.1:27123", RequireBrowserSession: true,
-		AllowLocalSession: true,
-	}, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	}))
-
-	const runUID = "01K00000000000000000000001"
-	for _, test := range []struct {
-		name   string
-		method string
-		path   string
-		want   int
-	}{
-		{name: "cron jobs", method: http.MethodGet, path: "/api/v1/projects/7/cron/jobs", want: http.StatusNoContent},
-		{name: "cron runs page", method: http.MethodGet, path: "/api/v1/projects/7/cron/runs?limit=50&before_uid=" + runUID, want: http.StatusNoContent},
-		{name: "cron workflows", method: http.MethodGet, path: "/api/v1/projects/7/cron/workflows", want: http.StatusNoContent},
-		{name: "cron run detail", method: http.MethodGet, path: "/api/v1/projects/7/cron/runs/" + runUID, want: http.StatusNoContent},
-		{name: "proxied cron jobs", method: http.MethodGet, path: "/api/v1/ui/proxy/api/v1/projects/7/cron/jobs", want: http.StatusNoContent},
-		{name: "cron capabilities", method: http.MethodGet, path: "/api/v1/projects/7/cron/capabilities", want: http.StatusForbidden},
-		{name: "cron job detail", method: http.MethodGet, path: "/api/v1/projects/7/cron/jobs/" + runUID, want: http.StatusForbidden},
-		{name: "cron workflow detail", method: http.MethodGet, path: "/api/v1/projects/7/cron/workflows/" + runUID, want: http.StatusForbidden},
-		{name: "cron run without uid", method: http.MethodGet, path: "/api/v1/projects/7/cron/runs/", want: http.StatusForbidden},
-		{name: "cron run subresource", method: http.MethodGet, path: "/api/v1/projects/7/cron/runs/" + runUID + "/usage", want: http.StatusForbidden},
-		{name: "cron job creation", method: http.MethodPost, path: "/api/v1/projects/7/cron/jobs", want: http.StatusForbidden},
-		{name: "cron run observation", method: http.MethodPut, path: "/api/v1/projects/7/cron/runs/" + runUID, want: http.StatusForbidden},
-		{name: "full issue lookup", method: http.MethodGet, path: "/api/v1/projects/7/issues/abc4", want: http.StatusForbidden},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			request := httptest.NewRequestWithContext(t.Context(), test.method, "http://127.0.0.1:27123"+test.path, nil)

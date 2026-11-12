@@ -21,7 +21,7 @@
     {/if}
   </dl>
 
-  <section class="cron-detail-steps" aria-label="Steps">
+  <section class="cron-detail-section" aria-label="Steps">
     <h3>Steps</h3>
     <ol>
       {#each workflow.definition.steps as step (step.key)}
@@ -41,44 +41,6 @@
 </div>
 
 <style>
-  .cron-detail {
-    display: grid;
-    gap: var(--space-5);
-    padding: var(--space-4) var(--space-5);
-    overflow-wrap: anywhere;
-  }
-
-  dl {
-    display: grid;
-    grid-template-columns: max-content minmax(0, 1fr);
-    gap: var(--space-2) var(--space-4);
-    margin: 0;
-    font-size: var(--font-size-sm);
-  }
-
-  dt {
-    color: var(--text-muted);
-  }
-
-  dd {
-    margin: 0;
-  }
-
-  .cron-detail-text,
-  code {
-    white-space: pre-wrap;
-  }
-
-  .cron-detail-steps {
-    display: grid;
-    gap: var(--space-3);
-  }
-
-  h3 {
-    margin: 0;
-    font-size: var(--font-size-md);
-  }
-
   ol {
     display: grid;
     gap: var(--space-3);
@@ -93,6 +55,7 @@
   }
 
   code {
+    white-space: pre-wrap;
     font-family: var(--font-mono);
     font-size: var(--font-size-xs);
   }

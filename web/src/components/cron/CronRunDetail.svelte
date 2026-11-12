@@ -75,13 +75,6 @@
 </div>
 
 <style>
-  .cron-detail {
-    display: grid;
-    gap: var(--space-4);
-    padding: var(--space-4) var(--space-5);
-    overflow-wrap: anywhere;
-  }
-
   .cron-detail-summary {
     margin: 0;
     white-space: pre-wrap;
@@ -93,31 +86,5 @@
     align-items: center;
     gap: var(--space-2);
     margin: 0;
-  }
-
-  dl {
-    display: grid;
-    grid-template-columns: max-content minmax(0, 1fr);
-    gap: var(--space-2) var(--space-4);
-    margin: 0;
-    font-size: var(--font-size-sm);
-  }
-
-  dt {
-    color: var(--text-muted);
-  }
-
-  dd {
-    margin: 0;
-  }
-
-  .cron-detail-link {
-    border: 0;
-    padding: 0;
-    background: transparent;
-    color: var(--accent-blue);
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
   }
 </style>
