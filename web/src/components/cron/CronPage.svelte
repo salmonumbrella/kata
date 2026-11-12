@@ -42,14 +42,11 @@
     route: CronRoute
     // Readable projects from the accepted snapshot catalog.
     projects: readonly CronProject[]
-    // The accepted snapshot cursor. It advances on every daemon event, so it
-    // revalidates only the open detail; Refresh rereads the lists.
-    cursor: number
     onNavigate: (route: CronRoute) => void
     onOpenIssue: (issueUID: string) => void
   }
 
-  let { route, projects, cursor, onNavigate, onOpenIssue }: Props = $props()
+  let { route, projects, onNavigate, onOpenIssue }: Props = $props()
 
   interface ProjectRecords {
     project: CronProject
@@ -57,7 +54,6 @@
     jobs: CronJob[]
     workflows: CronWorkflow[]
     runs: CronRun[]
-    retrying: boolean
   }
 
   type Detail =
@@ -74,9 +70,6 @@
   let refreshGeneration = $state(0)
   let detail = $state.raw<Detail>({ status: 'idle' })
   let detailGeneration = $state(0)
-  // Retry reads belong to the catalog read that is current when they start,
-  // and stop with it.
-  let catalogSignal: AbortSignal | undefined
   let loadedCatalog: string | undefined
   let loadedDetail = ''
 
@@ -159,16 +152,14 @@
         : (selectedWorkflow?.name ?? 'Workflow'),
   )
 
-  // The catalog read follows the readable projects and Refresh, not the
-  // accepted cursor, which advances on every daemon event. A different set of
-  // projects drops the records it no longer vouches for; the same set keeps
-  // them on screen until the new read lands.
+  // The catalog read follows the readable projects and Refresh. A different set
+  // of projects drops the records it no longer vouches for; the same set keeps
+  // each project's records on screen until its new read lands.
   $effect(() => {
     const key = catalogKey
     void refreshGeneration
     const targets = untrack(() => [...projects])
     const abort = new AbortController()
-    catalogSignal = abort.signal
     if (key !== loadedCatalog) {
       loadedCatalog = key
       records = []
@@ -179,12 +170,10 @@
   })
 
   // The open detail has its own lifetime: changing the selection stops its
-  // read without touching the catalog read. The cursor and Refresh both
-  // revalidate it.
+  // read without touching the catalog read, and Refresh reads it again.
   $effect(() => {
     const key = selectionKey
     const projectID = selectedProjectID
-    void cursor
     void refreshGeneration
     void detailGeneration
     const selection = untrack(() => route.selection)
@@ -202,22 +191,28 @@
     return () => abort.abort()
   })
 
+  // Each project's result shows as soon as its reads finish, so a slow project
+  // never holds back the others. Results keep the catalog's project order.
   async function loadCatalog(targets: CronProject[], signal: AbortSignal): Promise<void> {
-    const read = await mapLimit(targets, cronReadConcurrency, (project) =>
-      readProject(project, signal),
-    )
-    if (signal.aborted) return
-    const previous = new Map(records.map((entry) => [entry.project.uid, entry]))
-    records = read.map((entry) => refreshed(previous.get(entry.project.uid), entry))
-    loading = false
+    await mapLimit(targets, cronReadConcurrency, async (project) => {
+      const next = await readProject(project, signal)
+      if (signal.aborted) return
+      const settled = refreshed(records.find((entry) => entry.project.uid === project.uid), next)
+      records = targets.flatMap((target) =>
+        target.uid === project.uid
+          ? [settled]
+          : records.filter((entry) => entry.project.uid === target.uid),
+      )
+    })
+    if (!signal.aborted) loading = false
   }
 
   async function readProject(project: CronProject, signal: AbortSignal): Promise<ProjectRecords> {
-    const empty = { project, jobs: [], workflows: [], runs: [], retrying: false }
+    const empty = { project, jobs: [], workflows: [], runs: [] }
     try {
       if (signal.aborted) return { ...empty, failure: 'failed' }
       const read = await readCronProject(project, signal)
-      return { project, ...read, retrying: false }
+      return { project, ...read }
     } catch (error) {
       return { ...empty, failure: cronReadFailure(error) }
     }
@@ -227,7 +222,7 @@
   // project the connection can no longer read, or that is gone, is cleared.
   function refreshed(previous: ProjectRecords | undefined, next: ProjectRecords): ProjectRecords {
     if (next.failure !== 'failed' || !previous) return next
-    return { ...previous, failure: 'failed', retrying: false }
+    return { ...previous, failure: 'failed' }
   }
 
   async function loadDetail(
@@ -249,24 +244,6 @@
     } catch (error) {
       if (!signal.aborted) detail = { status: 'failed', failure: cronReadFailure(error) }
     }
-  }
-
-  function update(projectUID: string, patch: Partial<ProjectRecords>): void {
-    records = records.map((entry) =>
-      entry.project.uid === projectUID ? { ...entry, ...patch } : entry,
-    )
-  }
-
-  async function retryProject(projectUID: string): Promise<void> {
-    const signal = catalogSignal
-    const entry = records.find((candidate) => candidate.project.uid === projectUID)
-    if (!signal || signal.aborted || !entry || entry.retrying) return
-    update(projectUID, { retrying: true })
-    const next = await readProject(entry.project, signal)
-    if (signal.aborted) return
-    records = records.map((candidate) =>
-      candidate.project.uid === projectUID ? refreshed(candidate, next) : candidate,
-    )
   }
 
   function openRunJob(): void {
@@ -322,6 +299,7 @@
     if (entry.failure === 'forbidden') {
       return `${name}: this connection cannot read its cron records.`
     }
+    if (entry.failure === 'not_found') return `${name}: this project is no longer available.`
     const kept = entry.jobs.length + entry.workflows.length + entry.runs.length > 0
     return kept
       ? `${name}: cron records could not be loaded. Showing the last records read.`
@@ -426,17 +404,7 @@
   {/if}
 
   {#each failed as entry (entry.project.uid)}
-    <div class="cron-notice" role="status">
-      <span>{failureMessage(entry)}</span>
-      {#if entry.failure === 'failed'}
-        <Button
-          size="sm"
-          label="Try again"
-          busy={entry.retrying}
-          onclick={() => void retryProject(entry.project.uid)}
-        />
-      {/if}
-    </div>
+    <p class="cron-notice" role="status">{failureMessage(entry)}</p>
   {/each}
 
   {#if projects.length === 0}
@@ -641,6 +609,7 @@
   }
 
   .cron-notice {
+    margin: 0;
     padding: var(--space-3) var(--space-4);
     border: 1px solid var(--border-default);
     border-radius: var(--radius-sm);

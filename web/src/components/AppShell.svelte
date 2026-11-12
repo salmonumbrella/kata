@@ -885,7 +885,6 @@
             <CronPage
               route={route.cron ?? defaultCronRoute()}
               projects={projection.projects}
-              cursor={snapshot.cursor}
               onNavigate={openCronRoute}
               onOpenIssue={openIssue}
             />

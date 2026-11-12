@@ -198,9 +198,9 @@ reopens the same view.
 
 Runs shows each project's newest 50 runs. Filters apply only to those loaded
 runs, so a filtered list is not a complete count, and the Jobs tab makes no
-claim about a job's latest result or failure totals. **Refresh** reads every
-project and the open record again. When Kata reports new changes, only the
-open record is read again; use Refresh for the lists.
+claim about a job's latest result or failure totals. The lists and the open
+record are read when the page or record opens; **Refresh** reads them again.
+Each project's records appear as soon as that project answers.
 
 The page shows job definitions, including prompts, to anyone whose browser
 session can read the project, as it shows issues.
@@ -221,10 +221,10 @@ that no longer exists shows **Run not found**, and a record in a project the
 connection cannot read says so without reading it.
 
 When one project's records cannot be read, the page names that project and
-keeps showing the others. A project the connection is not allowed to read says
-so and shows none of its records. Any other failure offers **Try again**; if
-the project was read before, its last records stay on the page and the notice
-says they are from the last read. An issue-scoped credential cannot
+keeps showing the others. A project the connection is not allowed to read, or
+one that no longer exists, says so and shows none of its records. After any
+other failure, **Refresh** tries again; if the project was read before, its
+last records stay on the page and the notice says they are from the last read. An issue-scoped credential cannot
 read Cron, so the page makes no requests and explains why. Switching daemons,
 signing out, or losing the connection clears the page; it reads again once Kata
 reconnects.
