@@ -340,8 +340,7 @@ func cronUsageField(d *cronDoc, u cronUsage) {
 		d.field("Cost", "unavailable: "+sanitizeForLine(u.err.Error())+" · r: refresh")
 		return
 	case u.result == nil:
-		// r while the first read is pending starts no second one.
-		d.field("Cost", "loading… · press r after it loads")
+		d.field("Cost", "loading…")
 		return
 	}
 	usage := *u.result

@@ -74,13 +74,15 @@ type cronState struct {
 	usageSeq        uint64
 }
 
-// cronUsage is the live cost of the open run detail. Each read carries the
-// sequence it started under; leaving the run or refreshing advances it.
+// cronUsage is the live cost of one revision of the open run detail. Each read
+// carries the sequence it started under; leaving the run, a new revision of
+// it, and each refresh advance the sequence, so only the latest read lands.
 type cronUsage struct {
-	uid     string
-	loading bool
-	result  *generated.RunUsage
-	err     error
+	uid      string
+	revision int64
+	loading  bool
+	result   *generated.RunUsage
+	err      error
 }
 type cronUsageMsg struct {
 	conn, scope, seq uint64
@@ -98,12 +100,19 @@ func (m Model) cronSync() (Model, tea.Cmd) {
 		m.cron = cronState{tab: m.cron.tab, conn: m.connGen, scope: m.scopeGen}
 	}
 	var usageCmd tea.Cmd
-	if uid := m.cronUsageRun(); uid != m.cron.usage.uid {
+	uid, revision := m.cronUsageRun()
+	switch {
+	case uid != m.cron.usage.uid:
 		m.cron.usageSeq++
-		m.cron.usage = cronUsage{uid: uid}
+		m.cron.usage = cronUsage{uid: uid, revision: revision}
 		if uid != "" {
 			m, usageCmd = m.fetchCronUsage(false)
 		}
+	case uid != "" && revision != m.cron.usage.revision:
+		// A later observation of the same run may record other sessions, so
+		// its earlier cost no longer applies. It is read again only on r.
+		m.cron.usageSeq++
+		m.cron.usage = cronUsage{uid: uid, revision: revision, err: errors.New("run changed")}
 	}
 	if m.view != viewCron || m.scope.allProjects || m.scope.projectID == 0 || m.cron.out {
 		return m, usageCmd
@@ -115,18 +124,20 @@ func (m Model) cronSync() (Model, tea.Cmd) {
 	return m, combineCmds(m.fetchCron(), usageCmd)
 }
 
-// cronUsageRun names the run whose cost to show: the open run detail, when
-// the daemon prices runs with AgentsView and the run is in the loaded data.
-func (m Model) cronUsageRun() string {
+// cronUsageRun names the run whose cost to show, with its loaded revision: the
+// open run detail, when the daemon prices runs with AgentsView and the run is
+// in the loaded data.
+func (m Model) cronUsageRun() (string, int64) {
 	n := len(m.cron.stack)
 	if m.view != viewCron || m.scope.allProjects || m.scope.projectID == 0 || n == 0 || m.cron.data == nil || m.cron.data.usage != generated.Agentsview {
-		return ""
+		return "", 0
 	}
 	ref := m.cron.stack[n-1].ref
-	if ref.kind != cronRuns || !slices.ContainsFunc(m.cron.data.runs, func(r generated.CronRun) bool { return r.UID == ref.uid }) {
-		return ""
+	i := slices.IndexFunc(m.cron.data.runs, func(r generated.CronRun) bool { return r.UID == ref.uid })
+	if ref.kind != cronRuns || i < 0 {
+		return "", 0
 	}
-	return ref.uid
+	return ref.uid, m.cron.data.runs[i].Revision
 }
 
 // fetchCronUsage starts one bounded read for the open run, keeping an
@@ -146,7 +157,7 @@ func (m Model) fetchCronUsage(refresh bool) (Model, tea.Cmd) {
 // cronUsageLoaded applies a read only while its daemon, project, run and
 // sequence are still current, so a late answer cannot replace a newer one.
 func (m Model) cronUsageLoaded(msg cronUsageMsg) Model {
-	if msg.conn != m.connGen || msg.scope != m.scopeGen || msg.seq != m.cron.usageSeq || msg.uid != m.cron.usage.uid || msg.uid != m.cronUsageRun() {
+	if uid, _ := m.cronUsageRun(); msg.conn != m.connGen || msg.scope != m.scopeGen || msg.seq != m.cron.usageSeq || msg.uid != m.cron.usage.uid || msg.uid != uid {
 		return m
 	}
 	if msg.err == nil {
@@ -363,7 +374,9 @@ func (m Model) routeCronKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		m.cron.filtering = true
 	case key == "r":
 		m.cron.events++
-		if m.cron.usage.uid != "" && !m.cron.usage.loading {
+		if m.cron.usage.uid != "" {
+			// A pending read is superseded: its answer no longer lands.
+			m.cron.usageSeq++
 			m, cmd = m.fetchCronUsage(true)
 		}
 	}
