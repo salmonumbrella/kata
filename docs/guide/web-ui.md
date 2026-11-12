@@ -207,13 +207,14 @@ session can read the project, as it shows issues.
 
 Select a record to open its details beside the page:
 
-- A run shows its summary, status, times, executor, teammate, and token counts
-  when they were recorded. **Open issue** opens its linked issue in the
-  ordinary issue view, which finds the issue even if it moved to another
-  project. A run without an issue says so. A run whose job was deleted is
-  listed as **Deleted job**, and its drawer keeps the job's UID.
-  A run with recorded sessions lists each one by agent and short session ID.
-  When the serving daemon is configured for
+- A run shows its summary, status, times, executor, and teammate when they
+  were recorded. Token counts reported by the job's adapter appear under
+  **Recorded by adapter**; they are not the live cost. **Open issue** opens
+  its linked issue in the ordinary issue view, which finds the issue even if
+  it moved to another project. A run without an issue says so. A run whose
+  job was deleted is listed as **Deleted job**, and its drawer keeps the job's
+  UID. A run with recorded sessions lists each one by agent and short session
+  ID. When the serving daemon is configured for
   [AgentsView usage](../reference/configuration.md#agentsview-usage), the drawer
   also shows the run's live **Cost**, described below.
 - A job shows its trigger, action, and settings, and reads its five newest runs
@@ -221,19 +222,23 @@ Select a record to open its details beside the page:
 - A workflow shows its description, input, and steps.
 
 The **Cost** section reads the run's cost from the daemon when the drawer
-opens; nothing is stored in the browser. It shows the total in the same text
-as `kata cron run usage`; see [Live run cost](../reference/cron.md#live-run-cost)
-for what each form means. Each session line gives its state and, when
-AgentsView reports a safe address, an **Open in AgentsView** link that opens in
-a new tab. **Refresh cost** asks the daemon again. If **Refresh** finds that the
-run changed, the old cost is cleared and the section says **Run changed.
-Refresh cost.** A failed read says why, such as **Cost needs a signed-in
-session** for an anonymous reader or **Could not read cost. Refresh to retry.**
-for an unreachable daemon. Without a usage source there is no Cost section and
-no usage request. Through the daemon switcher, the cost comes from the selected
-daemon's own AgentsView configuration; the browser never receives its token.
-Signing out or switching daemons clears the result; losing write access clears
-it and reads it again.
+opens; nothing is stored in the browser. It shows the daemon's total and each
+session's state, as `kata cron run usage` does, and says when the recorded
+session list is incomplete; see
+[Live run cost](../reference/cron.md#live-run-cost) for what each form means.
+Each session line gives its state and, when AgentsView reports a safe address,
+an **Open in AgentsView** link that opens in a new tab. **Refresh cost** asks
+the daemon again. If **Refresh** finds that the run changed, the old cost is
+cleared and the section says **Run changed. Refresh cost.** A failed read says
+why, such as **Cost needs a signed-in session** for an anonymous reader or
+**Could not read cost. Refresh to retry.** for an unreachable daemon, including
+when the daemon cannot say whether usage is configured. A total or session
+state this version does not know shows **Unsupported usage state. Refresh to
+retry.** Without a usage source there is no Cost section and no usage request.
+Through the daemon switcher, the cost comes from the selected daemon's own
+AgentsView configuration; the browser never receives its token. Signing out or
+switching daemons clears the result; losing write access clears it and reads it
+again.
 
 A link to a run that is older than the loaded history still opens it. A run
 that no longer exists shows **Run not found**, and a record in a project the

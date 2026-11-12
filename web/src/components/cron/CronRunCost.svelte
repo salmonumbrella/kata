@@ -9,7 +9,13 @@
     type RunUsage,
   } from '../../lib/api/generated'
   import { formatCronTime } from '../../lib/cron/format'
-  import { runCostText, sessionStateText, usageFailureText } from '../../lib/cron/usage'
+  import {
+    runCostText,
+    sessionStateText,
+    unsupportedUsageText,
+    usageFailureText,
+    usageStatesSupported,
+  } from '../../lib/cron/usage'
   import { safeSessionURL } from '../../lib/history/sessionLink'
 
   // The parent keys this component on daemon, authority, project, run and
@@ -32,7 +38,8 @@
     | { status: 'ready'; usage: RunUsage; revision: number }
 
   // Hidden until the daemon says usage is on: a project without a usage
-  // source, or a capability read that fails before that, shows no section.
+  // source shows no section. A capability read that fails is not the same as
+  // usage being off, so it shows a failure that Refresh can retry.
   let cost = $state.raw<Cost>({ status: 'hidden' })
   let pending = $state(false)
   let generation = 0
@@ -71,8 +78,8 @@
         cost = { status: 'hidden' }
         return
       }
-      if (capabilities.status !== 200 || capabilities.data.project_uid !== project.uid) {
-        cost = refresh ? { status: 'failed', message: usageFailureText(0) } : { status: 'hidden' }
+      if (capabilities.status !== 200) {
+        cost = { status: 'failed', message: usageFailureText(0) }
         return
       }
       if (capabilities.data.usage.source !== 'agentsview') {
@@ -92,15 +99,17 @@
       if (!live()) return
       if (usage.status === 401) {
         cost = { status: 'hidden' }
-      } else if (usage.status !== 200 || usage.data.run_uid !== runUID) {
-        cost = { status: 'failed', message: usageFailureText(usage.status) }
+      } else if (usage.status !== 200) {
+        // A gateway may answer with a body that is not Kata's error envelope.
+        const code = typeof usage.data === 'object' ? usage.data?.error?.code : undefined
+        cost = { status: 'failed', message: usageFailureText(usage.status, code) }
+      } else if (!usageStatesSupported(usage.data)) {
+        cost = { status: 'failed', message: unsupportedUsageText }
       } else {
         cost = { status: 'ready', usage: usage.data, revision }
       }
     } catch {
-      if (live() && cost.status !== 'hidden') {
-        cost = { status: 'failed', message: usageFailureText(0) }
-      }
+      if (live()) cost = { status: 'failed', message: usageFailureText(0) }
     } finally {
       if (current === generation) pending = false
     }

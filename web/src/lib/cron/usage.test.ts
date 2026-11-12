@@ -90,8 +90,6 @@ describe('cron run cost text', () => {
 
   // The daemon's error code tells a gateway failure from an overflowing total,
   // both of which answer 502.
-  const failureText = usageFailureText as (status: number, code?: string) => string
-
   it.each([
     [403, 'usage_forbidden', 'Cost needs a signed-in session'],
     [404, 'run_not_found', 'Run not found'],
@@ -101,6 +99,6 @@ describe('cron run cost text', () => {
     [503, 'usage_source_disabled', 'Usage is disabled on this daemon.'],
     [500, 'internal', 'Could not read cost. Refresh to retry.'],
   ])('explains a usage read answered with %i %s', (status, code, text) => {
-    expect(failureText(status, code)).toBe(text)
+    expect(usageFailureText(status, code)).toBe(text)
   })
 })
