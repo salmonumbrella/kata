@@ -12,7 +12,7 @@ kata カタ jobs [runs] workflows
   Sessions:   claude 00000000 · main
   Sessions:   codex 00000000 · review
   Cost:       unavailable: usage_total_overflow: usage total cannot be
-  represented · r to retry
+  represented · r: refresh
 
   Message
   Report ready
