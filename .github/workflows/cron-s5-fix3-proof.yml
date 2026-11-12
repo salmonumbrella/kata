@@ -21,6 +21,7 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go test -p 1 ./cmd/kata ./internal/mcp ./internal/cron ./internal/db ./internal/daemon -run '^Test(CronRequestInputs|CronRequestInputCommands|ParseCronRequestInputs|RequestInputResolution|CronJobInputs|ResolveInputs)' -count=1
+      - run: go test -p 1 ./internal/cron -run Input -count=1
       - run: go test -p 1 ./internal/daemon -run '^TestAPISchemaVersionMatchesRecordedContract$' -count=1
   stores:
     runs-on: ubuntu-latest
@@ -63,7 +64,17 @@ jobs:
       - run: |
           gofmt -w internal/cron/inputs.go internal/cron/inputs_test.go internal/daemon/handlers_cron_definitions.go internal/db/cron_requests.go internal/db/cron_requests_sql.go internal/db/dbtest/conformance_cron_request_reads.go internal/db/dbtest/relay_cron_replay.go internal/db/sqlitestore/cron_resolution_cost_test.go internal/mcp/cron.go internal/mcp/cron_requests.go
           git diff --binary > /tmp/s5-fix3-format.patch
+          test ! -s /tmp/s5-fix3-format.patch
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
         with:
           name: s5-fix3-format
           path: /tmp/s5-fix3-format.patch
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: python3 -m pip install PyYAML
+      - run: python3 docs/scripts/check_frontmatter.py
