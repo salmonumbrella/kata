@@ -125,10 +125,7 @@ describe('canonical Kata routes', () => {
   it.each([
     ['an unknown tab', 'cron_tab=history'],
     ['statuses outside the Runs tab', 'cron_status=failed'],
-    [
-      'an unknown selection kind',
-      `cron_kind=step&cron_scope=${issueUID}&cron_uid=${issueUID}`,
-    ],
+    ['an unknown selection kind', `cron_kind=step&cron_scope=${issueUID}&cron_uid=${issueUID}`],
     ['a selection without its project', `cron_kind=run&cron_uid=${issueUID}`],
     ['a selection with an invalid UID', `cron_kind=job&cron_scope=${issueUID}&cron_uid=abc4`],
   ])('drops %s from a Cron route', (_name, query) => {

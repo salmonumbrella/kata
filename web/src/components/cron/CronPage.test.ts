@@ -64,18 +64,22 @@ function run(project: Project, uid: string, minute: number, extra: Record<string
 
 type Handler = (url: URL) => Response | Promise<Response>
 
+function urlOf(input: RequestInfo | URL): URL {
+  return new URL(String(input), 'http://127.0.0.1')
+}
+
+function jobRead(url: URL): boolean {
+  return url.searchParams.get('job_uid') === jobUID
+}
+
 function serve(handler: Handler) {
-  const fetcher = vi.fn<typeof fetch>(async (input) =>
-    handler(new URL(String(input), 'http://127.0.0.1')),
-  )
+  const fetcher = vi.fn<typeof fetch>(async (input) => handler(urlOf(input)))
   setGeneratedFetch(fetcher)
   return fetcher
 }
 
 function requested(fetcher: ReturnType<typeof serve>, path: string): URL[] {
-  return fetcher.mock.calls
-    .map(([input]) => new URL(String(input), 'http://127.0.0.1'))
-    .filter((url) => url.pathname === path)
+  return fetcher.mock.calls.map(([input]) => urlOf(input)).filter((url) => url.pathname === path)
 }
 
 function cronPath(project: Project, tail: string): string {
@@ -174,9 +178,7 @@ describe('CronPage', () => {
       ),
     ).not.toBeNull()
     expect(screen.getAllByRole('button', { name: 'Daily review' })).toHaveLength(2)
-    await fireEvent.click(
-      screen.getByRole('button', { name: 'Load older runs · example-project' }),
-    )
+    await fireEvent.click(screen.getByRole('button', { name: 'Load older runs · example-project' }))
     const retry = await screen.findByRole('button', {
       name: 'Try older runs again · example-project',
     })
@@ -189,9 +191,8 @@ describe('CronPage', () => {
     expect(
       screen.getByText('Showing loaded runs, newest first. Filters apply to loaded runs.'),
     ).not.toBeNull()
-    const older = requested(fetcher, cronPath(exampleProject, 'runs')).filter((url) =>
-      url.searchParams.has('before_uid'),
-    )
+    const runsPath = cronPath(exampleProject, 'runs')
+    const older = requested(fetcher, runsPath).filter((url) => url.searchParams.has('before_uid'))
     expect(older.map((url) => url.searchParams.get('before_uid'))).toEqual([runB, runB])
     expect(older.every((url) => url.searchParams.get('limit') === '50')).toBe(true)
   })
@@ -318,10 +319,7 @@ describe('CronPage', () => {
     await view.rerender({ ...current, cursor: 2 })
 
     expect(await screen.findByRole('button', { name: 'Daily review 2' })).not.toBeNull()
-    const jobRuns = () =>
-      requested(fetcher, cronPath(exampleProject, 'runs')).filter(
-        (url) => url.searchParams.get('job_uid') === jobUID,
-      )
+    const jobRuns = () => requested(fetcher, cronPath(exampleProject, 'runs')).filter(jobRead)
     await waitFor(() => expect(jobRuns()).toHaveLength(2))
     expect(jobRuns().map((url) => url.searchParams.get('limit'))).toEqual(['5', '5'])
   })
