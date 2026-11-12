@@ -30,7 +30,7 @@ type CronListInput struct {
 // CronIdentityInput selects a retained definition UID.
 type CronIdentityInput struct {
 	CronProjectInput
-	UID string `json:"uid" jsonschema:"Stable UID retained before creation; obtain one with kata.cron_new_uid"`
+	UID string `json:"uid" jsonschema:"Existing resource UID, or a UID from kata.cron_new_uid for creation"`
 }
 
 // CronActionInput requires the caller's current definition event.

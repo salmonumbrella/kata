@@ -1257,7 +1257,13 @@ func (h toolHandlers) daemonSupportsAPIVersion(ctx context.Context, required str
 	if health.APISchemaVersion != nil {
 		version = strings.TrimSpace(*health.APISchemaVersion)
 	}
-	return semver.IsValid("v"+version) && semver.Compare("v"+version, "v"+required) >= 0, nil
+	return APIVersionAtLeast(version, required), nil
+}
+
+// APIVersionAtLeast applies the same daemon API version rule at startup and per call.
+func APIVersionAtLeast(version, required string) bool {
+	version = strings.TrimSpace(version)
+	return semver.IsValid("v"+version) && semver.Compare("v"+version, "v"+required) >= 0
 }
 
 // closeEvidenceUIDRefs returns duplicate and superseding targets stored as
