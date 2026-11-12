@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/stretchr/testify/require"
 	"go.kenn.io/kata/internal/cron"
 )
@@ -29,24 +31,31 @@ func inputsFormFixture(t *testing.T, width int) (Model, *cronRuntimeTestAPI) {
 		},
 		Errors: []cron.InputError{{Name: "batch_size", Code: "missing_required", Message: "required input has no value"}},
 	}}
-	m, cmd := press(m, keyRune('R'))
+	m, cmd := pressTop(t, m, keyRune('R'))
 	return runtimeDone(t, m, cmd), api
 }
 
-// The form, not the list, is on screen while the request draft is open.
-func TestCronRequestInputsRenderForm(t *testing.T) {
-	m, _ := inputsFormFixture(t, 80)
-	view := stripANSI(m.View().Content)
-	require.Contains(t, view, "Request run · Digest")
-	require.Contains(t, view, m.cron.action.target)
-	require.Contains(t, view, "▶ Batch size *:")
-	require.Contains(t, view, "‹ staging ›")
-	require.Contains(t, view, "‹ true ›")
-	require.Contains(t, view, "(unset)")
-	require.Contains(t, view, "whole number 1 to 500 · required · no value")
-	require.Contains(t, view, "Rows imported per transaction")
-	require.Contains(t, view, "ctrl+o request run")
-	require.NotContains(t, view, "/ search")
+// Long enum choices that differ only past the value column stay
+// distinguishable: the focused field shows the whole selected value.
+func TestCronRequestInputsLongEnumShowsFullChoice(t *testing.T) {
+	m, api := runtimeFixture(t, false)
+	m.width, m.height = 80, 24
+	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": true}
+	choices := []string{
+		"copy orders from the primary region into the analytics warehouse and rebuild summary tables",
+		"copy orders from the primary region into the analytics warehouse and keep summary tables",
+	}
+	api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{
+		Inputs: []cron.ResolvedInput{{Name: "mode", Type: "enum", Title: "Mode", Values: choices, Value: choices[0], Source: "default"}},
+	}}
+	m, cmd := pressTop(t, m, keyRune('R'))
+	m = runtimeDone(t, m, cmd)
+	for i := range choices {
+		view := strings.Join(strings.Fields(stripANSI(m.View().Content)), " ")
+		require.Contains(t, view, choices[i])
+		require.NotContains(t, view, choices[1-i])
+		m, _ = pressTop(t, m, tea.KeyPressMsg{Code: tea.KeyRight})
+	}
 }
 
 // One frame per request form state; the no-input confirmation keeps its own goldens.
@@ -62,18 +71,18 @@ func TestSnapshot_CronRequestInputs(t *testing.T) {
 				m, _ = runtimeFixture(t, false)
 				m.width, m.height = tc.width, 24
 				m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"count": map[string]any{"type": "int"}}}
-				m, _ = press(m, keyRune('R'))
+				m, _ = pressTop(t, m, keyRune('R'))
 			} else {
 				var api *cronRuntimeTestAPI
 				m, api = inputsFormFixture(t, tc.width)
 				if tc.state != "form" {
-					m, _ = press(m, keyRune('5'))
-					m, _ = press(m, keyRune('0'))
+					m, _ = pressTop(t, m, keyRune('5'))
+					m, _ = pressTop(t, m, keyRune('0'))
 					api.errs = []error{&APIError{Status: http.StatusBadRequest, Code: "validation", Message: "batch_size: invalid input value"}}
 					if tc.state == "retry" {
 						api.errs = []error{errors.New("connection interrupted")}
 					}
-					next, cmd := press(m, ctrlKey('o'))
+					next, cmd := pressTop(t, m, ctrlKey('o'))
 					m = runtimeDone(t, next, cmd)
 					if tc.state == "retry" {
 						// The minted UID is random; pin the retained one for a stable frame.
