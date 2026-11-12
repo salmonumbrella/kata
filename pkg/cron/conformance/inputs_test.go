@@ -179,7 +179,7 @@ func TestInputBridgeAndResolver(t *testing.T) {
 		}
 		report, err := (FixtureSuite{Schema: SchemaV3, Declaration: suite.Declaration, Scenarios: []Scenario{scenario}}).Check(t.Context(), []Answer{answer})
 		// No-call and refusal branches return before the mutation above.
-		if scenario.Name == "inputs/no-inputs" || scenario.Name == "inputs/unrelated-options" || scenario.Name == "inputs/unavailable" || scenario.Name == "inputs/invalid-inputs" {
+		if scenario.Name == "inputs/no-inputs" || scenario.Name == "inputs/unrelated-options" || scenario.Name == "inputs/unavailable" || scenario.Name == "inputs/request-values-unavailable" || scenario.Name == "inputs/invalid-inputs" {
 			continue
 		}
 		if err != nil || len(report.Failed) != 1 {
