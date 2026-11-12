@@ -40,11 +40,11 @@ func inputsFormFixture(t *testing.T, width int) (Model, *cronRuntimeTestAPI) {
 func TestCronRequestInputsLongEnumShowsFullChoice(t *testing.T) {
 	m, api := runtimeFixture(t, false)
 	m.width, m.height = 80, 24
-	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": true}
 	choices := []string{
 		"copy orders from the primary region into the analytics warehouse and rebuild summary tables",
 		"copy orders from the primary region into the analytics warehouse and keep summary tables",
 	}
+	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"mode": map[string]any{"type": "enum", "title": "Mode", "values": choices, "default": choices[0]}}}
 	api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{
 		Inputs: []cron.ResolvedInput{{Name: "mode", Type: "enum", Title: "Mode", Values: choices, Value: choices[0], Source: "default"}},
 	}}
