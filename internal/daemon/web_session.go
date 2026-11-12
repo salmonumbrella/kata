@@ -519,18 +519,21 @@ func webLocalSPARequestAllowed(r *http.Request) bool {
 }
 
 // webLocalCronRequestAllowed admits only the reads the web Cron page makes:
-// the job, run and workflow lists and one run by UID. The page reads job and
-// workflow detail from their lists, and every cron write stays outside
-// browser authority.
+// the job, run and workflow lists, the project's cron capabilities, one run by
+// UID and that run's live usage. The page reads job and workflow detail from
+// their lists, and every cron write stays outside browser authority.
 func webLocalCronRequestAllowed(r *http.Request, parts []string) bool {
 	if r.Method != http.MethodGet {
 		return false
 	}
 	switch len(parts) {
 	case 1:
-		return parts[0] == "jobs" || parts[0] == "runs" || parts[0] == "workflows"
+		return parts[0] == "jobs" || parts[0] == "runs" || parts[0] == "workflows" ||
+			parts[0] == "capabilities"
 	case 2:
 		return parts[0] == "runs" && parts[1] != ""
+	case 3:
+		return parts[0] == "runs" && parts[1] != "" && parts[2] == "usage"
 	default:
 		return false
 	}

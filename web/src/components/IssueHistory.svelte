@@ -3,6 +3,7 @@
   import { formatTimestamp } from '@kenn-io/kit-ui/utils/time'
 
   import { closingAttachments } from '../lib/history/attachments'
+  import { safeSessionURL } from '../lib/history/sessionLink'
 
   import { describeKataEvent } from '../lib/history/format'
 
@@ -44,22 +45,8 @@
     const session: { label: string; url?: string } = {
       label: `Session: ${ref.agent} ${ref.session_id}`,
     }
-    if (typeof ref.url === 'string') {
-      try {
-        const url = new URL(ref.url)
-        if (
-          (url.protocol === 'http:' || url.protocol === 'https:') &&
-          !url.username &&
-          !url.password &&
-          !ref.url.includes('?') &&
-          !ref.url.includes('#')
-        ) {
-          session.url = ref.url
-        }
-      } catch {
-        // A valid identifier remains useful without a usable locator.
-      }
-    }
+    const url = safeSessionURL(ref.url)
+    if (url) session.url = url
     return session
   }
 </script>

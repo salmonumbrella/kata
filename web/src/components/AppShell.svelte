@@ -886,6 +886,8 @@
               route={route.cron ?? defaultCronRoute()}
               projects={projection.projects}
               cursor={snapshot.cursor}
+              readOnly={readOnly || !snapshot.capabilities.writable}
+              anonymous={snapshot.capabilities.auth_kind === 'insecure_readonly'}
               onNavigate={openCronRoute}
               onOpenIssue={openIssue}
             />

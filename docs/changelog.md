@@ -11,6 +11,8 @@ All notable changes to kata, grouped by release. Versioned releases start with
 
 - See live cost for a recorded cron run with `kata cron run usage` when the serving daemon is configured for AgentsView v0.47.0 or newer. Doctor checks the configured source.
 
+- See a cron run's live cost in the web UI's run drawer, with **Refresh cost** and **Open in AgentsView** links, when the selected daemon is configured for AgentsView.
+
 - Record the agent sessions used by a cron run and view them in run details. Session data follows the run through federation and backups.
 
 - Use `kata daemon status` in scripts to check the selected daemon's readiness.

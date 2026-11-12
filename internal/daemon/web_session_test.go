@@ -173,6 +173,8 @@ func TestIssueScopedBrowserSessionUsesSameRouteAllowlist(t *testing.T) {
 		{name: "local embeddings status", method: http.MethodGet, path: "/api/v1/embeddings/local", want: http.StatusNoContent},
 		{name: "ordinary issue read", method: http.MethodGet, path: "/api/v1/projects/1/issues/abc4", want: http.StatusNoContent},
 		{name: "recurrence denied", method: http.MethodGet, path: "/api/v1/projects/1/recurrences", want: http.StatusForbidden},
+		{name: "cron capabilities denied", method: http.MethodGet, path: "/api/v1/projects/1/cron/capabilities", want: http.StatusForbidden},
+		{name: "cron run usage denied", method: http.MethodGet, path: "/api/v1/projects/1/cron/runs/01K00000000000000000000001/usage", want: http.StatusForbidden},
 		{name: "project deletion denied", method: http.MethodDelete, path: "/api/v1/projects/2", want: http.StatusForbidden},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

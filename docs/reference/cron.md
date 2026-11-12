@@ -739,6 +739,9 @@ seconds. Kata includes descendant usage and deduplicates matching canonical
 session IDs. If one recorded session is a descendant of another, its cost can
 be counted twice; this is an accepted limitation.
 
+The Web UI's run drawer shows the same total and session states on demand; see
+[Browse cron jobs, runs, and workflows](../guide/web-ui.md#browse-cron-jobs-runs-and-workflows).
+
 ## Native issue planning dates
 
 `kata show <issue-ref> --planning-dates --json` and GET

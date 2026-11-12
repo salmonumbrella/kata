@@ -102,6 +102,8 @@ function props(route: Partial<CronRoute>, projects: Project[], cursor = 1) {
     route: { tab: 'jobs' as const, projectUIDs: [], statuses: [], ...route },
     projects,
     cursor,
+    readOnly: false,
+    anonymous: false,
     onNavigate: vi.fn(),
     onOpenIssue: vi.fn(),
   }
@@ -109,9 +111,37 @@ function props(route: Partial<CronRoute>, projects: Project[], cursor = 1) {
 
 const sessionID = '00000000-0000-4000-8000-000000000001'
 
+function usageBody(extra: Record<string, unknown> = {}) {
+  return {
+    run_uid: runC,
+    state: 'complete',
+    estimated: false,
+    cost_microdollars: 2_410_000,
+    fetched_at: '2026-10-01T09:30:00Z',
+    sessions_incomplete: false,
+    sessions: [
+      {
+        agent: 'codex',
+        session_id: sessionID,
+        canonical_session_id: sessionID,
+        state: 'priced',
+        cost_source: 'reported',
+        cost_microdollars: 2_410_000,
+      },
+    ],
+    ...extra,
+  }
+}
+
+interface UsageFixture {
+  revision?: () => number
+  capabilities?: () => Response | Promise<Response>
+  usage?: () => Response | Promise<Response>
+}
+
 // A run recorded with one session, its project's usage source and the
 // daemon's usage answer for it.
-function serveRunUsage(source: 'agentsview' | 'none') {
+function serveRunUsage(source: 'agentsview' | 'none', fixture: UsageFixture = {}) {
   return serve((url) => {
     if (url.pathname === cronPath(exampleProject, `runs/${runC}`)) {
       const summary = {
@@ -119,9 +149,11 @@ function serveRunUsage(source: 'agentsview' | 'none') {
         message: `Run ${runC}`,
         sessions: [{ agent: 'codex', session_id: sessionID }],
       }
-      return Response.json({ run: run(exampleProject, runC, 1, { summary }) })
+      const revision = fixture.revision?.() ?? 1
+      return Response.json({ run: run(exampleProject, runC, 1, { summary, revision }) })
     }
     if (url.pathname === cronPath(exampleProject, 'capabilities')) {
+      if (fixture.capabilities) return fixture.capabilities()
       return Response.json({
         project_uid: exampleProject.uid,
         event_features: [],
@@ -129,27 +161,14 @@ function serveRunUsage(source: 'agentsview' | 'none') {
       })
     }
     if (url.pathname === cronPath(exampleProject, `runs/${runC}/usage`)) {
-      return Response.json({
-        run_uid: runC,
-        state: 'complete',
-        estimated: false,
-        cost_microdollars: 2_410_000,
-        fetched_at: '2026-10-01T09:30:00Z',
-        sessions_incomplete: false,
-        sessions: [
-          {
-            agent: 'codex',
-            session_id: sessionID,
-            canonical_session_id: sessionID,
-            state: 'priced',
-            cost_source: 'reported',
-            cost_microdollars: 2_410_000,
-          },
-        ],
-      })
+      return fixture.usage ? fixture.usage() : Response.json(usageBody())
     }
     return emptyCatalog(url) ?? notFound()
   })
+}
+
+function usageReads(fetcher: ReturnType<typeof serve>): URL[] {
+  return requested(fetcher, cronPath(exampleProject, `runs/${runC}/usage`))
 }
 
 function runSelectionProps() {
@@ -316,6 +335,149 @@ describe('CronPage', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(screen.queryByRole('heading', { name: 'Cost' })).toBeNull()
     expect(requested(fetcher, cronPath(exampleProject, `runs/${runC}/usage`))).toEqual([])
+    expect(screen.getByText('Sessions')).not.toBeNull()
+  })
+
+  it('refreshes cost with a new capability check and refresh=true, one read at a time', async () => {
+    let finish: (response: Response) => void = () => {}
+    let reads = 0
+    const fetcher = serveRunUsage('agentsview', {
+      usage: () => {
+        reads += 1
+        if (reads === 1) return Response.json(usageBody())
+        return new Promise<Response>((resolve) => (finish = resolve))
+      },
+    })
+    render(CronPage, { props: runSelectionProps() })
+    expect(await screen.findByText('$2.41')).not.toBeNull()
+
+    const refresh = screen.getByRole('button', { name: 'Refresh cost' })
+    await fireEvent.click(refresh)
+    await waitFor(() => expect(usageReads(fetcher)).toHaveLength(2))
+    await fireEvent.click(refresh)
+    expect(screen.getByText('Reading cost…')).not.toBeNull()
+    finish(Response.json(usageBody({ cost_microdollars: 3_000_000 })))
+
+    expect(await screen.findByText('$3.00')).not.toBeNull()
+    expect(usageReads(fetcher).map((url) => url.searchParams.get('refresh'))).toEqual([
+      'false',
+      'true',
+    ])
+    expect(requested(fetcher, cronPath(exampleProject, 'capabilities'))).toHaveLength(2)
+  })
+
+  it.each([
+    [403, 'Cost needs a signed-in session'],
+    [404, 'Run not found'],
+    [502, 'The total cost cannot be represented.'],
+    [503, 'Usage is disabled on this daemon.'],
+    [400, 'Could not read cost. Refresh to retry.'],
+  ])('explains a usage read answered with %i', async (status, text) => {
+    serveRunUsage('agentsview', {
+      usage: () => Response.json({ error: { code: 'example' } }, { status }),
+    })
+    render(CronPage, { props: runSelectionProps() })
+
+    expect(await screen.findByText(text)).not.toBeNull()
+    expect(screen.getByRole('heading', { name: 'Cost' })).not.toBeNull()
+  })
+
+  it('refuses usage for another run and for another project', async () => {
+    serveRunUsage('agentsview', { usage: () => Response.json(usageBody({ run_uid: runB })) })
+    render(CronPage, { props: runSelectionProps() })
+    expect(await screen.findByText('Could not read cost. Refresh to retry.')).not.toBeNull()
+    expect(screen.queryByText('$2.41')).toBeNull()
+
+    cleanup()
+    const fetcher = serveRunUsage('agentsview', {
+      capabilities: () =>
+        Response.json({
+          project_uid: spokeProject.uid,
+          event_features: [],
+          usage: { source: 'agentsview' },
+        }),
+    })
+    render(CronPage, { props: runSelectionProps() })
+    expect(await screen.findByText(`Run ${runC}`)).not.toBeNull()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(screen.queryByRole('heading', { name: 'Cost' })).toBeNull()
+    expect(usageReads(fetcher)).toEqual([])
+  })
+
+  it('asks an anonymous reader to sign in without reading usage', async () => {
+    const fetcher = serveRunUsage('agentsview')
+    render(CronPage, { props: { ...runSelectionProps(), anonymous: true } })
+
+    expect(await screen.findByText('Cost needs a signed-in session')).not.toBeNull()
+    expect(usageReads(fetcher)).toEqual([])
+  })
+
+  it('drops a late capability answer when another run opens', async () => {
+    let answer: (response: Response) => void = () => {}
+    const fetcher = serveRunUsage('agentsview', {
+      capabilities: () => new Promise<Response>((resolve) => (answer = resolve)),
+    })
+    const current = runSelectionProps()
+    const view = render(CronPage, { props: current })
+    await waitFor(() =>
+      expect(requested(fetcher, cronPath(exampleProject, 'capabilities'))).toHaveLength(1),
+    )
+
+    const other = { kind: 'run' as const, projectUID: exampleProject.uid, uid: runB }
+    await view.rerender({ ...current, route: { ...current.route, selection: other } })
+    expect(await screen.findByText('Run not found.')).not.toBeNull()
+    answer(
+      Response.json({
+        project_uid: exampleProject.uid,
+        event_features: [],
+        usage: { source: 'agentsview' },
+      }),
+    )
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(usageReads(fetcher)).toEqual([])
+    expect(screen.queryByRole('heading', { name: 'Cost' })).toBeNull()
+  })
+
+  it('clears the cost when the run changes and reads again when authority becomes read-only', async () => {
+    let revision = 1
+    const fetcher = serveRunUsage('agentsview', { revision: () => revision })
+    const current = runSelectionProps()
+    const view = render(CronPage, { props: current })
+    expect(await screen.findByText('$2.41')).not.toBeNull()
+
+    revision = 2
+    await view.rerender({ ...current, cursor: 2 })
+    expect(await screen.findByText('Run changed. Refresh cost.')).not.toBeNull()
+    expect(screen.queryByText('$2.41')).toBeNull()
+    expect(usageReads(fetcher)).toHaveLength(1)
+
+    await view.rerender({ ...current, cursor: 2, readOnly: true })
+    expect(await screen.findByText('$2.41')).not.toBeNull()
+    expect(usageReads(fetcher)).toHaveLength(2)
+  })
+
+  it('links only safe AgentsView session addresses', async () => {
+    const priced = usageBody().sessions[0]!
+    serveRunUsage('agentsview', {
+      usage: () =>
+        Response.json(
+          usageBody({
+            sessions: [
+              { ...priced, url: 'http://127.0.0.1:8080/sessions/example' },
+              { ...priced, session_id: 'session-b', url: 'http://example-user@127.0.0.1/s' },
+            ],
+          }),
+        ),
+    })
+    render(CronPage, { props: runSelectionProps() })
+
+    const link = await screen.findByRole('link', { name: 'Open in AgentsView' })
+    expect(link.getAttribute('href')).toBe('http://127.0.0.1:8080/sessions/example')
+    expect(link.getAttribute('target')).toBe('_blank')
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer')
+    expect(screen.getAllByRole('link', { name: 'Open in AgentsView' })).toHaveLength(1)
+    expect(screen.getByText('codex session-: $2.41')).not.toBeNull()
   })
 
   it('shows a selected project the connection cannot read without reading it', async () => {

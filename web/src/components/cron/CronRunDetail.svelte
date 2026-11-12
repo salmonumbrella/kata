@@ -3,10 +3,15 @@
 
   import type { CronRun } from '../../lib/api/generated'
   import { cronRunDot, cronTokensLabel, formatCronTime } from '../../lib/cron/format'
+  import CronRunCost from './CronRunCost.svelte'
 
   interface Props {
     run: CronRun
+    projectID: number
+    projectUID: string
     projectName: string
+    readOnly: boolean
+    anonymous: boolean
     jobName?: string | undefined
     onOpenJob?: (() => void) | undefined
     onOpenIssue: (issueUID: string) => void
@@ -14,13 +19,18 @@
 
   let {
     run,
+    projectID,
+    projectUID,
     projectName,
+    readOnly,
+    anonymous,
     jobName = undefined,
     onOpenJob = undefined,
     onOpenIssue,
   }: Props = $props()
 
   let tokens = $derived(cronTokensLabel(run))
+  let sessions = $derived(run.summary.sessions ?? [])
 </script>
 
 <div class="cron-detail">
@@ -49,8 +59,24 @@
       <dd>{run.teammate}</dd>
     {/if}
     {#if tokens}
-      <dt>Tokens</dt>
+      <dt>Recorded by adapter</dt>
       <dd>{tokens}</dd>
+    {/if}
+    {#if sessions.length > 0 || run.summary.sessions_incomplete}
+      <dt>Sessions</dt>
+      <dd>
+        <ul class="cron-run-sessions">
+          {#each sessions as session, index (`${index}:${session.session_id}`)}
+            <li title={session.session_id}>
+              {session.agent}
+              {session.session_id.slice(0, 8)}{session.step ? ` · ${session.step}` : ''}
+            </li>
+          {/each}
+        </ul>
+        {#if run.summary.sessions_incomplete}
+          <span class="cron-run-incomplete">Session list incomplete</span>
+        {/if}
+      </dd>
     {/if}
     <dt>Job</dt>
     <dd>
@@ -72,6 +98,9 @@
       {/if}
     </dd>
   </dl>
+  {#key `${projectID}:${projectUID}:${run.uid}:${readOnly}:${anonymous}`}
+    <CronRunCost {projectID} {projectUID} {run} {anonymous} />
+  {/key}
 </div>
 
 <style>
@@ -79,6 +108,16 @@
     margin: 0;
     white-space: pre-wrap;
     font-size: var(--font-size-md);
+  }
+
+  .cron-run-sessions {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .cron-run-incomplete {
+    color: var(--text-muted);
   }
 
   .cron-detail-status {
