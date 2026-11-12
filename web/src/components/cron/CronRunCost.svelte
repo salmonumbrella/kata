@@ -145,11 +145,8 @@
             <li>
               <span title={session.session_id}>{sessionLine(session)}</span>
               {#if url}
-                <a
-                  href={url}
-                  class="cron-detail-link"
-                  target="_blank"
-                  rel="noopener noreferrer">Open in AgentsView</a
+                <a href={url} class="cron-detail-link" target="_blank" rel="noopener noreferrer"
+                  >Open in AgentsView</a
                 >
               {/if}
             </li>
