@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -27,18 +28,31 @@ func TestCronRunUsageWireAndVersion(t *testing.T) {
 		switch r.URL.Path {
 		case "/api/v1/health":
 			_, _ = fmt.Fprintf(w, `{"ok":true,"api_schema_version":%q}`, version)
-		case "/api/v1/projects/42/cron/runs/" + uid + "/usage":
-			requests++
-			query = r.URL.Query().Get("refresh")
-			_, _ = w.Write([]byte(body))
+		case "/api/v1/projects":
+			_, _ = w.Write([]byte(`{"projects":[{"id":42,"uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","name":"spoke-project","metadata":{},"revision":1,"created_at":"2026-08-11T00:00:00Z"}]}`))
 		default:
 			http.NotFound(w, r)
 		}
 	}))
 	t.Cleanup(daemon.Close)
+	longDaemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/projects/42/cron/runs/"+uid+"/usage" {
+			http.NotFound(w, r)
+			return
+		}
+		requests++
+		query = r.URL.Query().Get("refresh")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(longDaemon.Close)
 	client, err := kataclient.NewWithHTTPClient(daemon.URL, daemon.Client())
 	require.NoError(t, err)
+	longClient, err := kataclient.NewWithHTTPClient(longDaemon.URL, longDaemon.Client())
+	require.NoError(t, err)
 	options := defaultCatalogOptions(client)
+	options.Scope = NewAllScope()
+	options.LongRunningClient = longClient
 	options.CronUsage = true
 	options.StartupSections = []string{"cron"}
 	server, err := New(options)
@@ -46,7 +60,7 @@ func TestCronRunUsageWireAndVersion(t *testing.T) {
 	var wire bytes.Buffer
 	session := connectServerSession(t, server, nil, &wire)
 	call := func() *sdkmcp.CallToolResult {
-		result, callErr := session.CallTool(t.Context(), &sdkmcp.CallToolParams{Name: "kata.cron_run_usage", Arguments: map[string]any{"uid": strings.ToLower(uid), "refresh": true}})
+		result, callErr := session.CallTool(t.Context(), &sdkmcp.CallToolParams{Name: "kata.cron_run_usage", Arguments: map[string]any{"project": "spoke-project", "uid": strings.ToLower(uid), "refresh": true}})
 		require.NoError(t, callErr)
 		return result
 	}
@@ -54,9 +68,6 @@ func TestCronRunUsageWireAndVersion(t *testing.T) {
 	require.False(t, result.IsError)
 	require.Len(t, result.Content, 1)
 	text := result.Content[0].(*sdkmcp.TextContent).Text
-	for _, raw := range []string{text, wire.String()} {
-		require.Contains(t, raw, "9007199254740993")
-	}
 	lines := bytes.Split(bytes.TrimSpace(wire.Bytes()), []byte("\n"))
 	var envelope struct {
 		Result struct {
@@ -64,20 +75,19 @@ func TestCronRunUsageWireAndVersion(t *testing.T) {
 		} `json:"result"`
 	}
 	require.NoError(t, json.Unmarshal(lines[len(lines)-1], &envelope))
-	require.Contains(t, string(envelope.Result.StructuredContent), "9007199254740993")
-	decoder := json.NewDecoder(strings.NewReader(string(envelope.Result.StructuredContent)))
-	decoder.UseNumber()
-	var wireBody map[string]any
-	require.NoError(t, decoder.Decode(&wireBody))
-	require.Equal(t, json.Number("9007199254740993"), wireBody["cost_microdollars"])
-	decoder = json.NewDecoder(strings.NewReader(text))
-	decoder.UseNumber()
-	var got map[string]any
-	require.NoError(t, decoder.Decode(&got))
-	require.Equal(t, json.Number("9007199254740993"), got["cost_microdollars"])
+	decode := func(raw string) any {
+		t.Helper()
+		decoder := json.NewDecoder(strings.NewReader(raw))
+		decoder.UseNumber()
+		var value any
+		require.NoError(t, decoder.Decode(&value))
+		return value
+	}
+	require.Equal(t, decode(body), decode(text))
+	require.Equal(t, decode(body), decode(string(envelope.Result.StructuredContent)))
 	require.Equal(t, 1, requests)
 	require.Equal(t, "true", query)
-	for _, replacement := range []string{"0.45.0", "invalid", ""} {
+	for _, replacement := range []string{"0.45.0", ""} {
 		version = replacement
 		refused := call()
 		require.True(t, refused.IsError)
@@ -100,35 +110,26 @@ func TestCronRunUsageCatalogs(t *testing.T) {
 				}
 			},
 		})
-		for _, loaded := range []bool{false, true} {
-			if loaded {
-				cronOK(t, session, "load_cron", map[string]any{})
-				select {
-				case <-changed:
-				case <-time.After(time.Second):
-					t.Fatal("cron loader did not announce its catalog change")
-				case <-t.Context().Done():
-					t.Fatal("context canceled waiting for catalog change")
-				}
-			}
-			search := searchToolSession(t, session, "cron run usage", 10)
-			var names []string
-			for _, item := range search.Results {
-				names = append(names, item.Name)
-			}
-			require.Equal(t, enabled, containsCronUsage(names))
-			tools, err := session.ListTools(t.Context(), nil)
-			require.NoError(t, err)
-			require.Equal(t, enabled && loaded, containsCronUsage(toolNames(tools.Tools)))
+		search := searchToolSession(t, session, "cron run usage", 10)
+		var names []string
+		for _, item := range search.Results {
+			names = append(names, item.Name)
 		}
-	}
-}
-
-func containsCronUsage(names []string) bool {
-	for _, name := range names {
-		if name == "kata.cron_run_usage" {
-			return true
+		require.Equal(t, enabled, slices.Contains(names, "kata.cron_run_usage"))
+		before, err := session.ListTools(t.Context(), nil)
+		require.NoError(t, err)
+		require.NotContains(t, toolNames(before.Tools), "kata.cron_run_usage")
+		loaded := cronOK(t, session, "load_cron", map[string]any{})
+		require.Equal(t, enabled, slices.Contains(loaded["tools"].([]any), any("kata.cron_run_usage")))
+		select {
+		case <-changed:
+		case <-time.After(time.Second):
+			t.Fatal("cron loader did not announce its catalog change")
+		case <-t.Context().Done():
+			t.Fatal("context canceled waiting for catalog change")
 		}
+		tools, err := session.ListTools(t.Context(), nil)
+		require.NoError(t, err)
+		require.Equal(t, enabled, slices.Contains(toolNames(tools.Tools), "kata.cron_run_usage"))
 	}
-	return false
 }

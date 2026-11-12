@@ -471,12 +471,7 @@ func TestDaemonMCPCronUsageCatalog(t *testing.T) {
 				defer func() { _ = session.Close() }()
 				tools, err := session.ListTools(ctx, nil)
 				require.NoError(t, err)
-				found := false
-				for _, tool := range tools.Tools {
-					if tool.Name == "kata.cron_run_usage" {
-						found = true
-					}
-				}
+				found := slices.ContainsFunc(tools.Tools, func(tool *sdkmcp.Tool) bool { return tool.Name == "kata.cron_run_usage" })
 				require.Equal(t, enabled, found)
 			})
 		}
