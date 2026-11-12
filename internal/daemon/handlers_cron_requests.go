@@ -17,7 +17,7 @@ func cronRequestAPIError(ctx context.Context, cfg ServerConfig, err error, pid i
 	case errors.Is(err, db.ErrCronRequestExpired):
 		return api.NewError(410, "request_expired", err.Error(), "Check clocks and generate a fresh request UID.", nil)
 	case errors.Is(err, db.ErrCronRequestConflict):
-		return api.NewError(409, "request_conflict", err.Error(), "Retry the original target, actor and TTL, or generate a fresh request UID.", nil)
+		return api.NewError(409, "request_conflict", err.Error(), "Retry the original target, actor, TTL and inputs, or generate a fresh request UID.", nil)
 	case errors.Is(err, db.ErrCronRequestUnavailable):
 		return api.NewError(409, "request_unavailable", err.Error(), "Run requests require an enabled adapter execute job and an unpaused project; cancellation requires a running run.", nil)
 	case errors.Is(err, db.ErrCronRequestCapacity):

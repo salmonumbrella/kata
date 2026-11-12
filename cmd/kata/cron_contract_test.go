@@ -5,6 +5,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -214,6 +215,48 @@ func TestCronRequestInputCommands(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, out, `9007199254740993`)
 	require.Contains(t, out, `"source":"request"`)
+	before, err := env.DB.ListCronRequests(t.Context(), db.CronRequestList{ProjectID: project.ID})
+	require.NoError(t, err)
 	_, _, err = executeCronCLI(t, env.URL, nil, "job", "request-run", job.UID, "--request-uid", cronCLIUID(t), "--input", "unknown=value")
-	require.ErrorContains(t, err, "unknown")
+	require.ErrorContains(t, err, "undeclared input")
+	after, err := env.DB.ListCronRequests(t.Context(), db.CronRequestList{ProjectID: project.ID})
+	require.NoError(t, err)
+	require.Len(t, after, len(before))
+}
+
+// A retained request remains retryable after declaration edits and across clients.
+func TestCronRequestInputsRetainedRetry(t *testing.T) {
+	t.Setenv("KATA_AUTHOR", "operator")
+	env := testenv.New(t)
+	project, err := env.DB.CreateProject(t.Context(), "spoke-project")
+	require.NoError(t, err)
+	definition := cron.JobDefinition{Version: 1, Kind: "job", Enabled: true, Trigger: cron.Trigger{Kind: "manual"}, Action: cron.Action{Kind: "execute", Prompt: "Inspect"}, Issue: &cron.IssuePolicy{Kind: "per-run", Title: "Result"}, Overlap: "forbid", Catchup: "skip", Options: jsontext.Value(`{"inputs":{"count":{"type":"int"},"note":{"type":"string"}}}`)}
+	job, _, err := env.DB.PutCronJob(t.Context(), db.PutCronJob{ProjectID: project.ID, Name: "Inspect", Actor: "operator", Definition: definition})
+	require.NoError(t, err)
+	id := cronCLIUID(t)
+	path := fmt.Sprintf("%s/api/v1/projects/%d/cron/jobs/%s/requests", env.URL, project.ID, job.UID)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, path, strings.NewReader(fmt.Sprintf(`{"uid":%q,"actor":"operator","ttl_seconds":600,"inputs":{"count":-0,"note":"true"}}`, id)))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	t.Run("literal", func(t *testing.T) {
+		out, _, err := executeCronCLI(t, env.URL, nil, "job", "request-run", job.UID, "--request-uid", id, "--input", "count=-0", "--input", "note=true")
+		require.NoError(t, err)
+		require.Contains(t, out, `"replayed":true`)
+	})
+	definition.Options = jsontext.Value(`{"inputs":{"note":{"type":"bool"}}}`)
+	_, _, err = env.DB.PutCronJob(t.Context(), db.PutCronJob{ProjectID: project.ID, UID: job.UID, Name: job.Name, Actor: "operator", Definition: definition, ExpectedEventUID: job.DefinitionEventUID})
+	require.NoError(t, err)
+	t.Run("edited declaration", func(t *testing.T) {
+		out, _, err := executeCronCLI(t, env.URL, nil, "job", "request-run", job.UID, "--request-uid", id, "--input", "count=-0", "--input", "note=true")
+		require.NoError(t, err)
+		require.Contains(t, out, `"replayed":true`)
+		_, _, err = executeCronCLI(t, env.URL, nil, "job", "request-run", job.UID, "--request-uid", id, "--input", "count=1", "--input", "note=true")
+		require.ErrorContains(t, err, "identity conflicts")
+		_, _, err = executeCronCLI(t, env.URL, nil, "job", "request-run", job.UID, "--request-uid", id, "--input", "count=-0", "--input", "extra=true")
+		require.ErrorContains(t, err, "identity conflicts")
+	})
 }

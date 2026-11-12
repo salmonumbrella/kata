@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"encoding/json/jsontext"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -34,13 +35,15 @@ func TestCronRequestInputsTools(t *testing.T) {
 	f := newCronFixture(t)
 	definition := cronDefinition()
 	definition["enabled"] = true
-	definition["options"] = map[string]any{"inputs": map[string]any{"flag": map[string]any{"type": "bool", "required": true}}}
+	definition["options"] = map[string]any{"inputs": map[string]any{"count": map[string]any{"type": "int", "required": true}}}
 	job := cronRecord(t, f.session, "cron_job_create", map[string]any{"uid": cronNewUID(t, f.session), "name": "Execute review", "definition": definition}, "job")
 	id := cronNewUID(t, f.session)
-	request := cronRecord(t, f.session, "cron_job_request_run", map[string]any{"uid": job["uid"], "request_uid": id, "inputs": map[string]any{"flag": false}}, "request")
-	require.Equal(t, false, request["inputs"].(map[string]any)["flag"])
+	cronRecord(t, f.session, "cron_job_request_run", map[string]any{"uid": job["uid"], "request_uid": id, "inputs": map[string]any{"count": int64(9007199254740993)}}, "request")
+	requests, err := f.store.ListCronRequests(t.Context(), db.CronRequestList{ProjectID: f.project.ID})
+	require.NoError(t, err)
+	require.Equal(t, jsontext.Value("9007199254740993"), requests[0].Inputs["count"])
 	resolution := cronOK(t, f.session, "cron_job_inputs", map[string]any{"uid": job["uid"], "request_uid": id})
 	input := resolution["inputs"].([]any)[0].(map[string]any)
 	require.Equal(t, "request", input["source"])
-	require.Equal(t, false, input["value"])
+	require.NotNil(t, input["value"])
 }

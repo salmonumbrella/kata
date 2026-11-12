@@ -111,21 +111,52 @@ func checkCronRequests(t *testing.T, s db.Storage, b Backend) error {
 		job, _, e := s.PutCronJob(ctx, db.PutCronJob{ProjectID: p.ID, UID: job.UID, Name: job.Name, Definition: job.Definition, ExpectedEventUID: job.DefinitionEventUID, Actor: "operator"})
 		require.NoError(t, e)
 		in := db.RequestCronIn{ProjectID: p.ID, UID: requestUIDAt(t, now), Kind: "run", TargetUID: job.UID, Actor: "operator", TTLSeconds: 60, Now: now, Inputs: map[string]jsontext.Value{"batch": jsontext.Value("9007199254740993")}}
+		before, e := s.MaxEventID(ctx)
+		require.NoError(t, e)
+		for _, values := range []map[string]jsontext.Value{nil, {"other": jsontext.Value("1")}, {"batch": jsontext.Value(`"wrong"`)}, {"batch": jsontext.Value("null")}} {
+			invalid := in
+			invalid.Inputs = values
+			_, e = s.RequestCron(ctx, invalid)
+			require.Error(t, e)
+		}
+		after, e := s.MaxEventID(ctx)
+		require.NoError(t, e)
+		require.Equal(t, before, after)
 		first, e := s.RequestCron(ctx, in)
 		require.NoError(t, e)
+		require.Contains(t, first.Event.Payload, "cron.request."+in.UID)
 		require.Contains(t, first.Event.Payload, "cron.request_inputs."+in.UID)
 		rows, e := s.ListCronRequests(ctx, db.CronRequestList{ProjectID: p.ID, Now: now})
 		require.NoError(t, e)
 		require.Equal(t, jsontext.Value("9007199254740993"), rows[0].Inputs["batch"])
+		job.Definition.Options = []byte(`{"inputs":{"batch":{"type":"int","max":1}}}`)
+		_, _, e = s.PutCronJob(ctx, db.PutCronJob{ProjectID: p.ID, UID: job.UID, Name: job.Name, Definition: job.Definition, ExpectedEventUID: job.DefinitionEventUID, Actor: "operator"})
+		require.NoError(t, e)
+		replay, e := s.RequestCron(ctx, in)
+		require.NoError(t, e)
+		require.True(t, replay.Replayed)
 		in.Inputs = map[string]jsontext.Value{"batch": jsontext.Value("3")}
 		_, e = s.RequestCron(ctx, in)
 		require.ErrorIs(t, e, db.ErrCronRequestConflict)
 		event, e := s.SweepCronRequests(ctx, p.ID, now.Add(time.Minute))
 		require.NoError(t, e)
+		require.Contains(t, event.Payload, "cron.request."+in.UID)
 		require.Contains(t, event.Payload, "cron.request_inputs."+in.UID)
 		project, e := s.ProjectByID(ctx, p.ID)
 		require.NoError(t, e)
 		require.NotContains(t, string(project.Metadata), "cron.request_inputs."+in.UID)
+		require.NotContains(t, string(project.Metadata), "cron.request."+in.UID)
+	})
+	t.Run("invalid declaration diagnostic", func(t *testing.T) {
+		p, job, _ := requestJobFixture(t, s, "diagnostic-project")
+		job.Definition.Action.WorkflowUID = ""
+		job.Definition.Action.Prompt = "Inspect"
+		job.Definition.Options = []byte(`{"inputs":42}`)
+		job, _, e := s.PutCronJob(ctx, db.PutCronJob{ProjectID: p.ID, UID: job.UID, Name: job.Name, Definition: job.Definition, ExpectedEventUID: job.DefinitionEventUID, Actor: "operator"})
+		require.NoError(t, e)
+		_, e = s.RequestCron(ctx, db.RequestCronIn{ProjectID: p.ID, UID: requestUIDAt(t, now), Kind: "run", TargetUID: job.UID, Actor: "operator", TTLSeconds: 60, Now: now})
+		require.ErrorIs(t, e, cron.ErrInvalid)
+		require.NotContains(t, e.Error(), ": :")
 	})
 	t.Run("cancel while paused", func(t *testing.T) {
 		p, job, wf := requestJobFixture(t, s, "cancel-project")
