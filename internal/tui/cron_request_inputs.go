@@ -213,7 +213,7 @@ func (m Model) cronInputsAnswered(msg cronInputsMsg) (Model, tea.Cmd) {
 	if !m.sameCronAction(msg.action) {
 		return m, nil
 	}
-	if next, cmd, ok := m.recheckCronAction(msg.action); !ok {
+	if next, cmd, ok := m.recheckCronAction(*m.cron.action); !ok {
 		return next, cmd
 	}
 	if errors.Is(msg.err, errCronInputsUnsupported) {

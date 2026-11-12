@@ -194,3 +194,14 @@ func TestCronRequestInputsChoiceAndReset(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, values)
 }
+
+func TestCronRequestInputsChangedWhileLoading(t *testing.T) {
+	m, api := runtimeFixture(t, false)
+	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": true}
+	api.inputsRead.DefinitionEventUID = api.shown.DefinitionEventUID
+	m, cmd := press(m, keyRune('R'))
+	m.cron.data.jobs[0].DefinitionEventUID = "changed"
+	m = runtimeDone(t, m, cmd)
+	require.Nil(t, m.cron.action)
+	require.Contains(t, m.toast.text, "changed")
+}
