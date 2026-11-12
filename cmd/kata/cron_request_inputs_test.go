@@ -21,7 +21,7 @@ func TestParseCronRequestInputs(t *testing.T) {
 	require.Equal(t, `"staging"`, string(values["s"]))
 	require.Equal(t, `"true"`, string(values["q"]))
 	_, err = parseCronRequestInputs([]string{"other=value"}, map[string]string{})
-	require.ErrorContains(t, err, "other")
+	require.ErrorContains(t, err, "undeclared input")
 	_, err = parseCronRequestInputs([]string{"count=bad"}, map[string]string{"count": "int"})
-	require.ErrorContains(t, err, "count")
+	require.ErrorContains(t, err, "invalid integer")
 }

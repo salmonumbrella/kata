@@ -233,4 +233,9 @@ func TestRequestInputResolution(t *testing.T) {
 	require.Len(t, result.Errors, 2)
 	require.Equal(t, "missing_required", result.Errors[0].Code)
 	require.Equal(t, "unknown", result.Errors[1].Name)
+	job.Options = jsontext.Value(`{"inputs":{"count":{"type":"int"}},"input_values":{"count":"invalid"}}`)
+	result = ResolveInputs(job, nil, map[string]jsontext.Value{"count": jsontext.Value("3")})
+	require.Empty(t, result.Errors)
+	require.Equal(t, "request", result.Inputs[0].Source)
+	require.Equal(t, jsontext.Value("3"), result.Inputs[0].Value)
 }

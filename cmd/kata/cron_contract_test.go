@@ -214,8 +214,13 @@ func TestCronRequestInputCommands(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, out, `9007199254740993`)
 	require.Contains(t, out, `"source":"request"`)
+	before, err := env.DB.ListCronRequests(t.Context(), db.CronRequestList{ProjectID: project.ID})
+	require.NoError(t, err)
 	_, _, err = executeCronCLI(t, env.URL, nil, "job", "request-run", job.UID, "--request-uid", cronCLIUID(t), "--input", "unknown=value")
-	require.ErrorContains(t, err, "unknown")
+	require.ErrorContains(t, err, "undeclared input")
+	after, err := env.DB.ListCronRequests(t.Context(), db.CronRequestList{ProjectID: project.ID})
+	require.NoError(t, err)
+	require.Len(t, after, len(before))
 }
 
 // A retained request remains retryable after declaration edits and across clients.
