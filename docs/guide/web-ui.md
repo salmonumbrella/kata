@@ -196,18 +196,22 @@ the chosen statuses. Each filter appears as a chip; select a chip to remove it.
 The tab, filters, and open record are part of the address, so a copied link
 reopens the same view.
 
-Runs load 50 at a time for each project. Filters apply only to runs already
-loaded, so a filtered list is not a complete count. **Load older runs** reads
-that project's next page; if a page fails, the button asks you to try again
-from the same place. **Refresh** reads every project again, and the page also
-refreshes when Kata reports new changes.
+Runs shows each project's newest 50 runs. Filters apply only to those loaded
+runs, so a filtered list is not a complete count, and the Jobs tab makes no
+claim about a job's latest result or failure totals. The lists and the open
+record are read when the page or record opens; **Refresh** reads them again.
+Each project's records appear as soon as that project answers.
+
+The page shows job definitions, including prompts, to anyone whose browser
+session can read the project, as it shows issues.
 
 Select a record to open its details beside the page:
 
 - A run shows its summary, status, times, executor, teammate, and token counts
   when they were recorded. **Open issue** opens its linked issue in the
   ordinary issue view, which finds the issue even if it moved to another
-  project. A run without an issue says so.
+  project. A run without an issue says so. A run whose job was deleted is
+  listed as **Deleted job**, and its drawer keeps the job's UID.
   A run with recorded sessions lists each one by agent and short session ID.
   When the serving daemon is configured for
   [AgentsView usage](../reference/configuration.md#agentsview-usage), the drawer
@@ -221,8 +225,8 @@ opens; nothing is stored in the browser. It shows the total in the same text
 as `kata cron run usage`; see [Live run cost](../reference/cron.md#live-run-cost)
 for what each form means. Each session line gives its state and, when
 AgentsView reports a safe address, an **Open in AgentsView** link that opens in
-a new tab. **Refresh cost** asks the daemon again. If the run changes while the
-drawer is open, the old cost is cleared and the section says **Run changed.
+a new tab. **Refresh cost** asks the daemon again. If **Refresh** finds that the
+run changed, the old cost is cleared and the section says **Run changed.
 Refresh cost.** A failed read says why, such as **Cost needs a signed-in
 session** for an anonymous reader or **Could not read cost. Refresh to retry.**
 for an unreachable daemon. Without a usage source there is no Cost section and
@@ -236,8 +240,10 @@ that no longer exists shows **Run not found**, and a record in a project the
 connection cannot read says so without reading it.
 
 When one project's records cannot be read, the page names that project and
-keeps showing the others. A project the connection is not allowed to read says
-so; any other failure offers **Try again**. An issue-scoped credential cannot
+keeps showing the others. A project the connection is not allowed to read, or
+one that no longer exists, says so and shows none of its records. After any
+other failure, **Refresh** tries again; if the project was read before, its
+last records stay on the page and the notice says they are from the last read. An issue-scoped credential cannot
 read Cron, so the page makes no requests and explains why. Switching daemons,
 signing out, or losing the connection clears the page; it reads again once Kata
 reconnects.

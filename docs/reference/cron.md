@@ -890,13 +890,13 @@ entries follow `kata.`. CLI and MCP create definitions through stable-UID
 | HTTP `listCronRuns` (omitted `limit`) | 100 | 100 |
 | CLI `kata cron run list` | 100 | 100 |
 | TUI Runs tab | Newest 100 (fixed) | 100 |
-| Web UI Runs tab | 50 per project, then **Load older runs** | 50 |
+| Web UI Runs tab | Newest 50 per project (fixed) | 50 |
 | MCP `kata.cron_runs` | 20 | 100 |
 
 CLI `--limit` and MCP `limit` accept 1–100. MCP uses the shared default for
 paginated results. HTTP, CLI and MCP return `next_before_uid`; pass it as
 `before_uid` (CLI `--before-uid`) for the next page. The TUI loads only the
-newest page. The Web UI reads each project's pages on request, and its run
+newest page. The Web UI also loads only each project's newest page, and its run
 filters apply only to the runs it has loaded.
 
 ### Events and records

@@ -82,8 +82,8 @@ describe('canonical Kata routes', () => {
     const route = parseRoute(
       new URL(
         `https://daemon.example/kata?view=cron&cron_tab=runs&cron_project=${projectB}` +
-          `&cron_project=${projectA}&cron_project=not-a-uid&cron_status=failed` +
-          `&cron_status=bogus&cron_status=cancelled&cron_kind=run&cron_scope=${projectA}` +
+          `&cron_project=${projectA}&cron_status=failed` +
+          `&cron_status=cancelled&cron_kind=run&cron_scope=${projectA}` +
           `&cron_uid=${runUID}&issue=${issueUID}&label=ready`,
       ),
     )
@@ -106,23 +106,26 @@ describe('canonical Kata routes', () => {
         `&cron_uid=${runUID}`,
     )
     expect(parseRoute(new URL(serializeRoute(route), 'https://daemon.example'))).toEqual(route)
+    expect(parseRoute(new URL('https://daemon.example/kata?view=cron'))).toMatchObject({
+      kind: 'kata',
+      cron: { tab: 'jobs', projectUIDs: [], statuses: [] },
+    })
   })
 
   it.each([
     ['an unknown tab', 'cron_tab=history'],
+    ['a malformed project filter', 'cron_project=not-a-uid'],
+    ['an unknown status', 'cron_tab=runs&cron_status=faild'],
     ['statuses outside the Runs tab', 'cron_status=failed'],
     ['an unknown selection kind', `cron_kind=step&cron_scope=${issueUID}&cron_uid=${issueUID}`],
     ['a selection without its project', `cron_kind=run&cron_uid=${issueUID}`],
+    ['a selection without its kind', `cron_scope=${issueUID}&cron_uid=${issueUID}`],
     ['a selection with an invalid UID', `cron_kind=job&cron_scope=${issueUID}&cron_uid=abc4`],
-  ])('drops %s from a Cron route', (_name, query) => {
+  ])('reports %s in a Cron link as a route error', (_name, query) => {
     const route = parseRoute(new URL(`https://daemon.example/kata?view=cron&${query}`))
 
-    expect(route).toMatchObject({
-      kind: 'kata',
-      view: 'cron',
-      cron: { tab: 'jobs', projectUIDs: [], statuses: [] },
-    })
-    expect(serializeRoute(route)).toBe('/kata?view=cron')
+    expect(route).toMatchObject({ kind: 'route-error', path: `/kata?view=cron&${query}` })
+    expect(serializeRoute(route)).toBe(`/kata?view=cron&${query}`)
   })
 
   it('keeps invalid issue UIDs routed and gives short refs one search action', () => {
