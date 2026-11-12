@@ -11,8 +11,8 @@ kata カタ jobs [runs] workflows
   Tokens:     30 input, 10 output
   Sessions:   claude 00000000 · main
   Sessions:   codex 00000000 · review
-  Cost:       unavailable: usage_source_disabled: usage source is disabled · r
-  to retry
+  Cost:       unavailable: usage_total_overflow: usage total cannot be
+  represented · r to retry
 
   Message
   Report ready
