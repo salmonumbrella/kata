@@ -54,9 +54,13 @@ func loadBundleVersion(raw []byte, schema string) (bundle, error) {
 				return b, fmt.Errorf("invalid decision in %s", s.Name)
 			}
 			if step.Inputs != nil {
-                if schema != SchemaV3 || step.UseCheckpoint || step.UseOccupancy { return b, fmt.Errorf("invalid input decision in %s", s.Name) }
-                if _, err := decodeInputOutput(step.Expect); err != nil { return b, err }
-            } else if step.Plan != nil {
+				if schema != SchemaV3 || step.UseCheckpoint || step.UseOccupancy {
+					return b, fmt.Errorf("invalid input decision in %s", s.Name)
+				}
+				if _, err := decodeInputOutput(step.Expect); err != nil {
+					return b, err
+				}
+			} else if step.Plan != nil {
 				if _, err := validatePlan(*step.Plan); err != nil {
 					return b, fmt.Errorf("%s: %w", s.Name, err)
 				}

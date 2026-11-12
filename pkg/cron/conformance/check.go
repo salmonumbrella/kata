@@ -39,13 +39,19 @@ func Execute(ctx context.Context, a Adapter, s Scenario) (Answer, error) {
 		}
 		var output any
 		if step.Inputs != nil {
-            if step.UseCheckpoint || step.UseOccupancy { return answer, fmt.Errorf("sequence flags require a plan") }
-            bridge, ok := a.(InputDeliverer)
-            if !ok { return answer, fmt.Errorf("input decisions require InputDeliverer") }
-            out, err := bridge.DeliverInputs(ctx, *step.Inputs)
-            if err != nil { return answer, err }
-            output = out
-        } else if step.Plan != nil {
+			if step.UseCheckpoint || step.UseOccupancy {
+				return answer, fmt.Errorf("sequence flags require a plan")
+			}
+			bridge, ok := a.(InputDeliverer)
+			if !ok {
+				return answer, fmt.Errorf("input decisions require InputDeliverer")
+			}
+			out, err := bridge.DeliverInputs(ctx, *step.Inputs)
+			if err != nil {
+				return answer, err
+			}
+			output = out
+		} else if step.Plan != nil {
 			in := *step.Plan
 			if step.UseCheckpoint {
 				if plan == nil {
@@ -172,13 +178,17 @@ func NewSuite(ctx context.Context, schema string, d Declaration) (FixtureSuite, 
 		// have fixed workflow literals; never rematerialize their oracle.
 		suite.Scenarios = append(suite.Scenarios, workflow.Scenarios...)
 	}
-    if schema == SchemaV3 {
-        raw, err := fixtures.ReadFile("testdata/adapter-v3/inputs.json")
-        if err != nil { return suite, err }
-        inputs, err := loadBundleVersion(raw, SchemaV3)
-        if err != nil { return suite, err }
-        suite.Scenarios = append(suite.Scenarios, inputs.Scenarios...)
-    }
+	if schema == SchemaV3 {
+		raw, err := fixtures.ReadFile("testdata/adapter-v3/inputs.json")
+		if err != nil {
+			return suite, err
+		}
+		inputs, err := loadBundleVersion(raw, SchemaV3)
+		if err != nil {
+			return suite, err
+		}
+		suite.Scenarios = append(suite.Scenarios, inputs.Scenarios...)
+	}
 	return suite, nil
 }
 
@@ -355,7 +365,9 @@ func decodeSettleOutput(raw []byte) (SettleOutput, error) {
 
 // Decode DTOs before comparing: integers stay exact and times use UTC instants.
 func decodeOutput(raw []byte, step Decision, d Declaration) (any, error) {
-	if step.Inputs != nil { return decodeInputOutput(raw) }
+	if step.Inputs != nil {
+		return decodeInputOutput(raw)
+	}
 	if step.Plan == nil {
 		return decodeSettleOutput(raw)
 	}
