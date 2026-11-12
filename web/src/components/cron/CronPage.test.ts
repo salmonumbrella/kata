@@ -555,6 +555,7 @@ describe('CronPage', () => {
   it('links only safe AgentsView session addresses', async () => {
     const first = '11111111-1111-4111-8111-111111111111'
     const second = '22222222-2222-4222-8222-222222222222'
+    const third = '33333333-3333-4333-8333-333333333333'
     const priced = { agent: 'codex', state: 'priced', cost_source: 'reported' }
     serveRunUsage('agentsview', {
       usage: () =>
@@ -577,17 +578,30 @@ describe('CronPage', () => {
                 cost_microdollars: 1_205_000,
                 url: `http://example-user@127.0.0.1:8080/sessions/codex/${second}`,
               },
+              {
+                ...priced,
+                agent: 'claude',
+                session_id: third,
+                canonical_session_id: third,
+                cost_microdollars: 1_205_000,
+                url: `http://127.0.0.1:8080/sessions/claude/${third}`,
+              },
             ],
           }),
         ),
     })
     render(CronPage, { props: runSelectionProps() })
 
-    const link = await screen.findByRole('link', { name: 'Open in AgentsView' })
+    // Each link reads "Open in AgentsView" but is named for its session, so a
+    // screen reader's link list tells the sessions apart.
+    const link = await screen.findByRole('link', { name: `Open in AgentsView: codex ${first}` })
+    expect(link.textContent?.trim()).toBe('Open in AgentsView')
     expect(link.getAttribute('href')).toBe(`http://127.0.0.1:8080/sessions/codex/${first}`)
     expect(link.getAttribute('target')).toBe('_blank')
     expect(link.getAttribute('rel')).toBe('noopener noreferrer')
-    expect(screen.getAllByRole('link', { name: 'Open in AgentsView' })).toHaveLength(1)
+    const other = screen.getByRole('link', { name: `Open in AgentsView: claude ${third}` })
+    expect(other.getAttribute('href')).toBe(`http://127.0.0.1:8080/sessions/claude/${third}`)
+    expect(screen.getAllByRole('link')).toHaveLength(2)
     expect(screen.getByText('codex 22222222: $1.21')).not.toBeNull()
   })
 
