@@ -100,7 +100,7 @@ func TestDaemonMCPIdentityRequests(t *testing.T) {
 	handler, err := newDaemonMCPHandler(ctx, store, config.MCPConfig{
 		Actor: "configured-impostor", Projects: []string{project.Name},
 		StartupSections: []string{"issue_discovery", "issue_mutation", "projects"},
-	}, "", kitdaemon.Endpoint{Network: "tcp", Address: address.Host}, auth)
+	}, "", kitdaemon.Endpoint{Network: "tcp", Address: address.Host}, auth, false)
 	require.NoError(t, err)
 	gateway := httptest.NewServer(handler)
 	t.Cleanup(gateway.Close)
@@ -285,7 +285,7 @@ func TestDaemonMCPIdentitySessionsAndRequestsReleaseDaemonConnections(t *testing
 	defer cancel()
 	handler, err := newDaemonMCPHandler(ctx, store, config.MCPConfig{
 		Projects: []string{project.Name}, StartupSections: []string{"issue_discovery"},
-	}, "", kitdaemon.Endpoint{Network: kitdaemon.NetworkUnix, Address: socket}, auth)
+	}, "", kitdaemon.Endpoint{Network: kitdaemon.NetworkUnix, Address: socket}, auth, false)
 	require.NoError(t, err)
 	gateway := httptest.NewServer(handler)
 	t.Cleanup(gateway.Close)
@@ -364,7 +364,7 @@ func TestDaemonMCPIdentityModernDrainsActivityAfterResponse(t *testing.T) {
 		original := http.DefaultTransport
 		http.DefaultTransport = rest.Client().Transport
 		defer func() { http.DefaultTransport = original }()
-		handler, err := newDaemonMCPHandler(t.Context(), store, config.MCPConfig{AllProjects: true, StartupSections: []string{"projects"}}, "", kitdaemon.Endpoint{Network: "tcp", Address: "127.0.0.1:7777"}, auth)
+		handler, err := newDaemonMCPHandler(t.Context(), store, config.MCPConfig{AllProjects: true, StartupSections: []string{"projects"}}, "", kitdaemon.Endpoint{Network: "tcp", Address: "127.0.0.1:7777"}, auth, false)
 		require.NoError(t, err)
 		callCtx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()

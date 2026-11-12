@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -313,7 +314,7 @@ func TestDaemonMCPSelfCallsBypassHTTPProxy(t *testing.T) {
 			defer cancel()
 			handler, err := newDaemonMCPHandler(ctx, store, config.MCPConfig{Actor: "gateway-agent", AllProjects: true}, "test-mcp-token",
 				kitdaemon.Endpoint{Network: "tcp", Address: backendURL.Host},
-				tt.auth)
+				tt.auth, false)
 			require.NoError(t, err)
 			gateway := httptest.NewServer(handler)
 			defer gateway.Close()
@@ -373,7 +374,7 @@ func TestDaemonMCPProjectScope(t *testing.T) {
 			require.NoError(t, err)
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
-			handler, err := newDaemonMCPHandler(ctx, store, cfg.MCP, "test-mcp-token", kitdaemon.Endpoint{Network: "tcp", Address: address.Host}, config.AuthConfig{Token: "daemon-token"})
+			handler, err := newDaemonMCPHandler(ctx, store, cfg.MCP, "test-mcp-token", kitdaemon.Endpoint{Network: "tcp", Address: address.Host}, config.AuthConfig{Token: "daemon-token"}, false)
 			if tt.wantError != "" {
 				require.EqualError(t, err, tt.wantError)
 				return
@@ -438,5 +439,46 @@ func TestDaemonMCPSelfEndpointUsesIPv4LoopbackForWildcards(t *testing.T) {
 		self, err := daemonMCPSelfEndpoint(kitdaemon.Endpoint{Network: kitdaemon.NetworkTCP, Address: listen})
 		require.NoError(t, err)
 		require.Equal(t, want, self.Address, listen)
+	}
+}
+
+func TestDaemonMCPCronUsageCatalog(t *testing.T) {
+	home := deploymentHome(t)
+	store := openKataTestDB(t, filepath.Join(home, "kata.db"))
+	t.Cleanup(func() { require.NoError(t, store.Close()) })
+	_, _, err := store.CreateAPIToken(t.Context(), db.CreateAPITokenParams{PlaintextToken: "member-token", Actor: "example-agent", AdminActor: db.BootstrapActor})
+	require.NoError(t, err)
+	for _, identity := range []bool{false, true} {
+		for _, enabled := range []bool{false, true} {
+			t.Run(fmt.Sprintf("identity=%t/enabled=%t", identity, enabled), func(t *testing.T) {
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				auth := config.AuthConfig{Token: "bootstrap-token", RequireTokenIdentity: identity}
+				handler, err := newDaemonMCPHandler(ctx, store, config.MCPConfig{AllProjects: true, Actor: "example-agent", StartupSections: []string{"cron"}}, "test-mcp-token", kitdaemon.Endpoint{Network: "tcp", Address: "127.0.0.1:7777"}, auth, enabled)
+				require.NoError(t, err)
+				gateway := httptest.NewServer(handler)
+				defer gateway.Close()
+				transport := newAuthenticatedMCPHTTPTestTransport(gateway.URL + "/mcp")
+				if identity {
+					transport.HTTPClient.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+						clone := r.Clone(r.Context())
+						clone.Header.Set("Authorization", "Bearer member-token")
+						return http.DefaultTransport.RoundTrip(clone)
+					})
+				}
+				session, err := newMCPHTTPTestClient().Connect(ctx, transport, &sdkmcp.ClientSessionOptions{ProtocolVersion: "2025-11-25"})
+				require.NoError(t, err)
+				defer func() { _ = session.Close() }()
+				tools, err := session.ListTools(ctx, nil)
+				require.NoError(t, err)
+				found := false
+				for _, tool := range tools.Tools {
+					if tool.Name == "kata.cron_run_usage" {
+						found = true
+					}
+				}
+				require.Equal(t, enabled, found)
+			})
+		}
 	}
 }

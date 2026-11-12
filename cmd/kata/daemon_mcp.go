@@ -28,7 +28,7 @@ func daemonMCPUnavailableHandler(err error) http.Handler {
 	})
 }
 
-func newDaemonMCPHandler(ctx context.Context, store db.Storage, cfg config.MCPConfig, token string, endpoint kitdaemon.Endpoint, auth config.AuthConfig) (http.Handler, error) {
+func newDaemonMCPHandler(ctx context.Context, store db.Storage, cfg config.MCPConfig, token string, endpoint kitdaemon.Endpoint, auth config.AuthConfig, cronUsage bool) (http.Handler, error) {
 	scope, err := daemonMCPScope(ctx, store, cfg)
 	if err != nil {
 		return nil, err
@@ -38,7 +38,7 @@ func newDaemonMCPHandler(ctx context.Context, store db.Storage, cfg config.MCPCo
 		return nil, err
 	}
 	if auth.RequireTokenIdentity {
-		return newDaemonMCPIdentityHandler(ctx, store, cfg, scope, endpoint, auth)
+		return newDaemonMCPIdentityHandler(ctx, store, cfg, scope, endpoint, auth, cronUsage)
 	}
 	resolved := client.ResolvedDaemon{
 		Address: endpoint.Address, Network: endpoint.Network, BaseURL: endpoint.BaseURL(),
@@ -64,7 +64,7 @@ func newDaemonMCPHandler(ctx context.Context, store db.Storage, cfg config.MCPCo
 			Client: apiClient, LongRunningClient: longRunningClient,
 			Scope: scope, Actor: cfg.Actor, Version: version.Version,
 			StartupSections: cfg.StartupSections, ObserveToolCall: observe,
-			Events: events, Admission: admission,
+			Events: events, Admission: admission, CronUsage: cronUsage,
 		})
 	}
 	legacy, err := newServer(false)

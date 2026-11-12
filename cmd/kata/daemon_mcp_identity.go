@@ -47,7 +47,7 @@ func (s *modernTokenStates) get(ctx context.Context, id string, expiration time.
 	return state
 }
 
-func newDaemonMCPIdentityHandler(ctx context.Context, store db.Storage, cfg config.MCPConfig, scope *mcpserver.Scope, endpoint kitdaemon.Endpoint, auth config.AuthConfig) (http.Handler, error) {
+func newDaemonMCPIdentityHandler(ctx context.Context, store db.Storage, cfg config.MCPConfig, scope *mcpserver.Scope, endpoint kitdaemon.Endpoint, auth config.AuthConfig, cronUsage bool) (http.Handler, error) {
 	// Each legacy session or modern request owns its clients and reporter.
 	// The daemon's Unix listener never times out idle connections, so a
 	// session that kept its pool would hold them forever.
@@ -88,7 +88,7 @@ func newDaemonMCPIdentityHandler(ctx context.Context, store db.Storage, cfg conf
 			Client: apiClient, LongRunningClient: longRunningClient,
 			Scope: scope, Actor: actor, Version: version.Version,
 			StartupSections: cfg.StartupSections,
-			ObserveToolCall: observe, Events: modern, Admission: admission, LoadedSections: loaded,
+			ObserveToolCall: observe, Events: modern, Admission: admission, LoadedSections: loaded, CronUsage: cronUsage,
 		})
 		if err != nil {
 			release()

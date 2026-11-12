@@ -56,7 +56,7 @@ func mountEventsEndpoint(t *testing.T, env *testenv.Env, identity bool, projects
 	require.NoError(t, err)
 	handler, err := newDaemonMCPHandler(t.Context(), env.DB, config.MCPConfig{
 		AllProjects: projects == nil, Projects: projects, Actor: "example-agent", StartupSections: sections,
-	}, "test-mcp-token", kitdaemon.Endpoint{Network: "tcp", Address: address.Host}, config.AuthConfig{Token: "bootstrap-token", RequireTokenIdentity: identity})
+	}, "test-mcp-token", kitdaemon.Endpoint{Network: "tcp", Address: address.Host}, config.AuthConfig{Token: "bootstrap-token", RequireTokenIdentity: identity}, false)
 	require.NoError(t, err)
 	gateway := httptest.NewServer(handler)
 	t.Cleanup(gateway.Close)
