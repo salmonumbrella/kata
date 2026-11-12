@@ -301,9 +301,14 @@ describe('CronPage', () => {
     expect(await screen.findByText(`Run ${runC}`)).not.toBeNull()
     await fireEvent.click(screen.getByRole('button', { name: 'Open issue' }))
     expect(current.onOpenIssue).toHaveBeenCalledWith(issueUID)
-    // A job still in the catalog opens from the run.
+    // A job still in the catalog opens from the run. Refresh is disabled until
+    // a project's records arrive and busy until every read settles, so the
+    // catalog has settled once it is neither.
     const refresh = screen.getByRole('button', { name: 'Refresh' })
-    await waitFor(() => expect(refresh.getAttribute('aria-busy')).toBeNull())
+    await waitFor(() => {
+      expect(refresh.hasAttribute('disabled')).toBe(false)
+      expect(refresh.getAttribute('aria-busy')).toBeNull()
+    })
     await fireEvent.click(screen.getByRole('button', { name: 'Daily review' }))
     const jobSelection = { kind: 'job', projectUID: exampleProject.uid, uid: jobUID }
     expect(current.onNavigate).toHaveBeenCalledWith(
