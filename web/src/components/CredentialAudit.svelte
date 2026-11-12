@@ -10,6 +10,7 @@
   } from '@kenn-io/kit-ui'
 
   import type { TokenOut } from '../lib/api/generated'
+  import { mediumTimestamp } from '../lib/kata/dates'
 
   type StateFilter = 'all' | TokenOut['state']
   type ScopeFilter = 'all' | 'scoped' | 'unscoped'
@@ -52,16 +53,6 @@
       )
     })
   })
-
-  function timestamp(value: string | null | undefined): string {
-    if (!value) return '—'
-    const parsed = new Date(value)
-    if (Number.isNaN(parsed.getTime())) return value
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    }).format(parsed)
-  }
 </script>
 
 <section class="credential-audit" aria-label="Credentials">
@@ -178,25 +169,25 @@
                 {/if}
               </td>
               <td data-label="Created">
-                <time datetime={token.created_at}>{timestamp(token.created_at)}</time>
+                <time datetime={token.created_at}>{mediumTimestamp(token.created_at)}</time>
               </td>
               <td data-label="Expires">
                 {#if token.expires_at}
-                  <time datetime={token.expires_at}>{timestamp(token.expires_at)}</time>
+                  <time datetime={token.expires_at}>{mediumTimestamp(token.expires_at)}</time>
                 {:else}
                   <span>—</span>
                 {/if}
               </td>
               <td data-label="Last observed use">
                 {#if token.last_used_at}
-                  <time datetime={token.last_used_at}>{timestamp(token.last_used_at)}</time>
+                  <time datetime={token.last_used_at}>{mediumTimestamp(token.last_used_at)}</time>
                 {:else}
                   <span>—</span>
                 {/if}
               </td>
               <td data-label="Revoked">
                 {#if token.revoked_at}
-                  <time datetime={token.revoked_at}>{timestamp(token.revoked_at)}</time>
+                  <time datetime={token.revoked_at}>{mediumTimestamp(token.revoked_at)}</time>
                 {:else}
                   <span>—</span>
                 {/if}

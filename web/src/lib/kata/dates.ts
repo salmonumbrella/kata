@@ -1,3 +1,16 @@
+const timestampFormat = new Intl.DateTimeFormat(undefined, {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+})
+
+// A medium date and short time in the reader's locale. An empty value is a
+// dash, and a value that does not parse is shown as given.
+export function mediumTimestamp(value: string | null | undefined): string {
+  if (!value) return '—'
+  const time = Date.parse(value)
+  return Number.isFinite(time) ? timestampFormat.format(time) : value
+}
+
 export function localDateString(date = new Date()): string {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
