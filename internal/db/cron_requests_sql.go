@@ -121,6 +121,9 @@ func (a CronSQL) Request(ctx context.Context, in RequestCronIn) (RequestCronOut,
 			resolution := cron.ResolveInputs(job.Definition, workflow, in.Inputs)
 			if len(resolution.Errors) > 0 {
 				problem := resolution.Errors[0]
+				if problem.Name == "" {
+					return fmt.Errorf("%w: %s", cron.ErrInvalid, problem.Message)
+				}
 				return fmt.Errorf("%w: %s: %s", cron.ErrInvalid, problem.Name, problem.Message)
 			}
 			if len(in.Inputs) > 0 {
