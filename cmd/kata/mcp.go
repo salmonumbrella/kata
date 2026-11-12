@@ -148,7 +148,7 @@ func newMCPServeCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("resolve MCP project scope: %w", err)
 			}
-			cronUsage := resolveMCPCronUsage(ctx, scope, apiClient)
+			cronUsage := resolveMCPCronUsage(ctx, command.ErrOrStderr(), scope, apiClient)
 			observe, stopReporting := startMCPAgentUseReporter(ctx, apiClient, resolved, false)
 			defer stopReporting()
 			// Events forwards to the daemon, which owns every subscription, and is
@@ -400,18 +400,22 @@ func resolveMCPRuntime(ctx context.Context, directory string) (client.ResolvedDa
 }
 
 // resolveMCPCronUsage discovers availability from the first scoped project.
-func resolveMCPCronUsage(ctx context.Context, scope *mcpserver.Scope, client *kataclient.Client) bool {
+func resolveMCPCronUsage(ctx context.Context, stderr io.Writer, scope *mcpserver.Scope, client *kataclient.Client) bool {
 	var catalogClient *kataclient.Client
 	if scope.Mode() == mcpserver.ScopeAll {
 		catalogClient = client
 	}
 	projects, err := scope.Projects(ctx, catalogClient, false)
-	if err != nil || len(projects) == 0 {
-		return false
+	if err == nil {
+		if len(projects) == 0 {
+			return false
+		}
+		var capabilities *generated.GetCronCapabilitiesResponse
+		capabilities, err = client.GetCronCapabilities(ctx, &generated.GetCronCapabilitiesRequestOptions{PathParams: &generated.GetCronCapabilitiesPath{ProjectID: projects[0].ID}})
+		if err == nil {
+			return capabilities.Usage.Source == generated.Agentsview
+		}
 	}
-	capabilities, err := client.GetCronCapabilities(ctx, &generated.GetCronCapabilitiesRequestOptions{PathParams: &generated.GetCronCapabilitiesPath{ProjectID: projects[0].ID}})
-	if err != nil {
-		return false
-	}
-	return capabilities.Usage.Source == generated.Agentsview
+	fmt.Fprintln(stderr, "kata mcp: cron usage discovery failed; reconnect to retry")
+	return false
 }

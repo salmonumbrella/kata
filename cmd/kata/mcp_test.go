@@ -1065,7 +1065,7 @@ func TestMCPCronUsageStartupDiscovery(t *testing.T) {
 			t.Cleanup(daemon.Close)
 			client, err := kataclient.NewWithHTTPClient(daemon.URL, daemon.Client())
 			require.NoError(t, err)
-			got := resolveMCPCronUsage(t.Context(), mcpserver.NewAllScope(), client)
+			got := resolveMCPCronUsage(t.Context(), io.Discard, mcpserver.NewAllScope(), client)
 			require.Equal(t, tc.want, got)
 			require.Equal(t, tc.wantRequests, requests)
 		})
@@ -1090,7 +1090,7 @@ func TestMCPCronUsageStartupDiscovery(t *testing.T) {
 			t.Cleanup(daemon.Close)
 			client, err := kataclient.NewWithHTTPClient(daemon.URL, daemon.Client())
 			require.NoError(t, err)
-			require.True(t, resolveMCPCronUsage(t.Context(), scope, client))
+			require.True(t, resolveMCPCronUsage(t.Context(), io.Discard, scope, client))
 			require.Equal(t, []string{"/api/v1/projects/42/cron/capabilities"}, paths)
 		})
 	}

@@ -1257,12 +1257,7 @@ func (h toolHandlers) daemonSupportsAPIVersion(ctx context.Context, required str
 	if health.APISchemaVersion != nil {
 		version = strings.TrimSpace(*health.APISchemaVersion)
 	}
-	return apiVersionAtLeast(version, required), nil
-}
-
-func apiVersionAtLeast(version, required string) bool {
-	version = strings.TrimSpace(version)
-	return semver.IsValid("v"+version) && semver.Compare("v"+version, "v"+required) >= 0
+	return semver.IsValid("v"+version) && semver.Compare("v"+version, "v"+required) >= 0, nil
 }
 
 // closeEvidenceUIDRefs returns duplicate and superseding targets stored as
