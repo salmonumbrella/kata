@@ -807,6 +807,58 @@ func TestWebDaemonLogValueSanitizesControlCharacters(t *testing.T) {
 	assert.Equal(t, "remoteinjected", webDaemonLogValue("remote\x1b[2Jinjected"))
 }
 
+// The Cron page reads a switched-to daemon through the gateway with that
+// daemon's own credential. Only the exact cron list and run reads leave; the
+// browser's session, CSRF, cookie and forwarding headers never do.
+func TestWebDaemonGatewayForwardsOnlyCronReadsWithTargetCredential(t *testing.T) {
+	var forwarded []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "Bearer target-token", r.Header.Get("Authorization"))
+		for _, name := range []string{webSessionHeader, webCSRFHeader, "Cookie", "X-Kata-Actor", "X-Forwarded-For"} {
+			assert.Empty(t, r.Header.Get(name), name)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/api/v1/instance" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"web_ui_contract_version": api.UISnapshotContractVersion,
+				"web_ui_capabilities": api.UICapabilities{
+					Writable: true, Updates: "poll", ActorPolicy: "request",
+				},
+			})
+			return
+		}
+		forwarded = append(forwarded, r.Method+" "+r.URL.Path)
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	t.Cleanup(upstream.Close)
+	handler, manager := newAuthorizedWebDaemonGateway(t, false, true, config.CatalogDaemonConfig{
+		Name: "example-remote", URL: upstream.URL, Token: "target-token", AllowInsecure: true,
+	})
+	issued, err := manager.IssueSession(Principal{Kind: PrincipalWebLocal}, "/kata")
+	require.NoError(t, err)
+
+	const runUID = "01K00000000000000000000001"
+	for _, tail := range []string{"jobs", "workflows", "runs?limit=50", "runs/" + runUID} {
+		response := authorizedGatewayRequest(t, handler, manager, issued, http.MethodGet, "/api/v1/projects/1/cron/"+tail, nil, "")
+		assert.Equal(t, http.StatusOK, response.Code, tail+": "+response.Body.String())
+		assert.Contains(t, response.Header().Get("Cache-Control"), "no-store", tail)
+	}
+	for _, tail := range []string{"capabilities", "jobs/" + runUID, "workflows/" + runUID, "runs/" + runUID + "/usage"} {
+		response := authorizedGatewayRequest(t, handler, manager, issued, http.MethodGet, "/api/v1/projects/1/cron/"+tail, nil, "")
+		assert.Equal(t, http.StatusForbidden, response.Code, tail)
+	}
+	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
+		response := authorizedGatewayRequest(t, handler, manager, issued, method, "/api/v1/projects/1/cron/runs/"+runUID, strings.NewReader(`{}`), "")
+		assert.Equal(t, http.StatusForbidden, response.Code, method)
+	}
+	assert.Equal(t, []string{
+		"GET /api/v1/projects/1/cron/jobs",
+		"GET /api/v1/projects/1/cron/workflows",
+		"GET /api/v1/projects/1/cron/runs",
+		"GET /api/v1/projects/1/cron/runs/" + runUID,
+	}, forwarded)
+}
+
 func newAuthorizedWebDaemonGateway(
 	t *testing.T, insecureReadonly, writable bool, target config.CatalogDaemonConfig,
 ) (http.Handler, *WebSessionManager) {
