@@ -27,8 +27,9 @@ func Amount(microdollars int64, estimated bool) string {
 
 // TotalText describes a run's total as the daemon reported it, without
 // summing sessions. A partial total ends with how many of the recorded
-// sessions are not priced.
-func TotalText(state string, microdollars *int64, estimated bool, unpriced, sessions int) string {
+// sessions are not priced, or, when all are priced, that the recorded session
+// list is incomplete.
+func TotalText(state string, microdollars *int64, estimated, incomplete bool, unpriced, sessions int) string {
 	switch state {
 	case "unknown":
 		return "unknown"
@@ -37,7 +38,10 @@ func TotalText(state string, microdollars *int64, estimated bool, unpriced, sess
 			return "unknown"
 		}
 		total := Amount(*microdollars, estimated)
-		if state == "partial" {
+		switch {
+		case state == "partial" && unpriced == 0 && incomplete:
+			total += "+ (session list incomplete)"
+		case state == "partial":
 			total += fmt.Sprintf("+ (%d of %d sessions not priced)", unpriced, sessions)
 		}
 		return total

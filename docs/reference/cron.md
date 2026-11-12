@@ -740,9 +740,11 @@ be counted twice; this is an accepted limitation.
 In `kata tui`, opening a run on the Runs tab reads its cost once and shows it
 after the run's sessions, or explains why it is unavailable. Press `r` to
 refresh it; the last amount stays visible, marked refreshing, until the new
-answer arrives. Leaving the run discards its cost, and a late answer for a run
-or project you have left is ignored. A daemon without AgentsView usage shows
-no cost line and receives no usage request.
+answer arrives. While the first read is pending, `r` does not start another;
+press it again after the cost loads. Leaving the run discards its cost, and a
+late answer for a run or project you have left is ignored. A daemon without
+AgentsView usage shows no cost line and receives no usage request. If the TUI
+cannot read whether usage is on, the cost line says unavailable.
 
 ## Native issue planning dates
 
