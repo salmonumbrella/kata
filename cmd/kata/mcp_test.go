@@ -958,7 +958,7 @@ func TestMCPServeBindsProjectAndUsesStdoutOnlyForProtocol(t *testing.T) {
 // tool forwards the endpoint body and an explicit refresh without reshaping it.
 func TestMCPCronUsage(t *testing.T) {
 	const runUID = "01HAAAAAAAAAAAAAAAAAAAAAAA"
-	const body = `{"run_uid":"01HAAAAAAAAAAAAAAAAAAAAAAA","state":"complete","sessions":[],"sessions_incomplete":false,"estimated":false,"fetched_at":"2026-08-11T00:00:00Z","cost_microdollars":12345}`
+	const body = `{"run_uid":"01HAAAAAAAAAAAAAAAAAAAAAAA","state":"complete","sessions":[{"agent":"pi","session_id":"example-session","state":"priced","canonical_session_id":"example-session","cost_microdollars":12345,"cost_source":"reported"}],"sessions_incomplete":false,"estimated":false,"fetched_at":"2026-08-11T00:00:00Z","cost_microdollars":12345}`
 	for _, source := range []string{"agentsview", "none"} {
 		t.Run(source, func(t *testing.T) {
 			setupKataEnv(t)
