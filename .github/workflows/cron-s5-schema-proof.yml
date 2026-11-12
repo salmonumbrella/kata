@@ -1,0 +1,18 @@
+name: Cron request MCP schema proof
+on:
+  push:
+    branches: [proof/cron-s5-schema-red-20261112, proof/cron-s5-schema-green-20261112]
+permissions:
+  contents: read
+jobs:
+  schema:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go test -p 1 ./internal/mcp -run '^TestCronRequestInputsOutputSchema$' -count=1 -v
+      - run: test -z "$(gofmt -l internal/mcp/cron.go internal/mcp/cron_requests_test.go)"
