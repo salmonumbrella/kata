@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/mod/semver"
+
 	"go.kenn.io/kata/internal/cron"
 )
 
@@ -33,7 +35,11 @@ func (a inputTestBridge) DeliverInputs(_ context.Context, in InputDelivery) (Inp
 	if !declared && !fixed && !(in.HasWorkflow && workflowDeclared) && !in.RequestInputs {
 		return out, nil
 	}
-	if in.APIVersion < "0.48.0" {
+	minimum := "v0.48.0"
+	if in.RequestInputs {
+		minimum = "v0.49.0"
+	}
+	if semver.Compare("v"+in.APIVersion, minimum) < 0 {
 		return InputDeliveryOutput{Status: "cancelled", Message: "reason: inputs_unavailable", Env: map[string]string{}, Argv: []string{}}, nil
 	}
 	var resolution struct {
