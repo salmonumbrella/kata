@@ -107,7 +107,7 @@ function props(route: Partial<CronRoute>, projects: Project[], cursor = 1) {
   }
 }
 
-const sessionID = '01K0000000000000000000000S'
+const sessionID = '00000000-0000-4000-8000-000000000001'
 
 // A run recorded with one session, its project's usage source and the
 // daemon's usage answer for it.
@@ -137,7 +137,14 @@ function serveRunUsage(source: 'agentsview' | 'none') {
         fetched_at: '2026-10-01T09:30:00Z',
         sessions_incomplete: false,
         sessions: [
-          { agent: 'codex', session_id: sessionID, state: 'priced', cost_microdollars: 2_410_000 },
+          {
+            agent: 'codex',
+            session_id: sessionID,
+            canonical_session_id: sessionID,
+            state: 'priced',
+            cost_source: 'reported',
+            cost_microdollars: 2_410_000,
+          },
         ],
       })
     }
