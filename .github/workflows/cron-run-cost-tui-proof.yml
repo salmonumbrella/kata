@@ -25,3 +25,30 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go test -p 1 -v ./internal/tui -run '^TestCronRunUsage' -count=1
+      - if: always()
+        run: go test -p 1 -v ./internal/tui -run '^TestSnapshot_Cron' -count=1
+      - if: always()
+        run: go test -p 1 ./internal/tui -run 'Cron' -count=1
+      - if: always()
+        run: go test -p 1 -v ./internal/agentsview -count=1
+      - if: always()
+        run: go test -p 1 -v ./cmd/kata -run '^(TestCronUsageOutputStatesAndSanitization|TestCronUsageCommandOutputAndRefresh)$' -count=1
+
+  goldens:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go test -p 1 -v ./internal/tui -run '^TestSnapshot_CronRunCost$' -count=1 -update-goldens
+      - run: |
+          git status --short internal/tui/testdata/golden
+          for f in internal/tui/testdata/golden/cron-run-cost-*.txt; do printf '== %s\n' "$f"; cat "$f"; done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cron-run-cost-goldens
+          path: internal/tui/testdata/golden/cron-run-cost-*.txt
+          if-no-files-found: error
