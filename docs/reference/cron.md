@@ -324,8 +324,30 @@ In the TUI, press `R` on an eligible Jobs row or detail, or `X` on a running
 Runs row or detail. Confirm with `y`; `n` or Esc cancels the dialog. The TUI
 generates the UID just before submission and retains it for an explicit retry
 after an uncertain response. Job and run details list retained requests.
-The TUI cannot supply request inputs; use the CLI, REST API, or MCP when a
-required input has no default or fixed value.
+
+When the job or its workflow declares inputs and the daemon supports API
+0.49.0, `R` opens a request form instead of the dialog. Fields are sorted by
+name and prefilled with the resolved value; `*` marks a required field, and the
+focused field shows its type, limits, value source and description.
+
+- `Tab` and `Shift+Tab` move between fields. `←`/`→` choose a boolean or enum
+  value. Text and whole numbers are typed in place; `Ctrl+e` edits multiline
+  text in `$VISUAL` or `$EDITOR`.
+- `Ctrl+r` restores the focused field's resolved value. Only an input the
+  resolution left unset can return to `(unset)`; an emptied text field sends
+  `""`.
+- `Ctrl+o` submits the request. Only fields you changed are sent, so the rest
+  keep their job or default source. Invalid values are refused before anything
+  is sent. `Esc` cancels without a request.
+- A refusal from the hub shows its message and keeps the draft editable; the
+  next submit uses a new UID. After an uncertain response the values lock, and
+  `Ctrl+o` retries the same UID with the same values; `Esc` abandons it.
+- A declaration error, an undeclared fixed value, or an unnamed invalid value
+  opens no form and names the problem. If the job changes before submit, the
+  draft is dropped; press `R` again.
+
+Jobs without input keys, and daemons older than API 0.49.0, keep the `y`/`n`
+dialog. Input values are stored in plaintext, as described above.
 
 REST uses POST `/api/v1/projects/{project_id}/cron/jobs/{cron_uid}/requests`
 and POST `/api/v1/projects/{project_id}/cron/runs/{run_uid}/cancel-request`.
