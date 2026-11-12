@@ -178,3 +178,19 @@ func TestCronRequestInputsValidationUpdatesWhileEditing(t *testing.T) {
 	m, _ = press(m, ctrlKey('r'))
 	require.Contains(t, m.cron.action.inputs.general, "count")
 }
+
+func TestCronRequestInputsChoiceAndReset(t *testing.T) {
+	m, api := runtimeFixture(t, false)
+	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": true}
+	api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "flag", Type: "bool", Source: "default", Value: true}}}}
+	m, cmd := press(m, keyRune('R'))
+	m = runtimeDone(t, m, cmd)
+	m, _ = press(m, tea.KeyPressMsg{Code: tea.KeyRight})
+	values, err := m.cron.action.inputs.freeze()
+	require.NoError(t, err)
+	require.Equal(t, jsontext.Value("false"), values["flag"])
+	m, _ = press(m, ctrlKey('r'))
+	values, err = m.cron.action.inputs.freeze()
+	require.NoError(t, err)
+	require.Nil(t, values)
+}
