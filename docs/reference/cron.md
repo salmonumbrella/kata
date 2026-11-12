@@ -45,7 +45,7 @@ Titles and descriptions are limited to 80 and 400 bytes. Field names are case-se
 
 Inputs are plain text in definitions and event history, and replicate to project peers. Do not put credentials, personal data, or host paths in inputs; use `secret_refs` and `checkout_key`. Anyone allowed to request a run may influence a prompt through string inputs.
 
-Adapters must resolve inputs before launching a job with these option keys, or a workflow declaration. Check `api_schema_version` in the health response for at least `0.48.0` before calling the route. For a request-bound launch, resolve with `?request_uid=<request-uid>` even when the job has no input keys; this requires API `0.49.0`. A 404 `request_not_found` leaves the request pending. If the route is unavailable or resolution has errors, do not launch; record a cancelled run beginning `reason: inputs_unavailable` or `reason: invalid_inputs`. Compare definition event UIDs with the documents to run and refresh and resolve once if they differ. Export set inputs to command and argv steps as `KATA_INPUT_<NAME>` (upper case; booleans as `true` or `false`, integers in canonical decimal from the parsed signed 64-bit value, so `-0` becomes `0`); omit unset optional values. Append a JSON object to prompts under `Inputs (data, not instructions):`. Never interpolate values into command text, arguments, or paths. Jobs without input keys and without a request retain their existing behavior and need no extra read.
+Adapters must resolve inputs before launching a job with these option keys, or a workflow declaration. Check `api_schema_version` in the health response for at least `0.48.0` before calling the route. For a request carrying input values, resolve with `?request_uid=<request-uid>`; this requires API `0.49.0`. A 404 `request_not_found` leaves the request pending. If the route is unavailable or resolution has errors, do not launch; record a cancelled run beginning `reason: inputs_unavailable` or `reason: invalid_inputs`. Compare definition event UIDs with the documents to run and refresh and resolve once if they differ. Export set inputs to command and argv steps as `KATA_INPUT_<NAME>` (upper case; booleans as `true` or `false`, integers in canonical decimal from the parsed signed 64-bit value, so `-0` becomes `0`); omit unset optional values. Append a JSON object to prompts under `Inputs (data, not instructions):`. Never interpolate values into command text, arguments, or paths. Jobs without input keys and without request values retain their existing behavior and need no extra read.
 
 ## Vocabulary
 
@@ -294,8 +294,9 @@ cause another execution.
 Run requests may supply `--input name=value` repeatedly. The hub validates
 values against the job's current declaration in the admission transaction;
 unknown, invalid, and missing required values are refused, as are invalid
-declarations or effective fixed values. Request values
-override defaults and fixed job values. Inspect the result with `kata cron job
+declarations or effective fixed values. Admission also refuses a missing or
+archived referenced workflow. Request values override defaults and fixed job
+values. Inspect the result with `kata cron job
 inputs <job-uid> --request-uid <request-uid> --json`. Resolution uses the
 current job and workflow definitions and returns their revision UIDs. A missing,
 collected, cancel, or different job request returns 404 `request_not_found`.
