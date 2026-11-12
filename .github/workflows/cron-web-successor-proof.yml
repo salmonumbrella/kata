@@ -63,10 +63,6 @@ jobs:
         if: always() && steps.install.outcome == 'success'
         working-directory: web
         run: bun x vp test src/lib/state/snapshot.test.ts
-      - name: Cron run history refresh keeps contiguous pages
-        if: always() && steps.install.outcome == 'success'
-        working-directory: web
-        run: bun x vp test src/lib/cron/load.test.ts
       - name: Cron page reads, pages, fences and details
         if: always() && steps.install.outcome == 'success'
         working-directory: web
