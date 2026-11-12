@@ -384,6 +384,21 @@ func TestInputPromptSuffixAndCancellationFields(t *testing.T) {
 			if err != nil || len(report.Failed) != 0 {
 				t.Fatalf("%+v %v", report, err)
 			}
+			if scenario.Name == "inputs/invalid-inputs" {
+				for name, mutate := range map[string]func(*InputDeliveryOutput){
+					"status": func(o *InputDeliveryOutput) { o.Status = "launch"; o.Prompt = "" },
+					"reason": func(o *InputDeliveryOutput) { o.Message = "reason: wrong" },
+					"calls": func(o *InputDeliveryOutput) { o.Calls++ },
+					"refreshes": func(o *InputDeliveryOutput) { o.Refreshes++ },
+				} {
+					changed := out
+					mutate(&changed)
+					answer.Outputs[0], err = json.Marshal(changed)
+					if err != nil { t.Fatal(err) }
+					report, err := one.Check(t.Context(), []Answer{answer})
+					if err != nil || len(report.Failed) != 1 { t.Errorf("%s: %+v %v", name, report, err) }
+				}
+			}
 			if scenario.Name == "inputs/prompt-data" {
 				out.Prompt += " changed"
 				answer.Outputs[0], err = json.Marshal(out)
