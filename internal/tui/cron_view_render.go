@@ -351,9 +351,6 @@ func cronUsageField(d *cronDoc, u cronUsage) {
 		total += " · refreshing…"
 	}
 	d.field("Cost", total)
-	if usage.State != generated.Partial && usage.State != generated.RunUsageStateUnknown {
-		return
-	}
 	for _, s := range usage.Sessions {
 		if s.State != generated.Priced {
 			reason := agentsview.SessionText(string(s.State), nil, "", s.UnpricedModels, s.Candidates)

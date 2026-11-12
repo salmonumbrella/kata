@@ -344,9 +344,7 @@ func (a *cronReadTestAPI) CronUsageSource(context.Context, int64) (generated.Cro
 // CronRunUsage answers for whichever run is asked and records "uid refresh".
 func (a *cronReadTestAPI) CronRunUsage(_ context.Context, _ int64, uid string, refresh bool) (generated.RunUsage, error) {
 	a.usageReads = append(a.usageReads, fmt.Sprint(uid, " ", refresh))
-	usage := a.usage
-	usage.RunUID = uid
-	return usage, a.usageErr
+	return a.usage, a.usageErr
 }
 
 func (a *cronReadTestAPI) ListCronJobs(_ context.Context, id int64) ([]generated.CronJob, error) {

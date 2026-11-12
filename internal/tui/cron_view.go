@@ -149,9 +149,6 @@ func (m Model) cronUsageLoaded(msg cronUsageMsg) Model {
 	if msg.conn != m.connGen || msg.scope != m.scopeGen || msg.seq != m.cron.usageSeq || msg.uid != m.cron.usage.uid || msg.uid != m.cronUsageRun() {
 		return m
 	}
-	if msg.err == nil && msg.usage.RunUID != msg.uid {
-		msg.err = errors.New("usage answer names another run")
-	}
 	if msg.err == nil {
 		if err := msg.usage.State.Validate(); err != nil {
 			msg.err = errors.New("unsupported usage state")
