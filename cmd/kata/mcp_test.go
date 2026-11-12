@@ -1070,14 +1070,15 @@ func TestMCPCronUsageStartupDiscovery(t *testing.T) {
 		name, version, projects, capabilities string
 		status                                int
 		want                                  bool
-		wantError                             bool
 	}{
 		{name: "enabled", version: "0.46.0", projects: `{"projects":[{"id":42,"uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","name":"spoke-project","metadata":{},"revision":1,"created_at":"2026-08-11T00:00:00Z"}]}`, capabilities: `{"project_uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","event_features":[],"usage":{"source":"agentsview"}}`, want: true},
 		{name: "disabled", version: "0.46.0", projects: `{"projects":[{"id":42,"uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","name":"spoke-project","metadata":{},"revision":1,"created_at":"2026-08-11T00:00:00Z"}]}`, capabilities: `{"project_uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","event_features":[],"usage":{"source":"none"}}`},
 		{name: "no projects", version: "0.46.0", projects: `{"projects":[]}`},
-		{name: "old API", version: "0.45.0"},
-		{name: "capability failure", version: "0.46.0", projects: `{"projects":[{"id":42,"uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","name":"spoke-project","metadata":{},"revision":1,"created_at":"2026-08-11T00:00:00Z"}]}`, status: http.StatusForbidden, wantError: true},
-		{name: "catalog failure", version: "0.46.0", status: http.StatusInternalServerError, wantError: true},
+		{name: "old API", version: "0.45.0", status: http.StatusInternalServerError},
+		{name: "floor prerelease", version: "0.46.0-rc.1", status: http.StatusInternalServerError},
+		{name: "malformed version", version: "0.46.0+", status: http.StatusInternalServerError},
+		{name: "capability failure", version: "0.46.0", projects: `{"projects":[{"id":42,"uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","name":"spoke-project","metadata":{},"revision":1,"created_at":"2026-08-11T00:00:00Z"}]}`, status: http.StatusForbidden},
+		{name: "catalog failure", version: "0.46.0", status: http.StatusInternalServerError},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			requests := 0
@@ -1098,13 +1099,9 @@ func TestMCPCronUsageStartupDiscovery(t *testing.T) {
 			client, err := kataclient.NewWithHTTPClient(daemon.URL, daemon.Client())
 			require.NoError(t, err)
 			got, err := resolveMCPCronUsage(t.Context(), tc.version, mcpserver.NewAllScope(), client)
-			if tc.wantError {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tc.want, got)
-			}
-			if tc.name == "old API" {
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+			if tc.name == "old API" || tc.name == "floor prerelease" || tc.name == "malformed version" {
 				require.Zero(t, requests)
 			}
 			if tc.name == "no projects" {
