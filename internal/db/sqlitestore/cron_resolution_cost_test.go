@@ -77,9 +77,12 @@ func TestCronRequestResolutionEvidenceQueries(t *testing.T) {
 	raw := sql.OpenDB(evidenceConnector{driver: store.DB.Driver(), path: path, queries: &queries})
 	raw.SetMaxOpenConns(1)
 	t.Cleanup(func() { require.NoError(t, raw.Close()) })
-	server := daemon.NewServer(daemon.ServerConfig{DB: evidenceStore{Store: store, reader: &sqlitestore.Store{DB: raw}}})
+	cfg := daemon.ServerConfig{DB: evidenceStore{Store: store, reader: &sqlitestore.Store{DB: raw}}}
+	cfg.Auth.Token = "fixture-token"
+	server := daemon.NewServer(cfg)
 	t.Cleanup(func() { require.NoError(t, server.Close()) })
 	request := httptest.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("/api/v1/projects/%d/cron/jobs/%s/inputs?request_uid=%s", project.ID, job.UID, strings.ToLower(selected)), nil)
+	request.Header.Set("Authorization", "Bearer fixture-token")
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, request)
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
