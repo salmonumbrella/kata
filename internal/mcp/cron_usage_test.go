@@ -37,7 +37,10 @@ func TestCronRunUsageWireAndVersion(t *testing.T) {
 	t.Cleanup(daemon.Close)
 	client, err := kataclient.NewWithHTTPClient(daemon.URL, daemon.Client())
 	require.NoError(t, err)
-	server, err := New(Options{Client: client, ProjectID: 42, ProjectName: "spoke-project", Actor: "example-agent", CronUsage: true, StartupSections: []string{"cron"}})
+	options := defaultCatalogOptions(client)
+	options.CronUsage = true
+	options.StartupSections = []string{"cron"}
+	server, err := New(options)
 	require.NoError(t, err)
 	var wire bytes.Buffer
 	session := connectServerSession(t, server, nil, &wire)
