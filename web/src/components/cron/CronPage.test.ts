@@ -68,10 +68,6 @@ function urlOf(input: RequestInfo | URL): URL {
   return new URL(String(input), 'http://127.0.0.1')
 }
 
-function jobRead(url: URL): boolean {
-  return url.searchParams.get('job_uid') === jobUID
-}
-
 function serve(handler: Handler) {
   const fetcher = vi.fn<typeof fetch>(async (input) => handler(urlOf(input)))
   setGeneratedFetch(fetcher)
@@ -384,33 +380,27 @@ describe('CronPage', () => {
     expect(screen.queryByText('example-project: cron records could not be loaded.')).toBeNull()
   })
 
-  it('reads the catalog and the open job again on Refresh', async () => {
+  it('reads the catalog again on Refresh and keeps the open job', async () => {
     let jobsReads = 0
-    const fetcher = serve((url) => {
+    serve((url) => {
       if (url.pathname === cronPath(exampleProject, 'jobs')) {
         jobsReads += 1
         return Response.json({ jobs: [job(exampleProject, `Daily review ${jobsReads}`)] })
-      }
-      if (url.pathname === cronPath(exampleProject, 'runs') && url.searchParams.has('job_uid')) {
-        return Response.json({ runs: [run(exampleProject, runA, 1, { status: 'failed' })] })
       }
       return emptyCatalog(url) ?? notFound()
     })
     const selection = { kind: 'job' as const, projectUID: exampleProject.uid, uid: jobUID }
     render(CronPage, { props: props({ selection }, [exampleProject]) })
 
+    // The open job's definition comes from the catalog read.
     expect(await screen.findByRole('button', { name: 'Daily review 1' })).not.toBeNull()
-    await waitFor(() =>
-      expect(screen.getAllByRole('button', { name: /^failed · / })).toHaveLength(1),
-    )
+    expect(screen.getByText('Review open work')).not.toBeNull()
 
     const refresh = screen.getByRole('button', { name: 'Refresh' })
     await waitFor(() => expect(refresh.getAttribute('aria-busy')).toBeNull())
     await fireEvent.click(refresh)
 
     expect(await screen.findByRole('button', { name: 'Daily review 2' })).not.toBeNull()
-    const jobRuns = () => requested(fetcher, cronPath(exampleProject, 'runs')).filter(jobRead)
-    await waitFor(() => expect(jobRuns()).toHaveLength(2))
-    expect(jobRuns().map((url) => url.searchParams.get('limit'))).toEqual(['5', '5'])
+    expect(screen.getByText('Review open work')).not.toBeNull()
   })
 })
