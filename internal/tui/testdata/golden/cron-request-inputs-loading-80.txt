@@ -1,0 +1,24 @@
+ Project: example-project                                       kata カタ · dev
+kata カタ [jobs] runs workflows
+ Request run · Digest                                01ARZ3NDEKTSV4RRFFQ69G5FAV
+
+  Reading inputs…
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ esc cancel

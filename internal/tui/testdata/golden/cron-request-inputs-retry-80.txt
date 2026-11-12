@@ -1,0 +1,24 @@
+ Project: example-project                                       kata カタ · dev
+kata カタ [jobs] runs workflows
+ Request run · Digest                                01ARZ3NDEKTSV4RRFFQ69G5FAV
+
+▶ Batch size *:  50
+                 whole number 1 to 500 · required · changed
+                 Rows imported per transaction; larger batches finish sooner but
+                 hold locks longer.
+  Dry run:       ‹ true ›
+  note:          (unset)
+  Target:        ‹ staging ›
+  Window:        30
+
+
+
+
+
+
+
+
+
+Response unavailable. ctrl+o retries request 01ARZ3NDEKTSV4RRFFQ69G5FB9:
+connection interrupted
+ ctrl+o retry▕ esc abandon

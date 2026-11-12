@@ -75,6 +75,11 @@ func TestSnapshot_CronRequestInputs(t *testing.T) {
 					}
 					next, cmd := press(m, ctrlKey('o'))
 					m = runtimeDone(t, next, cmd)
+					if tc.state == "retry" {
+						// The minted UID is random; pin the retained one for a stable frame.
+						require.NotEmpty(t, m.cron.action.requestUID)
+						m.cron.action.requestUID = "01ARZ3NDEKTSV4RRFFQ69G5FB9"
+					}
 				}
 			}
 			assertGolden(t, fmt.Sprintf("cron-request-inputs-%s-%d", tc.state, tc.width), m.View().Content)

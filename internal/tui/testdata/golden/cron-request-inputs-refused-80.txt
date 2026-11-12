@@ -1,0 +1,24 @@
+ Project: example-project                                       kata カタ · dev
+kata カタ [jobs] runs workflows
+ Request run · Digest                                01ARZ3NDEKTSV4RRFFQ69G5FAV
+
+▶ Batch size *:  50
+                 whole number 1 to 500 · required · changed
+                 Rows imported per transaction; larger batches finish sooner but
+                 hold locks longer.
+  Dry run:       ‹ true ›
+  note:          (unset)
+  Target:        ‹ staging ›
+  Window:        30
+
+
+
+
+
+
+
+
+
+Request refused: validation: batch_size: invalid input value
+ tab/shift+tab field▕ ←/→ choose▕ ctrl+r reset▕ ctrl+e edit text
+ ctrl+o request run ▕ esc cancel
