@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -12,6 +13,15 @@ import (
 	"go.kenn.io/kata/internal/teammate"
 	"go.kenn.io/kata/pkg/client/generated"
 )
+
+// CronUsageAPIFloor tracks the API version that introduced getCronRunUsage.
+// Recheck it against the landed endpoint version on every parent rebase.
+const CronUsageAPIFloor = "0.46.0"
+
+type CronRunUsageInput struct {
+	CronIdentityInput
+	Refresh bool `json:"refresh,omitempty"`
+}
 
 // CronRunsInput requests a bounded project history page.
 type CronRunsInput struct {
@@ -67,6 +77,9 @@ func restrictCronSessionSchema(schema *jsonschema.Schema) {
 
 func registerCronRunTools(server *sdkmcp.Server, h toolHandlers) {
 	read := toolHints(true, false, false)
+	if h.options.CronUsage {
+		addCronTool(server, "kata.cron_run_usage", "Read cron run usage", "Read live run usage; refresh requests a fresh source lookup.", read, h.cronRunUsage)
+	}
 	addCronTool(server, "kata.cron_runs", "List cron run evidence", "Read bounded run observations with job filtering and next_before_uid pagination. Evidence does not prove or launch execution.", read, h.cronRuns)
 	addCronTool(server, "kata.cron_run", "Read cron run evidence", "Read one independently attributed run observation; never launches work or claims issue ownership.", read, h.cronRun)
 	addCronTool(server, "kata.cron_run_observe", "Record cron run evidence", "Record evidence using a retained run UID and expected_revision (0 for new). The summary replaces the previous summary; omitting sessions clears them. Identical retries are replayed. Does not launch work, claim ownership, or change linked issue status.", toolHints(false, true, false), h.cronRunObserve)
@@ -134,4 +147,24 @@ func (h toolHandlers) cronRunObserve(ctx context.Context, _ *sdkmcp.CallToolRequ
 		return nil, generated.ObserveCronRunResponse{}, err
 	}
 	return cronResult(h.options.Client.ObserveCronRun(ctx, &generated.ObserveCronRunRequestOptions{PathParams: &generated.ObserveCronRunPath{ProjectID: p.ID, RunUID: id}, Body: &generated.ObserveCronRunBody{Actor: &h.options.Actor, ExpectedRevision: in.ExpectedRevision, Teammate: optionalString(handle), JobUID: in.JobUID, DefinitionEventUID: in.DefinitionEventUID, WorkflowUID: in.WorkflowUID, WorkflowDefinitionEventUID: in.WorkflowDefinitionEventUID, IssueUID: in.IssueUID, OccurrenceKey: in.OccurrenceKey, ExecutorLabel: in.ExecutorLabel, Status: in.Status, Summary: summary, StartedAt: in.StartedAt, EndedAt: in.EndedAt}}))
+}
+
+func (h toolHandlers) cronRunUsage(ctx context.Context, _ *sdkmcp.CallToolRequest, in CronRunUsageInput) (*sdkmcp.CallToolResult, generated.GetCronRunUsageResponse, error) {
+	id, err := cronUID(in.UID)
+	if err != nil {
+		return nil, generated.GetCronRunUsageResponse{}, err
+	}
+	supported, err := h.daemonSupportsAPIVersion(ctx, CronUsageAPIFloor)
+	if err != nil {
+		return nil, generated.GetCronRunUsageResponse{}, err
+	}
+	if !supported {
+		return nil, generated.GetCronRunUsageResponse{}, fmt.Errorf("cron run usage requires daemon API %s or newer; upgrade the daemon", CronUsageAPIFloor)
+	}
+	project, err := h.createTarget(ctx, in.Project)
+	if err != nil {
+		return nil, generated.GetCronRunUsageResponse{}, err
+	}
+	h = h.withLongRunningClient()
+	return cronResult(h.options.Client.GetCronRunUsage(ctx, &generated.GetCronRunUsageRequestOptions{PathParams: &generated.GetCronRunUsagePath{ProjectID: project.ID, RunUID: id}, Query: &generated.GetCronRunUsageQuery{Refresh: &in.Refresh}}))
 }

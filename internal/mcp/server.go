@@ -52,6 +52,8 @@ type Options struct {
 	// it for stdio and the 2026-07-28 HTTP server only; the legacy-session
 	// server must not serve Events.
 	Events bool
+	// CronUsage exposes live usage when the serving daemon enables it.
+	CronUsage bool
 	// Admission is shared across servers of one process; nil creates its own.
 	Admission *ToolAdmission
 	// LoadedSections shares selected section IDs across servers; nil keeps selections local.

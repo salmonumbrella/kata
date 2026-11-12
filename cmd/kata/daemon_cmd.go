@@ -1684,7 +1684,7 @@ func runDaemonProcess(
 	docbankClient := docbank.New(dcfg.Docbank)
 	var mcpHandler http.Handler
 	if dcfg.MCP.Enabled {
-		mcpHandler, err = newDaemonMCPHandler(ctx, store, dcfg.MCP, startup.MCPToken, runtimeEndpoint, dcfg.Auth)
+		mcpHandler, err = newDaemonMCPHandler(ctx, store, dcfg.MCP, startup.MCPToken, runtimeEndpoint, dcfg.Auth, startup.AgentsView != nil && startup.AgentsView.Enabled())
 		rec.Metadata["mcp"] = "serving"
 		if err != nil {
 			mcpHandler = daemonMCPUnavailableHandler(err)

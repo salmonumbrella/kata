@@ -66,6 +66,7 @@ func registerSectionLoaders(server *sdkmcp.Server, options Options) error {
 	sections := toolSections(
 		options.StorageAdmin != nil,
 		options.EnableTokenAdmin && options.Scope.Mode() == ScopeAll,
+		options.CronUsage,
 	)
 	if options.Events {
 		for i := range sections {
@@ -128,8 +129,8 @@ func registerSectionLoaders(server *sdkmcp.Server, options Options) error {
 	return nil
 }
 
-func toolSections(storageAvailable, tokenAdminAvailable bool) []toolSection {
-	return []toolSection{
+func toolSections(storageAvailable, tokenAdminAvailable, cronUsage bool) []toolSection {
+	sections := []toolSection{
 		{
 			loader: "kata.load_activity", section: "activity", title: "Load activity tools",
 			description: "Load typed digest and event-stream tools, then refresh the MCP tool list.",
@@ -236,4 +237,12 @@ func toolSections(storageAvailable, tokenAdminAvailable bool) []toolSection {
 			tools:       []string{"kata.token_create", "kata.token_revoke", "kata.tokens"}, available: tokenAdminAvailable, register: registerTokenTools,
 		},
 	}
+	if cronUsage {
+		for i := range sections {
+			if sections[i].section == "cron" {
+				sections[i].tools = append(sections[i].tools, "kata.cron_run_usage")
+			}
+		}
+	}
+	return sections
 }
