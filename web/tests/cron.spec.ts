@@ -179,9 +179,11 @@ test('browses real cron jobs, runs and workflows across projects and daemons', a
   ).toBeVisible()
   await page.getByRole('button', { name: 'Open issue' }).click()
   await expect(page).toHaveURL(new RegExp(`\\?issue=${issue.uid}$`))
-  await expect(page.getByRole('region', { name: 'Task detail' })).toContainText(
-    'Fix nightly whitespace errors',
-  )
+  await expect(
+    page
+      .getByRole('region', { name: 'Kata issue detail' })
+      .getByRole('heading', { name: 'Fix nightly whitespace errors' }),
+  ).toBeVisible()
   await page.goBack()
   await expect(page).toHaveURL(new RegExp(`cron_uid=${failedRunUID}`))
   await expect(page.getByRole('dialog', { name: 'Run' })).toBeVisible()

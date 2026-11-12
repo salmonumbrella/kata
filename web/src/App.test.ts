@@ -1719,16 +1719,20 @@ describe('App', () => {
         const target = new URL(requestOf(input, init).url)
         if (target.pathname === '/api/v1/ui/daemons') return Response.json(daemonRoster())
         if (target.pathname === '/api/v1/ui/telemetry') return telemetryAccepted()
-        if (target.pathname === '/api/v1/ui/references') {
+        if (target.pathname.endsWith('/api/v1/ui/references')) {
           return Response.json({ issues: [], labels: [], owners: [], projects: [] })
         }
-        if (target.pathname === '/api/v1/ui/snapshot') {
+        if (target.pathname.endsWith('/api/v1/ui/snapshot')) {
           snapshotViews.push(target.searchParams.get('view'))
           return Response.json(snapshot(), { headers: { ETag: '"snapshot-1"' } })
         }
-        if (target.pathname === '/api/v1/projects/7/cron/jobs') return Response.json({ jobs: [] })
-        if (target.pathname === '/api/v1/projects/7/cron/runs') return Response.json({ runs: [] })
-        if (target.pathname === '/api/v1/projects/7/cron/workflows') {
+        if (target.pathname.endsWith('/api/v1/projects/7/cron/jobs')) {
+          return Response.json({ jobs: [] })
+        }
+        if (target.pathname.endsWith('/api/v1/projects/7/cron/runs')) {
+          return Response.json({ runs: [] })
+        }
+        if (target.pathname.endsWith('/api/v1/projects/7/cron/workflows')) {
           return Response.json({ workflows: [] })
         }
         return Response.json({ error: { code: 'not_found' } }, { status: 404 })
@@ -1760,6 +1764,9 @@ describe('App', () => {
         actor_policy: 'token',
         token_audit_read: false,
         scope: { kind: 'issue_subtree', project_uid: projectUID, root_issue_uid: issueUID },
+        expires_at: '2099-01-01T00:00:00Z',
+        allowed_actions: ['issue.read', 'issue.create_child'],
+        close_requires_evidence: true,
       },
     }
     const cronReads: string[] = []
@@ -1769,10 +1776,10 @@ describe('App', () => {
         const target = new URL(requestOf(input, init).url)
         if (target.pathname === '/api/v1/ui/daemons') return Response.json(daemonRoster())
         if (target.pathname === '/api/v1/ui/telemetry') return telemetryAccepted()
-        if (target.pathname === '/api/v1/ui/references') {
+        if (target.pathname.endsWith('/api/v1/ui/references')) {
           return Response.json({ issues: [], labels: [], owners: [], projects: [] })
         }
-        if (target.pathname === '/api/v1/ui/snapshot') {
+        if (target.pathname.endsWith('/api/v1/ui/snapshot')) {
           return Response.json(scoped, { headers: { ETag: '"snapshot-1"' } })
         }
         if (target.pathname.includes('/cron/')) cronReads.push(target.pathname)
@@ -1822,10 +1829,10 @@ describe('App', () => {
         const target = new URL(requestOf(input, init).url)
         if (target.pathname === '/api/v1/ui/daemons') return Response.json(daemonRoster())
         if (target.pathname === '/api/v1/ui/telemetry') return telemetryAccepted()
-        if (target.pathname === '/api/v1/ui/references') {
+        if (target.pathname.endsWith('/api/v1/ui/references')) {
           return Response.json({ issues: [], labels: [], owners: [], projects: [] })
         }
-        if (target.pathname === '/api/v1/ui/snapshot') {
+        if (target.pathname.endsWith('/api/v1/ui/snapshot')) {
           const selected = target.searchParams.get('selected_issue_uid')
           if (!selected) return Response.json(snapshot(), { headers: { ETag: '"snapshot-1"' } })
           selectedSnapshots.push(selected)
@@ -1846,14 +1853,16 @@ describe('App', () => {
             { headers: { ETag: '"snapshot-selected"' } },
           )
         }
-        if (target.pathname === '/api/v1/projects/7/cron/jobs') return Response.json({ jobs: [] })
-        if (target.pathname === '/api/v1/projects/7/cron/workflows') {
+        if (target.pathname.endsWith('/api/v1/projects/7/cron/jobs')) {
+          return Response.json({ jobs: [] })
+        }
+        if (target.pathname.endsWith('/api/v1/projects/7/cron/workflows')) {
           return Response.json({ workflows: [] })
         }
-        if (target.pathname === '/api/v1/projects/7/cron/runs') {
+        if (target.pathname.endsWith('/api/v1/projects/7/cron/runs')) {
           return Response.json({ runs: [run] })
         }
-        if (target.pathname === `/api/v1/projects/7/cron/runs/${runUID}`) {
+        if (target.pathname.endsWith(`/api/v1/projects/7/cron/runs/${runUID}`)) {
           return Response.json({ run })
         }
         return Response.json({ error: { code: 'not_found' } }, { status: 404 })
