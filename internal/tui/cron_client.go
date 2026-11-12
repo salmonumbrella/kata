@@ -397,7 +397,8 @@ func (c *Client) RequestCron(ctx context.Context, pid int64, id, kind, target, a
 	}
 	body := generated.CronRequestBody{UID: id, Actor: &actor}
 	if kind == db.CronRequestKindRun {
-		wire, callErr := client.RequestCronJobRunWithResponse(ctx, &generated.RequestCronJobRunRequestOptions{PathParams: &generated.RequestCronJobRunPath{ProjectID: pid, CronUID: target}, Body: &body})
+		runBody := generated.CronJobRequestRunBody{UID: id, Actor: &actor}
+		wire, callErr := client.RequestCronJobRunWithResponse(ctx, &generated.RequestCronJobRunRequestOptions{PathParams: &generated.RequestCronJobRunPath{ProjectID: pid, CronUID: target}, Body: &runBody})
 		if wire == nil {
 			return callErr
 		}
