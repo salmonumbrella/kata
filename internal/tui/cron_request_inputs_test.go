@@ -165,8 +165,8 @@ func TestCronRequestInputsChangedJobAndEditor(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, jsontext.Value(`"first\nsecond"`), values["note"])
 	m.cron.data.jobs[0].DefinitionEventUID = "changed"
-	m, cmd = press(m, ctrlKey('o'))
-	require.Nil(t, cmd)
+	m, _ = press(m, ctrlKey('o'))
+	require.Empty(t, api.calls, "a changed job must not send the request")
 	require.Nil(t, m.cron.action)
 	require.Contains(t, m.toast.text, "changed")
 }
