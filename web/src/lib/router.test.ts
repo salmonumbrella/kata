@@ -75,21 +75,7 @@ describe('canonical Kata routes', () => {
     },
   )
 
-  it('admits the Cron view without carrying issue workspace state', () => {
-    const route = parseRoute(
-      new URL(`https://daemon.example/kata?view=cron&issue=${issueUID}&label=ready`),
-    )
-    expect(route.kind).toBe('kata')
-    const shape = route as { view?: unknown; issueUID?: unknown }
-    expect(shape.view).toBe('cron')
-    expect(shape.issueUID).toBeUndefined()
-    const serialized = new URL(serializeRoute(route), 'https://daemon.example')
-    expect(serialized.searchParams.get('view')).toBe('cron')
-    expect(serialized.searchParams.has('issue')).toBe(false)
-    expect(serialized.searchParams.has('label')).toBe(false)
-  })
-
-  it('round-trips Cron tabs, filters and selection in a stable order', () => {
+  it('round-trips Cron tabs, filters and selection without issue workspace state', () => {
     const projectA = '01J00000000000000000000002'
     const projectB = '01J00000000000000000000003'
     const runUID = '01K00000000000000000000001'
@@ -98,7 +84,7 @@ describe('canonical Kata routes', () => {
         `https://daemon.example/kata?view=cron&cron_tab=runs&cron_project=${projectB}` +
           `&cron_project=${projectA}&cron_project=not-a-uid&cron_status=failed` +
           `&cron_status=bogus&cron_status=cancelled&cron_kind=run&cron_scope=${projectA}` +
-          `&cron_uid=${runUID}`,
+          `&cron_uid=${runUID}&issue=${issueUID}&label=ready`,
       ),
     )
 

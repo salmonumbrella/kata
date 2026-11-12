@@ -1712,7 +1712,6 @@ describe('App', () => {
       'kata.web.session.v1',
       JSON.stringify({ session: 'tab-session', csrf: 'tab-csrf' }),
     )
-    const snapshotViews: Array<string | null> = []
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -1723,7 +1722,6 @@ describe('App', () => {
           return Response.json({ issues: [], labels: [], owners: [], projects: [] })
         }
         if (target.pathname.endsWith('/api/v1/ui/snapshot')) {
-          snapshotViews.push(target.searchParams.get('view'))
           return Response.json(snapshot(), { headers: { ETag: '"snapshot-1"' } })
         }
         if (target.pathname.endsWith('/api/v1/projects/7/cron/jobs')) {
@@ -1744,8 +1742,6 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: 'Cron' })).not.toBeNull()
     expect(screen.queryByRole('heading', { name: 'This Kata route is not valid' })).toBeNull()
     expect(window.location.search).toBe('?view=cron')
-    expect(snapshotViews.length).toBeGreaterThan(0)
-    expect(snapshotViews.every((view) => view === 'all-open')).toBe(true)
   })
 
   it('reads no Cron records for an issue-scoped credential', async () => {

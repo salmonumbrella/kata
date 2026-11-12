@@ -124,15 +124,6 @@
         ? runRows.length
         : workflowRows.length,
   )
-  let tabHasRecords = $derived(
-    shown.some((entry) =>
-      route.tab === 'jobs'
-        ? entry.jobs.length > 0
-        : route.tab === 'runs'
-          ? entry.runs.length > 0
-          : entry.workflows.length > 0,
-    ),
-  )
   let filtered = $derived(route.projectUIDs.length > 0 || route.statuses.length > 0)
   let extended = $derived(shown.some((entry) => entry.extended))
   let pageable = $derived(shown.filter((entry) => entry.nextBeforeUID))
@@ -313,10 +304,6 @@
     if (selection && jobUID) select({ kind: 'job', projectUID: selection.projectUID, uid: jobUID })
   }
 
-  function workflowSelection(projectUID: string, uid: string): CronSelection {
-    return { kind: 'workflow', projectUID, uid }
-  }
-
   function select(selection: CronSelection | undefined): void {
     onNavigate({ ...route, selection })
   }
@@ -483,7 +470,7 @@
   {:else if loading && records.length === 0}
     <p class="cron-status" role="status">Loading cron records…</p>
   {:else if tabCount === 0}
-    {#if tabHasRecords || (filtered && records.some((entry) => !entry.failure))}
+    {#if filtered && records.some((entry) => !entry.failure)}
       <EmptyState title="Nothing matches these filters">
         <Button size="sm" label="Clear filters" onclick={clearFilters} />
       </EmptyState>
@@ -574,7 +561,8 @@
                 <button
                   type="button"
                   class="cron-row-link"
-                  onclick={() => select(workflowSelection(project.uid, workflow.uid))}
+                  onclick={() =>
+                    select({ kind: 'workflow', projectUID: project.uid, uid: workflow.uid })}
                 >
                   {workflow.name}
                 </button>
@@ -756,6 +744,54 @@
 
   .cron-drawer-status p {
     margin: 0;
+  }
+
+  /* Shared by the run, job and workflow detail bodies inside the drawer. */
+  :global(.cron-detail) {
+    display: grid;
+    gap: var(--space-4);
+    padding: var(--space-4) var(--space-5);
+    overflow-wrap: anywhere;
+  }
+
+  :global(.cron-detail dl) {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: var(--space-2) var(--space-4);
+    margin: 0;
+    font-size: var(--font-size-sm);
+  }
+
+  :global(.cron-detail dt) {
+    color: var(--text-muted);
+  }
+
+  :global(.cron-detail dd) {
+    margin: 0;
+  }
+
+  :global(.cron-detail h3) {
+    margin: 0;
+    font-size: var(--font-size-md);
+  }
+
+  :global(.cron-detail-text) {
+    white-space: pre-wrap;
+  }
+
+  :global(.cron-detail-section) {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  :global(.cron-detail-link) {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--accent-blue);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
   }
 
   @media (max-width: 640px) {

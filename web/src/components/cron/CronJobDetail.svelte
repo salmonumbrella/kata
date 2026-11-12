@@ -56,7 +56,7 @@
     </dd>
   </dl>
 
-  <section class="cron-detail-runs" aria-label="Recent runs">
+  <section class="cron-detail-section" aria-label="Recent runs">
     <h3>Recent runs</h3>
     {#if recentFailed}
       <p role="status">Recent runs could not be loaded.</p>
@@ -81,43 +81,6 @@
 </div>
 
 <style>
-  .cron-detail {
-    display: grid;
-    gap: var(--space-5);
-    padding: var(--space-4) var(--space-5);
-    overflow-wrap: anywhere;
-  }
-
-  dl {
-    display: grid;
-    grid-template-columns: max-content minmax(0, 1fr);
-    gap: var(--space-2) var(--space-4);
-    margin: 0;
-    font-size: var(--font-size-sm);
-  }
-
-  dt {
-    color: var(--text-muted);
-  }
-
-  dd {
-    margin: 0;
-  }
-
-  .cron-detail-text {
-    white-space: pre-wrap;
-  }
-
-  .cron-detail-runs {
-    display: grid;
-    gap: var(--space-3);
-  }
-
-  h3 {
-    margin: 0;
-    font-size: var(--font-size-md);
-  }
-
   p {
     margin: 0;
     color: var(--text-secondary);
@@ -136,16 +99,6 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
-  }
-
-  .cron-detail-link {
-    border: 0;
-    padding: 0;
-    background: transparent;
-    color: var(--accent-blue);
-    font: inherit;
     font-size: var(--font-size-sm);
-    text-align: left;
-    cursor: pointer;
   }
 </style>

@@ -7,6 +7,7 @@ import {
   type CronRun,
   type CronWorkflow,
 } from '../api/generated'
+import type { KataProjectSummary } from '../kata/types'
 
 // Run history loads one bounded page per project at a time, newest first.
 export const cronRunPageSize = 50
@@ -14,11 +15,7 @@ export const cronRecentJobRuns = 5
 // Never more reads in flight than this, however many projects are readable.
 export const cronReadConcurrency = 4
 
-export interface CronProject {
-  id: number
-  uid: string
-  name: string
-}
+export type CronProject = Pick<KataProjectSummary, 'id' | 'uid' | 'name'>
 
 export type CronReadFailure = 'forbidden' | 'not_found' | 'failed'
 

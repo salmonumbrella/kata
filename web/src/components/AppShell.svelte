@@ -365,11 +365,9 @@
       ? 'This credential is limited to one task, so it cannot read Cron.'
       : connectionStatus === 'Authentication required' || credentialExpired
         ? 'Sign in again to read Cron.'
-        : daemonSwitching
-          ? 'Connecting to the selected daemon.'
-          : stale || daemonError
-            ? 'Cron is paused until Kata reconnects.'
-            : undefined,
+        : daemonSwitching || stale || daemonError
+          ? 'Cron is paused until Kata reconnects.'
+          : undefined,
   )
   let projectWideMutationAllowed = $derived(canMutate && !scopedAuthority)
   let childParent = $derived.by<ChildParent | undefined>(() => {

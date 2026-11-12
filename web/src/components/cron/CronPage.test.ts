@@ -259,9 +259,9 @@ describe('CronPage', () => {
     expect(
       await screen.findByText('This project is not readable from the current connection.'),
     ).not.toBeNull()
-    expect(
-      fetcher.mock.calls.some(([input]) => String(input).includes(`/projects/${spokeProject.id}/`)),
-    ).toBe(false)
+    const paths = fetcher.mock.calls.map(([input]) => urlOf(input).pathname)
+    expect(paths.filter((path) => path.includes('/projects/undefined/'))).toEqual([])
+    expect(paths.filter((path) => path.endsWith(`/cron/runs/${runA}`))).toEqual([])
   })
 
   it('ignores a late catalog response after the projects change and change back', async () => {
@@ -285,11 +285,17 @@ describe('CronPage', () => {
     await waitFor(() => expect(pending).toHaveLength(2))
     expect(screen.queryByRole('button', { name: 'Spoke review' })).toBeNull()
 
-    pending[0]!(Response.json({ jobs: [job(exampleProject, 'Stale review')] }))
     pending[1]!(Response.json({ jobs: [job(exampleProject, 'Current review')] }))
-
     expect(await screen.findByRole('button', { name: 'Current review' })).not.toBeNull()
+
+    // The stale read finishes last. The mock ignores the abort signal, so its
+    // body arrives; let its whole chain settle before checking nothing changed.
+    pending[0]!(Response.json({ jobs: [job(exampleProject, 'Stale review')] }))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    expect(screen.getByRole('button', { name: 'Current review' })).not.toBeNull()
     expect(screen.queryByRole('button', { name: 'Stale review' })).toBeNull()
+    expect(screen.queryByText('example-project: cron records could not be loaded.')).toBeNull()
   })
 
   it('reads the page and the open job again when the accepted cursor advances', async () => {
@@ -300,10 +306,7 @@ describe('CronPage', () => {
         return Response.json({ jobs: [job(exampleProject, `Daily review ${cursorReads}`)] })
       }
       if (url.pathname === cronPath(exampleProject, 'runs') && url.searchParams.has('job_uid')) {
-        const uid = cursorReads > 1 ? runA : runB
-        return Response.json({
-          runs: [run(exampleProject, uid, cursorReads, { status: 'failed' })],
-        })
+        return Response.json({ runs: [run(exampleProject, runA, 1, { status: 'failed' })] })
       }
       return emptyCatalog(url) ?? notFound()
     })
