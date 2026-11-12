@@ -14,6 +14,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// pressTop routes a key through the real top-level dispatcher, which owns the
+// open request form, and keeps the command it returns.
+func pressTop(t *testing.T, m Model, msg tea.KeyPressMsg) (Model, tea.Cmd) {
+	t.Helper()
+	next, cmd, handled := m.routeTopLevel(msg)
+	require.True(t, handled)
+	return next.(Model), cmd
+}
+
 func TestCronRequestInputDraftValues(t *testing.T) {
 	resolution := cron.InputResolution{Inputs: []cron.ResolvedInput{
 		{Name: "count", Type: "int", Source: "unset"},
@@ -33,21 +42,21 @@ func TestCronRequestInputsRefusalAndRetry(t *testing.T) {
 	m, api := runtimeFixture(t, false)
 	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"count": map[string]any{"type": "int"}}}
 	api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "count", Type: "int", Source: "unset"}}}}
-	m, cmd := press(m, keyRune('R'))
+	m, cmd := pressTop(t, m, keyRune('R'))
 	m = runtimeDone(t, m, cmd)
 	require.Equal(t, 1, api.inputCalls)
-	m, _ = press(m, keyRune('7'))
+	m, _ = pressTop(t, m, keyRune('7'))
 	api.errs = []error{&APIError{Status: http.StatusBadRequest, Message: "refused"}, errors.New("connection lost"), nil}
-	m, cmd = press(m, ctrlKey('o'))
+	m, cmd = pressTop(t, m, ctrlKey('o'))
 	m = runtimeDone(t, m, cmd)
 	require.NotNil(t, m.cron.action.inputs)
 	require.Empty(t, m.cron.action.requestUID)
 	require.Contains(t, m.cron.action.inputs.general, "refused")
-	m, cmd = press(m, ctrlKey('o'))
+	m, cmd = pressTop(t, m, ctrlKey('o'))
 	m = runtimeDone(t, m, cmd)
 	require.NotEmpty(t, m.cron.action.requestUID)
-	m, _ = press(m, keyRune('8'))
-	m, cmd = press(m, ctrlKey('o'))
+	m, _ = pressTop(t, m, keyRune('8'))
+	m, cmd = pressTop(t, m, ctrlKey('o'))
 	m = runtimeDone(t, m, cmd)
 	require.Len(t, api.calls, 3)
 	require.NotEqual(t, api.calls[0].id, api.calls[1].id)
@@ -71,7 +80,7 @@ func TestCronRequestInputsResolutionOutcomes(t *testing.T) {
 			m, api := runtimeFixture(t, false)
 			m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"count": map[string]any{"type": "int"}}}
 			api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "count", Type: "int", Required: tc.name == "required", Source: "unset"}}, Errors: []cron.InputError{tc.problem}}}
-			m, cmd := press(m, keyRune('R'))
+			m, cmd := pressTop(t, m, keyRune('R'))
 			m = runtimeDone(t, m, cmd)
 			if tc.form {
 				require.NotNil(t, m.cron.action.inputs)
@@ -90,12 +99,12 @@ func TestCronRequestInputsCompatibilityAndStaleRead(t *testing.T) {
 	m = m.dropCronAction()
 	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"count": map[string]any{"type": "int"}}}
 	api.inputsErr = errCronInputsUnsupported
-	m, cmd := press(m, keyRune('R'))
+	m, cmd := pressTop(t, m, keyRune('R'))
 	m = runtimeDone(t, m, cmd)
 	require.Equal(t, modalCronAction, m.modal)
 	m = m.dropCronAction()
-	m, cmd = press(m, keyRune('R'))
-	m, _ = press(m, tea.KeyPressMsg{Code: tea.KeyEscape})
+	m, cmd = pressTop(t, m, keyRune('R'))
+	m, _ = pressTop(t, m, tea.KeyPressMsg{Code: tea.KeyEscape})
 	m = runtimeDone(t, m, cmd)
 	require.Nil(t, m.cron.action)
 }
@@ -145,14 +154,14 @@ func TestCronRequestInputsChangedJob(t *testing.T) {
 			if tc.name == "read mismatch" {
 				api.inputsRead.DefinitionEventUID = "different"
 			}
-			m, cmd := press(m, keyRune('R'))
+			m, cmd := pressTop(t, m, keyRune('R'))
 			if tc.name == "local while loading" {
 				m.cron.data.jobs[0].DefinitionEventUID = "changed"
 			}
 			m = runtimeDone(t, m, cmd)
 			if tc.name == "local before submit" {
 				m.cron.data.jobs[0].DefinitionEventUID = "changed"
-				m, _ = press(m, ctrlKey('o'))
+				m, _ = pressTop(t, m, ctrlKey('o'))
 			}
 			require.Empty(t, api.calls)
 			require.Nil(t, m.cron.action)
@@ -165,7 +174,7 @@ func TestCronRequestInputsEditorReturn(t *testing.T) {
 	m, api := runtimeFixture(t, false)
 	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"note": map[string]any{"type": "string"}}}
 	api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "note", Type: "string", Multiline: true}}}}
-	m, cmd := press(m, keyRune('R'))
+	m, cmd := pressTop(t, m, keyRune('R'))
 	m = runtimeDone(t, m, cmd)
 	d := m.cron.action.inputs
 	m, _ = m.routeEditorReturn(editorReturnedMsg{formGen: d.formGen, content: "first\nsecond"})
@@ -178,10 +187,10 @@ func TestCronRequestInputsOptionalIntegerCleared(t *testing.T) {
 	m, api := runtimeFixture(t, false)
 	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"count": map[string]any{"type": "int"}}}
 	api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "count", Type: "int", Source: "unset"}}}}
-	m, cmd := press(m, keyRune('R'))
+	m, cmd := pressTop(t, m, keyRune('R'))
 	m = runtimeDone(t, m, cmd)
-	m, _ = press(m, keyRune('7'))
-	m, _ = press(m, tea.KeyPressMsg{Code: tea.KeyBackspace})
+	m, _ = pressTop(t, m, keyRune('7'))
+	m, _ = pressTop(t, m, tea.KeyPressMsg{Code: tea.KeyBackspace})
 	values, err := m.cron.action.inputs.freeze()
 	require.NoError(t, err)
 	require.NotContains(t, values, "count")
@@ -191,12 +200,12 @@ func TestCronRequestInputsValidationUpdatesWhileEditing(t *testing.T) {
 	m, api := runtimeFixture(t, false)
 	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"count": map[string]any{"type": "int"}}}
 	api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "count", Type: "int", Required: true, Source: "unset"}}, Errors: []cron.InputError{{Name: "count", Code: "missing_required"}}}}
-	m, cmd := press(m, keyRune('R'))
+	m, cmd := pressTop(t, m, keyRune('R'))
 	m = runtimeDone(t, m, cmd)
 	require.Contains(t, m.cron.action.inputs.general, "count")
-	m, _ = press(m, keyRune('7'))
+	m, _ = pressTop(t, m, keyRune('7'))
 	require.Empty(t, m.cron.action.inputs.general)
-	m, _ = press(m, ctrlKey('r'))
+	m, _ = pressTop(t, m, ctrlKey('r'))
 	require.Contains(t, m.cron.action.inputs.general, "count")
 }
 
@@ -204,13 +213,13 @@ func TestCronRequestInputsChoiceAndReset(t *testing.T) {
 	m, api := runtimeFixture(t, false)
 	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"flag": map[string]any{"type": "bool"}}}
 	api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "flag", Type: "bool", Source: "default", Value: true}}}}
-	m, cmd := press(m, keyRune('R'))
+	m, cmd := pressTop(t, m, keyRune('R'))
 	m = runtimeDone(t, m, cmd)
-	m, _ = press(m, tea.KeyPressMsg{Code: tea.KeyRight})
+	m, _ = pressTop(t, m, tea.KeyPressMsg{Code: tea.KeyRight})
 	values, err := m.cron.action.inputs.freeze()
 	require.NoError(t, err)
 	require.Equal(t, jsontext.Value("false"), values["flag"])
-	m, _ = press(m, ctrlKey('r'))
+	m, _ = pressTop(t, m, ctrlKey('r'))
 	values, err = m.cron.action.inputs.freeze()
 	require.NoError(t, err)
 	require.Nil(t, values)
@@ -232,12 +241,14 @@ func TestCronRequestInputsMouseKeepsDraft(t *testing.T) {
 	m.width = 80
 	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"count": map[string]any{"type": "int"}}}
 	api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "count", Type: "int", Source: "unset"}}}}
-	m, cmd := press(m, keyRune('R'))
+	m, cmd := pressTop(t, m, keyRune('R'))
 	m = runtimeDone(t, m, cmd)
-	m, _ = press(m, keyRune('7'))
-	m, _ = m.routeMouse(tea.MouseClickMsg{X: 1, Y: 2, Button: tea.MouseLeft})
+	m, _ = pressTop(t, m, keyRune('7'))
+	next, _, handled := m.routeTopLevel(tea.MouseClickMsg{X: 1, Y: 2, Button: tea.MouseLeft})
+	require.True(t, handled)
+	m = next.(Model)
 	require.False(t, m.cron.filtering)
-	m, cmd = press(m, ctrlKey('o'))
+	m, cmd = pressTop(t, m, ctrlKey('o'))
 	m = runtimeDone(t, m, cmd)
 	require.Len(t, api.calls, 1)
 	require.Equal(t, jsontext.Value("7"), api.inputValues[0]["count"])
@@ -249,20 +260,20 @@ func TestCronRequestInputsUnreadableLiveCheckKeepsDraft(t *testing.T) {
 			m, api := runtimeFixture(t, false)
 			m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"count": map[string]any{"type": "int"}}}
 			api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "count", Type: "int", Source: "unset"}}}}
-			m, cmd := press(m, keyRune('R'))
+			m, cmd := pressTop(t, m, keyRune('R'))
 			m = runtimeDone(t, m, cmd)
-			m, _ = press(m, keyRune('7'))
+			m, _ = pressTop(t, m, keyRune('7'))
 			api.showErr = readErr
-			m, cmd = press(m, ctrlKey('o'))
+			m, cmd = pressTop(t, m, ctrlKey('o'))
 			m = runtimeDone(t, m, cmd)
 			require.NotNil(t, m.cron.action)
 			require.Empty(t, m.cron.action.requestUID)
 			require.False(t, m.cron.action.inflight)
 			require.NotContains(t, m.cron.action.inputs.general, "Request refused")
 			require.Empty(t, api.calls)
-			m, _ = press(m, keyRune('8'))
+			m, _ = pressTop(t, m, keyRune('8'))
 			api.showErr = nil
-			m, cmd = press(m, ctrlKey('o'))
+			m, cmd = pressTop(t, m, ctrlKey('o'))
 			m = runtimeDone(t, m, cmd)
 			require.Equal(t, jsontext.Value("78"), api.inputValues[0]["count"])
 		})
@@ -273,7 +284,7 @@ func TestCronRequestInputsUnnamedDiagnostic(t *testing.T) {
 	m, api := runtimeFixture(t, false)
 	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"count": map[string]any{"type": "int"}}}
 	api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{Errors: []cron.InputError{{Code: "declaration_invalid", Message: "invalid declaration"}}}}
-	m, cmd := press(m, keyRune('R'))
+	m, cmd := pressTop(t, m, keyRune('R'))
 	m = runtimeDone(t, m, cmd)
 	require.NotContains(t, m.toast.text, ": : ")
 	require.Contains(t, m.toast.text, ": invalid declaration; fix the definition")
