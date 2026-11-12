@@ -289,9 +289,10 @@ describe('CronPage', () => {
     expect(await screen.findByRole('button', { name: 'Current review' })).not.toBeNull()
 
     // The stale read finishes last. The mock ignores the abort signal, so its
-    // body arrives; let its whole chain settle before checking nothing changed.
+    // body arrives. One zero-delay timer turn flushes the queued promise and
+    // render continuations of that chain before checking nothing changed.
     pending[0]!(Response.json({ jobs: [job(exampleProject, 'Stale review')] }))
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(screen.getByRole('button', { name: 'Current review' })).not.toBeNull()
     expect(screen.queryByRole('button', { name: 'Stale review' })).toBeNull()
