@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mattn/go-runewidth"
+	"go.kenn.io/kata/internal/agentsview"
 	"go.kenn.io/kata/pkg/client/generated"
 	"go.kenn.io/kit/tui/helplayout"
 	"go.kenn.io/kit/tui/termtext"
@@ -278,6 +279,9 @@ func cronDetail(m Model, ref cronRef) (string, string, []cronLine) {
 			if r.Summary.SessionsIncomplete != nil && *r.Summary.SessionsIncomplete {
 				d.field("Sessions", "incomplete")
 			}
+			if m.cron.usage.uid == r.UID {
+				cronUsageField(&d, m.cron.usage)
+			}
 			d.section("Message")
 			d.text(deref(r.Summary.Message), cronRef{})
 			d.section("Recorded with")
@@ -322,6 +326,40 @@ func cronDetail(m Model, ref cronRef) (string, string, []cronLine) {
 		d.text("this "+[]string{"", "job", "run", "workflow"}[ref.kind]+" is no longer in the loaded data", cronRef{})
 	}
 	return cronTabNames[ref.kind] + " / " + sanitizeForLine(name), "", d.lines
+}
+
+// cronUsageField shows the open run's live cost as the daemon totals it. A
+// partial or unknown total lists why each remaining session is not priced.
+func cronUsageField(d *cronDoc, u cronUsage) {
+	switch {
+	case u.err != nil:
+		d.field("Cost", "unavailable: "+sanitizeForLine(u.err.Error())+" · r to retry")
+		return
+	case u.result == nil:
+		d.field("Cost", "loading…")
+		return
+	}
+	usage := *u.result
+	unpriced := 0
+	for _, s := range usage.Sessions {
+		if s.State != generated.Priced {
+			unpriced++
+		}
+	}
+	total := agentsview.TotalText(string(usage.State), usage.CostMicrodollars, usage.Estimated, unpriced, len(usage.Sessions))
+	if u.loading {
+		total += " · refreshing…"
+	}
+	d.field("Cost", total)
+	if usage.State != generated.Partial && usage.State != generated.RunUsageStateUnknown {
+		return
+	}
+	for _, s := range usage.Sessions {
+		if s.State != generated.Priced {
+			reason := agentsview.SessionText(string(s.State), nil, "", s.UnpricedModels, s.Candidates)
+			d.text(strings.Repeat(" ", d.labelWidth+1)+s.Agent+" "+s.SessionID[:min(8, len(s.SessionID))]+": "+reason, cronRef{})
+		}
+	}
 }
 func cronDefinitionLink(d *cronDoc, p cronData, uid, revision string, workflow bool) {
 	if uid == "" {
@@ -422,6 +460,7 @@ func renderCron(m Model) string {
 			{"jobs", m.cron.data.jobsErr},
 			{"workflows", m.cron.data.workflowsErr},
 			{"runs", m.cron.data.runsErr},
+			{"usage", m.cron.data.usageErr},
 		} {
 			if read.err != nil {
 				errors = append(errors, errorStyle.Render(truncate(sanitizeForLine(read.name+": "+read.err.Error()), m.width)))

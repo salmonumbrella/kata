@@ -77,7 +77,7 @@ func (d tuiRequestDoer) Do(ctx context.Context, req *http.Request) (*http.Respon
 }
 
 func (c *Client) sendRequest(ctx context.Context, req *http.Request) (*http.Response, error) {
-	hc := c.httpClient()
+	hc := usageHTTPClient(ctx, c.httpClient())
 	if hc == nil {
 		return nil, fmt.Errorf("%s %s: daemon client is not initialized", req.Method, req.URL.RequestURI())
 	}
@@ -1259,7 +1259,7 @@ func (c *Client) retryLocalTransportFailure(ctx context.Context, original *http.
 			return nil, reqErr
 		}
 	}
-	resp, retryErr := hc.Do(req) //nolint:gosec // G704: c.base built from our own daemon discovery
+	resp, retryErr := usageHTTPClient(ctx, hc).Do(req) //nolint:gosec // G704: c.base built from our own daemon discovery
 	if retryErr != nil {
 		logTUIClientTransport("retry failed", method, path, c.base, retryErr)
 		return nil, transportError(method, path, c.base, retryErr)

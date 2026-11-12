@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	kataapi "go.kenn.io/kata/internal/api"
 	"go.kenn.io/kata/internal/cron"
@@ -24,6 +25,8 @@ type cronAPI interface {
 	PutCronWorkflow(ctx context.Context, projectID int64, uid string, write kataapi.PutCronWorkflowBody) error
 	ListCronRuns(context.Context, int64) ([]generated.CronRun, error)
 	readCronParent(ctx context.Context, projectID int64, parentUID string) (cronParent, error)
+	CronUsageSource(context.Context, int64) (generated.CronUsageSourceSource, error)
+	CronRunUsage(ctx context.Context, projectID int64, runUID string, refresh bool) (generated.RunUsage, error)
 }
 
 // cronConflictCurrent returns the server's current record from a refused
@@ -96,6 +99,62 @@ func (c *Client) ListCronRuns(ctx context.Context, projectID int64) ([]generated
 		return nil, err
 	}
 	return wire.JSON200.Runs, nil
+}
+
+// CronUsageSource reads which usage source the daemon prices runs with. An
+// older daemon that omits it reports none.
+func (c *Client) CronUsageSource(ctx context.Context, projectID int64) (generated.CronUsageSourceSource, error) {
+	client, err := c.generatedClient()
+	if err != nil {
+		return "", err
+	}
+	wire, callErr := client.GetCronCapabilitiesWithResponse(ctx, &generated.GetCronCapabilitiesRequestOptions{
+		PathParams: &generated.GetCronCapabilitiesPath{ProjectID: projectID},
+	})
+	if wire == nil {
+		return "", callErr
+	}
+	if err := decodeGeneratedResponse(wire.HTTPResponse, wire.Body, callErr, nil); err != nil {
+		return "", err
+	}
+	return wire.JSON200.Usage.Source, nil
+}
+
+// cronUsageTimeout bounds a usage read. The daemon prices sessions for up to
+// five seconds and then answers with the total it has, so this read alone
+// waits longer than the TUI's ordinary five-second request timeout.
+const cronUsageTimeout = 8 * time.Second
+
+type cronUsageRequestKey struct{}
+
+// usageHTTPClient gives a usage read the selected daemon client with only its
+// timeout raised, keeping its transport, credentials and redirect policy.
+func usageHTTPClient(ctx context.Context, hc *http.Client) *http.Client {
+	if hc == nil || ctx.Value(cronUsageRequestKey{}) == nil {
+		return hc
+	}
+	usage := *hc
+	usage.Timeout = cronUsageTimeout
+	return &usage
+}
+
+// CronRunUsage reads one run's live cost; refresh asks the daemon to reprice it.
+func (c *Client) CronRunUsage(ctx context.Context, projectID int64, runUID string, refresh bool) (generated.RunUsage, error) {
+	client, err := c.generatedClient()
+	if err != nil {
+		return generated.RunUsage{}, err
+	}
+	wire, callErr := client.GetCronRunUsageWithResponse(context.WithValue(ctx, cronUsageRequestKey{}, true), &generated.GetCronRunUsageRequestOptions{
+		PathParams: &generated.GetCronRunUsagePath{ProjectID: projectID, RunUID: runUID},
+		Query:      &generated.GetCronRunUsageQuery{Refresh: &refresh},
+	})
+	if wire == nil {
+		return generated.RunUsage{}, callErr
+	}
+	if err := decodeGeneratedResponse(wire.HTTPResponse, wire.Body, callErr, nil); err != nil {
+		return generated.RunUsage{}, err
+	}
+	return *wire.JSON200, nil
 }
 
 // cronParent is what a native job's parent issue tells the Jobs tab: whether

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"slices"
 	"strings"
@@ -36,11 +37,13 @@ type cronData struct {
 	jobs                []generated.CronJob
 	workflows           []generated.CronWorkflow
 	runs                []generated.CronRun
+	usage               generated.CronUsageSourceSource
 	progress            map[string]cron.RecurringProgress
 	parentOpen          map[string]bool
 	jobsErr             error
 	workflowsErr        error
 	runsErr             error
+	usageErr            error
 }
 type cronLoadedMsg cronData
 
@@ -67,6 +70,23 @@ type cronState struct {
 	conn, scope     uint64
 	form            *cronForm
 	editSeq         uint64
+	usage           cronUsage
+	usageSeq        uint64
+}
+
+// cronUsage is the live cost of the open run detail. Each read carries the
+// sequence it started under; leaving the run or refreshing advances it.
+type cronUsage struct {
+	uid     string
+	loading bool
+	result  *generated.RunUsage
+	err     error
+}
+type cronUsageMsg struct {
+	conn, scope, seq uint64
+	uid              string
+	usage            generated.RunUsage
+	err              error
 }
 
 // Synchronize after every update and retain visible records during refresh.
@@ -77,14 +97,76 @@ func (m Model) cronSync() (Model, tea.Cmd) {
 		}
 		m.cron = cronState{tab: m.cron.tab, conn: m.connGen, scope: m.scopeGen}
 	}
+	var usageCmd tea.Cmd
+	if uid := m.cronUsageRun(); uid != m.cron.usage.uid {
+		m.cron.usageSeq++
+		m.cron.usage = cronUsage{uid: uid}
+		if uid != "" {
+			m, usageCmd = m.fetchCronUsage(false)
+		}
+	}
 	if m.view != viewCron || m.scope.allProjects || m.scope.projectID == 0 || m.cron.out {
-		return m, nil
+		return m, usageCmd
 	}
 	if m.cron.data != nil && m.cron.data.events == m.cron.events {
-		return m, nil
+		return m, usageCmd
 	}
 	m.cron.out = true
-	return m, m.fetchCron()
+	return m, combineCmds(m.fetchCron(), usageCmd)
+}
+
+// cronUsageRun names the run whose cost to show: the open run detail, when
+// the daemon prices runs with AgentsView and the run is in the loaded data.
+func (m Model) cronUsageRun() string {
+	n := len(m.cron.stack)
+	if m.view != viewCron || m.scope.allProjects || m.scope.projectID == 0 || n == 0 || m.cron.data == nil || m.cron.data.usage != generated.Agentsview {
+		return ""
+	}
+	ref := m.cron.stack[n-1].ref
+	if ref.kind != cronRuns || !slices.ContainsFunc(m.cron.data.runs, func(r generated.CronRun) bool { return r.UID == ref.uid }) {
+		return ""
+	}
+	return ref.uid
+}
+
+// fetchCronUsage starts one bounded read for the open run, keeping an
+// accepted amount on screen while a refresh is pending.
+func (m Model) fetchCronUsage(refresh bool) (Model, tea.Cmd) {
+	m.cron.usage.loading, m.cron.usage.err = true, nil
+	reader, id := m.api, m.scope.projectID
+	msg := cronUsageMsg{conn: m.connGen, scope: m.scopeGen, seq: m.cron.usageSeq, uid: m.cron.usage.uid}
+	return m, func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), cronUsageTimeout)
+		defer cancel()
+		msg.usage, msg.err = reader.CronRunUsage(ctx, id, msg.uid, refresh)
+		return msg
+	}
+}
+
+// cronUsageLoaded applies a read only while its daemon, project, run and
+// sequence are still current, so a late answer cannot replace a newer one.
+func (m Model) cronUsageLoaded(msg cronUsageMsg) Model {
+	if msg.conn != m.connGen || msg.scope != m.scopeGen || msg.seq != m.cron.usageSeq || msg.uid != m.cron.usage.uid || msg.uid != m.cronUsageRun() {
+		return m
+	}
+	if msg.err == nil && msg.usage.RunUID != msg.uid {
+		msg.err = errors.New("usage answer names another run")
+	}
+	if msg.err == nil {
+		if err := msg.usage.State.Validate(); err != nil {
+			msg.err = errors.New("unsupported usage state")
+		}
+		for _, session := range msg.usage.Sessions {
+			if err := session.State.Validate(); err != nil {
+				msg.err = errors.New("unsupported session usage state")
+			}
+		}
+	}
+	m.cron.usage.loading, m.cron.usage.result, m.cron.usage.err = false, &msg.usage, msg.err
+	if msg.err != nil {
+		m.cron.usage.result = nil
+	}
+	return m
 }
 func (m Model) fetchCron() tea.Cmd {
 	reader, id := m.api, m.scope.projectID
@@ -93,6 +175,7 @@ func (m Model) fetchCron() tea.Cmd {
 		data.jobs, data.jobsErr = cronRead(reader.ListCronJobs, id)
 		data.workflows, data.workflowsErr = cronRead(reader.ListCronWorkflows, id)
 		data.runs, data.runsErr = cronRead(reader.ListCronRuns, id)
+		data.usage, data.usageErr = cronRead(reader.CronUsageSource, id)
 		data.progress, data.parentOpen = cronReadParents(reader, id, data.jobs)
 		return cronLoadedMsg(data)
 	}
@@ -142,6 +225,9 @@ func (m Model) cronLoaded(msg cronLoadedMsg) Model {
 		}
 		if data.runsErr != nil {
 			data.runs = previous.runs
+		}
+		if data.usageErr != nil {
+			data.usage = previous.usage
 		}
 	}
 	return m.cronReplaceData(&data)
@@ -239,6 +325,7 @@ func (m Model) routeCronKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		return m, nil
 	}
 	_, _, lines := cronScreen(m)
+	var cmd tea.Cmd
 	cursor := m.cronCursor()
 	*cursor = min(max(*cursor, 0), max(len(lines)-1, 0))
 	switch {
@@ -279,9 +366,13 @@ func (m Model) routeCronKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		m.cron.filtering = true
 	case key == "r":
 		m.cron.events++
+		if m.cron.usage.uid != "" && !m.cron.usage.loading {
+			m.cron.usageSeq++
+			m, cmd = m.fetchCronUsage(true)
+		}
 	}
 	*cursor = min(max(*cursor, 0), max(len(lines)-1, 0))
-	return m, nil
+	return m, cmd
 }
 
 func (p cronData) job(uid string) *generated.CronJob {
