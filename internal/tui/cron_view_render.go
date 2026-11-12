@@ -281,8 +281,9 @@ func cronDetail(m Model, ref cronRef) (string, string, []cronLine) {
 			}
 			if m.cron.usage.uid == r.UID {
 				cronUsageField(&d, m.cron.usage)
-			} else if p.usage == "" && p.usageErr != nil {
-				// The usage source is unknown, not off, so no usage read starts.
+			} else if p.usageErr != nil {
+				// The last source read failed, so usage is not known to be off
+				// even if an earlier read said so; no usage read starts.
 				cronUsageField(&d, cronUsage{err: p.usageErr})
 			}
 			d.section("Message")

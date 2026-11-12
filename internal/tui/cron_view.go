@@ -364,7 +364,6 @@ func (m Model) routeCronKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	case key == "r":
 		m.cron.events++
 		if m.cron.usage.uid != "" && !m.cron.usage.loading {
-			m.cron.usageSeq++
 			m, cmd = m.fetchCronUsage(true)
 		}
 	}
