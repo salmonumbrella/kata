@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"go.kenn.io/kata/internal/cron"
+	"go.kenn.io/kata/pkg/client/generated"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/stretchr/testify/require"
@@ -288,4 +289,109 @@ func TestCronRequestInputsUnnamedDiagnostic(t *testing.T) {
 	m = runtimeDone(t, m, cmd)
 	require.NotContains(t, m.toast.text, ": : ")
 	require.Contains(t, m.toast.text, ": invalid declaration; fix the definition")
+}
+
+func TestCronRequestInputsWorkflowRefreshFailure(t *testing.T) {
+	for _, failed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("failed=%t", failed), func(t *testing.T) {
+			m, api := runtimeFixture(t, false)
+			workflow := cronFixture(t).cron.data.workflows[0]
+			m.cron.data.workflows = []generated.CronWorkflow{workflow}
+			m.cron.data.jobs[0].Definition.Action.WorkflowUID = &workflow.UID
+			if failed {
+				data := *m.cron.data
+				data.workflows = nil
+				data.workflowsErr = errors.New("workflow list unavailable")
+				m = m.cronLoaded(cronLoadedMsg(data))
+			}
+			api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "count", Type: "int", Source: "unset"}}}}
+			m, cmd := pressTop(t, m, keyRune('R'))
+			if !failed {
+				require.Equal(t, modalCronAction, m.modal)
+				require.Nil(t, cmd)
+				require.Zero(t, api.inputCalls)
+				return
+			}
+			require.Equal(t, modalNone, m.modal)
+			require.NotNil(t, m.cron.action.inputs)
+			require.True(t, m.cron.action.inputs.loading)
+			m = runtimeDone(t, m, cmd)
+			require.Equal(t, 1, api.inputCalls)
+			require.NotNil(t, m.cron.action.inputs)
+		})
+	}
+}
+
+func TestCronRequestInputsPreflightErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err error
+		drop bool
+	}{
+		{"rate limited", &APIError{Status: http.StatusTooManyRequests, Code: "rate_limited"}, false},
+		{"forbidden", &APIError{Status: http.StatusForbidden, Code: "forbidden"}, false},
+		{"timeout", &APIError{Status: http.StatusRequestTimeout}, false},
+		{"unidentified 404", &APIError{Status: http.StatusNotFound}, false},
+		{"changed", &APIError{Status: http.StatusConflict, Code: "cron_conflict"}, true},
+		{"gone", &APIError{Status: http.StatusNotFound, Code: "not_found"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, api := runtimeFixture(t, false)
+			m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"count": map[string]any{"type": "int"}}}
+			api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "count", Type: "int", Source: "unset"}}}}
+			m, cmd := pressTop(t, m, keyRune('R'))
+			m = runtimeDone(t, m, cmd)
+			m, _ = pressTop(t, m, keyRune('7'))
+			api.showErr = tc.err
+			m, cmd = pressTop(t, m, ctrlKey('o'))
+			m = runtimeDone(t, m, cmd)
+			require.Empty(t, api.calls)
+			if tc.drop {
+				require.Nil(t, m.cron.action)
+				return
+			}
+			require.NotNil(t, m.cron.action)
+			require.Empty(t, m.cron.action.requestUID)
+			require.False(t, m.cron.action.inflight)
+			require.Contains(t, m.cron.action.inputs.general, "Could not read job:")
+			m, _ = pressTop(t, m, keyRune('8'))
+			api.showErr = nil
+			m, cmd = pressTop(t, m, ctrlKey('o'))
+			m = runtimeDone(t, m, cmd)
+			require.Len(t, api.calls, 1)
+			require.NotEmpty(t, api.calls[0].id)
+			require.Equal(t, jsontext.Value("78"), api.inputValues[0]["count"])
+		})
+	}
+}
+
+func TestCronRequestInputsEscapeWhileSending(t *testing.T) {
+	m, api := runtimeFixture(t, false)
+	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"count": map[string]any{"type": "int"}}}
+	api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "count", Type: "int", Source: "unset"}}}}
+	m, cmd := pressTop(t, m, keyRune('R'))
+	m = runtimeDone(t, m, cmd)
+	m, _ = pressTop(t, m, keyRune('7'))
+	m, cmd = pressTop(t, m, ctrlKey('o'))
+	require.NotNil(t, cmd)
+	late := cmd()
+	require.Len(t, api.calls, 1)
+	m, _ = pressTop(t, m, tea.KeyPressMsg{Code: tea.KeyEscape})
+	require.Nil(t, m.cron.action)
+	require.Equal(t, "Form closed; this request may still run. Check Requests.", m.toast.text)
+	m, cmd = pressTop(t, m, keyRune('R'))
+	m = runtimeDone(t, m, cmd)
+	fresh := m.cron.action.seq
+	next, _, handled := m.routeTopLevel(late)
+	require.True(t, handled)
+	m = next.(Model)
+	require.NotNil(t, m.cron.action)
+	require.Equal(t, fresh, m.cron.action.seq)
+	require.Len(t, api.calls, 1)
+	m, _ = pressTop(t, m, keyRune('8'))
+	m, cmd = pressTop(t, m, ctrlKey('o'))
+	m = runtimeDone(t, m, cmd)
+	require.Len(t, api.calls, 2)
+	require.NotEqual(t, api.calls[0].id, api.calls[1].id)
+	require.Nil(t, m.cron.action)
 }
