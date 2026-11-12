@@ -1,6 +1,6 @@
-import type { RunSession, RunUsage } from '../api/generated'
+import { RunSessionState, RunUsageState, type RunSession, type RunUsage } from '../api/generated'
 
-// These texts mirror `kata cron run usage` (cmd/kata/cron_usage.go). The
+// These texts follow `kata cron run usage` (cmd/kata/cron_usage.go). The
 // daemon owns the total; the browser only formats what it returns.
 
 export function formatAmount(microdollars: number, estimated: boolean): string {
@@ -49,15 +49,32 @@ export function sessionStateText(session: RunSession): string {
   }
 }
 
-// What the drawer says when the daemon answers a usage read with an error.
-export function usageFailureText(status: number): string {
+export const unsupportedUsageText = 'Unsupported usage state. Refresh to retry.'
+
+// Like the CLI, a total or session state this build does not know is refused
+// rather than guessed.
+export function usageStatesSupported(usage: RunUsage): boolean {
+  const totals: readonly string[] = Object.values(RunUsageState)
+  const sessions: readonly string[] = Object.values(RunSessionState)
+  return (
+    totals.includes(usage.state) &&
+    usage.sessions.every((session) => sessions.includes(session.state))
+  )
+}
+
+// What the drawer says when the daemon answers a usage read with an error. A
+// gateway that cannot reach the daemon also answers 502, so only the error
+// code tells an overflowing total apart.
+export function usageFailureText(status: number, code?: string): string {
   switch (status) {
     case 403:
       return 'Cost needs a signed-in session'
     case 404:
       return 'Run not found'
     case 502:
-      return 'The total cost cannot be represented.'
+      return code === 'usage_total_overflow'
+        ? 'The total cost cannot be represented.'
+        : 'Could not read cost. Refresh to retry.'
     case 503:
       return 'Usage is disabled on this daemon.'
     default:

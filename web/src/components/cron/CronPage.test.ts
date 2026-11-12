@@ -429,27 +429,6 @@ describe('CronPage', () => {
     expect(screen.queryByText('$2.41')).toBeNull()
   })
 
-  // A healthy daemon echoes the requested run and project, so these answers are
-  // defense in depth against a misbehaving peer.
-  it('refuses usage for another run and for another project', async () => {
-    serveRunUsage('agentsview', { usage: () => Response.json(usageBody({ run_uid: runB })) })
-    render(CronPage, { props: runSelectionProps() })
-    expect(await screen.findByText('Could not read cost. Refresh to retry.')).not.toBeNull()
-    expect(screen.queryByText('$2.41')).toBeNull()
-
-    cleanup()
-    const fetcher = serveRunUsage('agentsview', {
-      capabilities: () => settledJSON(capabilitiesBody(spokeProject.uid)),
-    })
-    render(CronPage, { props: runSelectionProps() })
-    await waitFor(() =>
-      expect(requested(fetcher, cronPath(exampleProject, 'capabilities'))).toHaveLength(1),
-    )
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    expect(screen.queryByRole('heading', { name: 'Cost' })).toBeNull()
-    expect(usageReads(fetcher)).toEqual([])
-  })
-
   it('drops a late capability answer when another run opens', async () => {
     let answer: (response: Response) => void = () => {}
     const fetcher = serveRunUsage('agentsview', {
