@@ -47,11 +47,14 @@
     // The accepted snapshot cursor. It advances when cron records change, and
     // each advance reads the open page and detail again.
     cursor: number
+    // The current authority is read-only, or the anonymous read-only reader.
+    readOnly: boolean
+    anonymous: boolean
     onNavigate: (route: CronRoute) => void
     onOpenIssue: (issueUID: string) => void
   }
 
-  let { route, projects, cursor, onNavigate, onOpenIssue }: Props = $props()
+  let { route, projects, cursor, readOnly, anonymous, onNavigate, onOpenIssue }: Props = $props()
 
   interface ProjectRecords {
     project: CronProject
@@ -608,7 +611,11 @@
       {#if detail.status === 'run' && detail.run.uid === selection.uid}
         <CronRunDetail
           run={detail.run}
+          projectID={selectedProject.id}
+          projectUID={selectedProject.uid}
           projectName={selectedProject.name}
+          {readOnly}
+          {anonymous}
           jobName={runJobName(selection.projectUID, detail.run)}
           onOpenJob={detail.run.job_uid ? openRunJob : undefined}
           {onOpenIssue}

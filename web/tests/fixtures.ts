@@ -53,8 +53,12 @@ export interface KataFixture {
     credentials: BrowserCredentials,
     input: Record<string, unknown> & { title: string },
   ): Promise<SeededIssue>
-  // Runs the kata CLI against this fixture's daemon from its workspace.
-  cli(args: string[], input?: string): string
+  // Runs the kata CLI from the local or remote daemon's workspace.
+  cli(args: string[], input?: string, target?: 'local' | 'remote'): string
+  // The bearer each daemon presents to its own AgentsView usage source.
+  agentsViewTokens: { local: string; remote: string }
+  // Restarts both daemons with the given AgentsView usage sources, or none.
+  agentsView(targets: { local?: string; remote?: string }): Promise<void>
   restart(): Promise<void>
   restartReadonly(): Promise<void>
   restartIdentity(enabled?: boolean): Promise<void>
@@ -133,7 +137,8 @@ token = "example-remote-token"
       throw error
     }
   })
-  const { daemon: remoteDaemon, origin: remoteOrigin } = remote
+  const remoteOrigin = remote.origin
+  let remoteDaemon = remote.daemon
   run(binary, ['projects', 'create', 'example-remote-project'], remoteWorkspace, remoteEnvironment)
   await writeFile(
     join(remoteWorkspace, '.kata.toml'),
@@ -241,8 +246,19 @@ listen = "127.0.0.1:${port}"
       if (!response.ok()) throw new Error(`issue seed failed with status ${response.status()}`)
       return ((await response.json()) as { issue: SeededIssue }).issue
     },
-    cli(args, input) {
+    cli(args, input, target = 'local') {
+      if (target === 'remote') return run(binary, args, remoteWorkspace, remoteEnvironment, input)
       return run(binary, args, workspace, environment, input)
+    },
+    agentsViewTokens,
+    async agentsView(targets) {
+      await Promise.all([stopDaemon(daemon), stopDaemon(remoteDaemon)])
+      await configureAgentsView(home, targets.local, agentsViewTokens.local)
+      await configureAgentsView(remoteHome, targets.remote, agentsViewTokens.remote)
+      remoteDaemon = startDaemon(binary, remoteWorkspace, remoteEnvironment)
+      await waitForPing(remoteOrigin, remoteDaemon)
+      daemon = startDaemon(binary, workspace, environment)
+      await waitForPing(origin, daemon)
     },
     async restart() {
       await stopDaemon(daemon)
@@ -278,6 +294,32 @@ listen = "127.0.0.1:${port}"
       await rm(root, { recursive: true, force: true })
     },
   }
+}
+
+const agentsViewTokens = {
+  local: 'example-local-agentsview-token',
+  remote: 'example-remote-agentsview-token',
+}
+
+// Rewrites the [agentsview] table at the end of a daemon's config. The token
+// stays in an owner-only file the daemon reads; it never enters the browser.
+async function configureAgentsView(
+  home: string,
+  url: string | undefined,
+  token: string,
+): Promise<void> {
+  const path = join(home, 'config.toml')
+  const current = await readFile(path, 'utf8')
+  const marker = current.indexOf('\n[agentsview]\n')
+  const base = marker < 0 ? current : current.slice(0, marker + 1)
+  if (!url) {
+    await writeFile(path, base, { mode: 0o600 })
+    return
+  }
+  const tokenFile = join(home, 'agentsview-token')
+  await writeFile(tokenFile, token, { mode: 0o600 })
+  const table = `\n[agentsview]\nurl = "${url}"\ntoken_file = "${tokenFile}"\n`
+  await writeFile(path, base + table, { mode: 0o600 })
 }
 
 function run(
