@@ -78,24 +78,6 @@ jobs:
       - name: Web static checks
         if: always() && steps.install.outcome == 'success'
         run: make web-check
-      # Diagnostic only: write Prettier's output for CronPage.svelte beside the
-      # checkout, without touching the checked-out file, and keep a diff.
-      - name: Capture Prettier output for CronPage.svelte
-        if: always() && steps.install.outcome == 'success'
-        working-directory: web
-        run: |
-          out="$RUNNER_TEMP/cron-prettier"
-          mkdir -p "$out"
-          bun x prettier src/components/cron/CronPage.svelte > "$out/CronPage.svelte"
-          diff -u src/components/cron/CronPage.svelte "$out/CronPage.svelte" > "$out/CronPage.svelte.diff" || true
-      - name: Upload Prettier output for CronPage.svelte
-        if: always() && steps.install.outcome == 'success'
-        uses: actions/upload-artifact@v7.0.2
-        with:
-          name: cron-web-prettier-attempt-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/cron-prettier/
-          retention-days: 14
-          if-no-files-found: warn
 
   browser:
     name: Cron real-daemon browser evidence
