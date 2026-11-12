@@ -375,11 +375,16 @@ test('shows live run cost from each daemon without exposing its AgentsView token
     await expect(cost.getByRole('link', { name: 'Open in AgentsView' })).toBeVisible()
     await capture(page, testInfo, 'cost-desktop-complete')
 
-    const refreshed = page.waitForRequest((request) =>
-      request.url().includes(`/runs/${completeRunUID}/usage?refresh=true`),
+    const refreshed = page.waitForResponse((response) =>
+      response.url().includes(`/runs/${completeRunUID}/usage?refresh=true`),
     )
-    await cost.getByRole('button', { name: 'Refresh cost' }).click()
+    const refreshCost = cost.getByRole('button', { name: 'Refresh cost' })
+    await refreshCost.click()
     await refreshed
+    // The button is busy until the read lands. The daemon caches usage for at
+    // least ten seconds, so the refreshed total is the same amount.
+    await expect(refreshCost).not.toHaveAttribute('aria-busy')
+    await expect(cost.getByText('$2.41', { exact: true })).toBeVisible()
     await capture(page, testInfo, 'cost-desktop-refreshed')
 
     await page.goto(runRoute(estimatedRunUID))
@@ -393,10 +398,20 @@ test('shows live run cost from each daemon without exposing its AgentsView token
     await page.goto(runRoute(partialRunUID))
     await expect(cost.getByText(/\$1\.20\+ \(1 of 2 sessions not priced\)$/)).toBeVisible()
     await capture(page, testInfo, 'cost-desktop-partial')
+    await page.setViewportSize({ width: 390, height: 844 })
+    await expect(cost.getByText(/\$1\.20\+ \(1 of 2 sessions not priced\)$/)).toBeVisible()
+    await noHorizontalOverflow(page, 390)
+    await capture(page, testInfo, 'cost-mobile-partial')
+    await page.setViewportSize({ width: 1440, height: 960 })
 
     await page.goto(runRoute(unavailableRunUID))
     await expect(cost.getByText('unknown', { exact: true })).toBeVisible()
     await capture(page, testInfo, 'cost-desktop-unavailable')
+    await page.setViewportSize({ width: 390, height: 844 })
+    await expect(cost.getByText('unknown', { exact: true })).toBeVisible()
+    await noHorizontalOverflow(page, 390)
+    await capture(page, testInfo, 'cost-mobile-unavailable')
+    await page.setViewportSize({ width: 1440, height: 960 })
 
     await page.goto(runRoute(overflowRunUID))
     await expect(cost.getByText('The total cost cannot be represented.')).toBeVisible()
@@ -476,6 +491,12 @@ test('shows live run cost from each daemon without exposing its AgentsView token
     await expect(drawer.getByRole('heading', { name: 'Cost' })).toHaveCount(0)
     expect(usageRequests).toEqual([])
     await capture(page, testInfo, 'cost-desktop-off')
+    await page.setViewportSize({ width: 390, height: 844 })
+    await expect(drawer.getByText('Sessions')).toBeVisible()
+    await expect(drawer.getByRole('heading', { name: 'Cost' })).toHaveCount(0)
+    await noHorizontalOverflow(page, 390)
+    await capture(page, testInfo, 'cost-mobile-off')
+    expect(usageRequests).toEqual([])
   } finally {
     await anonymousContext?.close()
     await kata.agentsView({})
