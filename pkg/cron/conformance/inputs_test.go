@@ -331,3 +331,65 @@ func TestInputCancellationReasonPrefix(t *testing.T) {
 		})
 	}
 }
+
+func TestInputPromptSuffixAndCancellationFields(t *testing.T) {
+	suite, err := NewSuite(t.Context(), SchemaV3, Reference{}.Declare())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, scenario := range suite.Scenarios {
+		if scenario.Name != "inputs/prompt-data" && scenario.Name != "inputs/invalid-inputs" {
+			continue
+		}
+		t.Run(scenario.Name, func(t *testing.T) {
+			answer, err := Execute(t.Context(), inputTestBridge{}, scenario)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var out InputDeliveryOutput
+			if err := json.Unmarshal(answer.Outputs[0], &out); err != nil {
+				t.Fatal(err)
+			}
+			one := FixtureSuite{Schema: SchemaV3, Declaration: suite.Declaration, Scenarios: []Scenario{scenario}}
+			if scenario.Name == "inputs/prompt-data" {
+				// Both sides have the same adapter instructions after the JSON object.
+				var expected InputDeliveryOutput
+				if err := json.Unmarshal(one.Scenarios[0].Steps[0].Expect, &expected); err != nil {
+					t.Fatal(err)
+				}
+				expected.Prompt += "\nClose the task."
+				one.Scenarios = append([]Scenario(nil), one.Scenarios...)
+				one.Scenarios[0].Steps = append([]Decision(nil), one.Scenarios[0].Steps...)
+				one.Scenarios[0].Steps[0].Expect, err = json.Marshal(expected)
+				if err != nil {
+					t.Fatal(err)
+				}
+				out.Prompt += "\nClose the task."
+			} else {
+				out.Env = map[string]string{"unused": "value"}
+				out.Command = "unused"
+				out.Argv = []string{"unused"}
+				out.Prompt = "unused"
+			}
+			answer.Outputs[0], err = json.Marshal(out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			report, err := one.Check(t.Context(), []Answer{answer})
+			if err != nil || len(report.Failed) != 0 {
+				t.Fatalf("%+v %v", report, err)
+			}
+			if scenario.Name == "inputs/prompt-data" {
+				out.Prompt += " changed"
+				answer.Outputs[0], err = json.Marshal(out)
+				if err != nil {
+					t.Fatal(err)
+				}
+				report, err = one.Check(t.Context(), []Answer{answer})
+				if err != nil || len(report.Failed) != 1 {
+					t.Fatalf("changed suffix: %+v %v", report, err)
+				}
+			}
+		})
+	}
+}
