@@ -48,7 +48,7 @@ func newCronRequestWriteCmd(cancel bool) *cobra.Command {
 				if listErr == nil && list != nil && list.StatusCode == 200 {
 					var retained struct {
 						Requests []struct {
-							UID string `json:"uid"`
+							UID    string                    `json:"uid"`
 							Inputs map[string]jsontext.Value `json:"inputs"`
 						} `json:"requests"`
 					}
@@ -82,27 +82,27 @@ func newCronRequestWriteCmd(cancel bool) *cobra.Command {
 				if declarations == nil {
 					read, readErr := c.GetCronJobInputsWithResponse(ctx, &generated.GetCronJobInputsRequestOptions{PathParams: &generated.GetCronJobInputsPath{ProjectID: projectID, CronUID: target}})
 					if readErr == nil && read != nil && read.StatusCode == 200 {
-					var resolved struct {
-						Inputs []struct {
-							Name string `json:"name"`
-							Type string `json:"type"`
-						} `json:"inputs"`
-						Errors []cron.InputError `json:"errors"`
-					}
-					if json.Unmarshal(read.Body, &resolved) == nil {
-						readable := true
-						for _, problem := range resolved.Errors {
-							if problem.Code == "declaration_invalid" {
-								readable = false
+						var resolved struct {
+							Inputs []struct {
+								Name string `json:"name"`
+								Type string `json:"type"`
+							} `json:"inputs"`
+							Errors []cron.InputError `json:"errors"`
+						}
+						if json.Unmarshal(read.Body, &resolved) == nil {
+							readable := true
+							for _, problem := range resolved.Errors {
+								if problem.Code == "declaration_invalid" {
+									readable = false
+								}
+							}
+							if readable {
+								declarations = map[string]string{}
+								for _, input := range resolved.Inputs {
+									declarations[input.Name] = input.Type
+								}
 							}
 						}
-						if readable {
-							declarations = map[string]string{}
-							for _, input := range resolved.Inputs {
-								declarations[input.Name] = input.Type
-							}
-						}
-					}
 					}
 				}
 				values, err := parseCronRequestInputs(inputs, declarations)
