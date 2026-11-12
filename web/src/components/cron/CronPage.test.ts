@@ -184,15 +184,22 @@ describe('CronPage', () => {
     expect(screen.getByRole('button', { name: 'Review example-project-1' })).not.toBeNull()
   })
 
-  it('shows only the newest bounded page of runs per project', async () => {
+  it('shows only the newest bounded page of runs per project in the daemon order', async () => {
+    // Imported runs can differ by nanoseconds within one millisecond. The
+    // daemon orders them by the full time, which here opposes their UIDs.
+    const newer = '2026-10-01T09:03:00.000000002Z'
+    const older = '2026-10-01T09:03:00.000000001Z'
     const fetcher = serve((url) => {
       if (url.pathname === cronPath(exampleProject, 'jobs')) {
         return Response.json({ jobs: [job(exampleProject, 'Daily review')] })
       }
       if (url.pathname === cronPath(exampleProject, 'runs')) {
         return Response.json({
-          runs: [run(exampleProject, runA, 3), run(exampleProject, runB, 2)],
-          next_before_uid: runB,
+          runs: [
+            run(exampleProject, runC, 3, { status: 'failed', created_at: newer }),
+            run(exampleProject, runA, 3, { created_at: older }),
+          ],
+          next_before_uid: runA,
         })
       }
       return emptyCatalog(url) ?? notFound()
@@ -206,6 +213,8 @@ describe('CronPage', () => {
       ),
     ).not.toBeNull()
     expect(screen.getAllByRole('button', { name: 'Daily review' })).toHaveLength(2)
+    const rows = screen.getByRole('table', { name: 'Cron runs' }).querySelectorAll('tbody tr')
+    expect(Array.from(rows, (row) => /failed/.test(row.textContent ?? ''))).toEqual([true, false])
     const runsPath = cronPath(exampleProject, 'runs')
     expect(requested(fetcher, runsPath).map((url) => url.searchParams.toString())).toEqual([
       'limit=50',
@@ -234,12 +243,43 @@ describe('CronPage', () => {
     serve((url) => emptyCatalog(url) ?? notFound())
     render(CronPage, { props: props({ tab: 'runs' }, [exampleProject]) })
     expect(await screen.findByText('No runs recorded yet')).not.toBeNull()
+
+    // An empty project that answered first does not make the page empty while
+    // another project's read is still pending.
+    cleanup()
+    let releaseSpoke: () => void = () => {}
+    const spoke = new Promise<void>((resolve) => (releaseSpoke = resolve))
+    serve(async (url) => {
+      if (url.pathname === cronPath(spokeProject, 'jobs')) {
+        return Response.json({ jobs: [job(spokeProject, 'Spoke review')] })
+      }
+      if (url.pathname === cronPath(spokeProject, 'runs')) {
+        await spoke
+        return Response.json({ runs: [run(spokeProject, runA, 3)] })
+      }
+      return emptyCatalog(url) ?? notFound()
+    })
+    render(CronPage, { props: props({ tab: 'runs' }, [exampleProject, spokeProject]) })
+    // Refresh shows busy only once a project's records are on the page.
+    const refresh = screen.getByRole('button', { name: 'Refresh' })
+    await waitFor(() => expect(refresh.getAttribute('aria-busy')).not.toBeNull())
+    expect(screen.getByText('Loading cron records…')).not.toBeNull()
+    expect(screen.queryByText('No runs recorded yet')).toBeNull()
+    releaseSpoke()
+    expect(await screen.findByRole('button', { name: 'Spoke review' })).not.toBeNull()
   })
 
   it('opens a run older than the loaded history by UID and names a missing run', async () => {
     const issueUID = '01J00000000000000000000001'
+    const deletedJobUID = '01K0000000000000000000000D'
     let detailReads = 0
     const fetcher = serve((url) => {
+      if (url.pathname === cronPath(exampleProject, 'jobs')) {
+        return Response.json({ jobs: [job(exampleProject, 'Daily review')] })
+      }
+      if (url.pathname === cronPath(exampleProject, `runs/${runA}`)) {
+        return Response.json({ run: run(exampleProject, runA, 3, { job_uid: deletedJobUID }) })
+      }
       if (url.pathname === cronPath(exampleProject, `runs/${runC}`)) {
         detailReads += 1
         if (detailReads === 1) {
@@ -261,6 +301,23 @@ describe('CronPage', () => {
     expect(await screen.findByText(`Run ${runC}`)).not.toBeNull()
     await fireEvent.click(screen.getByRole('button', { name: 'Open issue' }))
     expect(current.onOpenIssue).toHaveBeenCalledWith(issueUID)
+    // A job still in the catalog opens from the run.
+    const refresh = screen.getByRole('button', { name: 'Refresh' })
+    await waitFor(() => expect(refresh.getAttribute('aria-busy')).toBeNull())
+    await fireEvent.click(screen.getByRole('button', { name: 'Daily review' }))
+    const jobSelection = { kind: 'job', projectUID: exampleProject.uid, uid: jobUID }
+    expect(current.onNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({ selection: jobSelection }),
+    )
+
+    // A deleted job keeps its UID as text, with nothing to open.
+    await view.rerender({
+      ...current,
+      route: { ...current.route, selection: { ...selection, uid: runA } },
+    })
+    expect(await screen.findByText(`Run ${runA}`)).not.toBeNull()
+    expect(screen.getByText(deletedJobUID)).not.toBeNull()
+    expect(screen.queryByRole('button', { name: deletedJobUID })).toBeNull()
 
     await view.rerender({
       ...current,
