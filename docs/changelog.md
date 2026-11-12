@@ -9,7 +9,7 @@ All notable changes to kata, grouped by release. Versioned releases start with
 
 ## Unreleased
 
-- See live cost for a recorded cron run with `kata cron run usage`, or in the `kata tui` run detail, where `r` refreshes it, when the serving daemon is configured for AgentsView v0.47.0 or newer. Doctor checks the configured source.
+- See live cost for a recorded cron run with `kata cron run usage`, or in the `kata tui` run detail, where `r` refreshes it, when the serving daemon is configured for AgentsView v0.47.0 or newer. A partial total whose recorded sessions are all priced reads `(session list incomplete)`. Doctor checks the configured source.
 
 - Record the agent sessions used by a cron run and view them in run details. Session data follows the run through federation and backups.
 
