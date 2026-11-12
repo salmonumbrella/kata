@@ -1,9 +1,12 @@
 package mcpserver
 
 import (
+	"encoding/json"
 	"encoding/json/jsontext"
 	"testing"
 
+	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.kenn.io/kata/internal/cron"
 	"go.kenn.io/kata/internal/db"
@@ -46,4 +49,44 @@ func TestCronRequestInputsTools(t *testing.T) {
 	input := resolution["inputs"].([]any)[0].(map[string]any)
 	require.Equal(t, "request", input["source"])
 	require.NotNil(t, input["value"])
+}
+
+// Contract: published output schemas accept the actual retained scalar values.
+func TestCronRequestInputsOutputSchema(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		kind string
+		value any
+	}{
+		{"string", "string", "example"},
+		{"integer", "int", int64(-42)},
+		{"boolean", "bool", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newCronFixture(t)
+			definition := cronDefinition()
+			definition["enabled"] = true
+			definition["options"] = map[string]any{"inputs": map[string]any{"value": map[string]any{"type": tc.kind, "required": true}}}
+			job := cronRecord(t, f.session, "cron_job_create", map[string]any{"uid": cronNewUID(t, f.session), "name": "Fixture job", "definition": definition}, "job")
+			listed, err := f.session.ListTools(t.Context(), nil)
+			require.NoError(t, err)
+			response := cronOK(t, f.session, "cron_job_request_run", map[string]any{"uid": job["uid"], "request_uid": cronNewUID(t, f.session), "inputs": map[string]any{"value": tc.value}})
+			for _, tool := range listed.Tools {
+				if tool.Name != "kata.cron_job_request_run" && tool.Name != "kata.cron_request_list" {
+					continue
+				}
+				var schema jsonschema.Schema
+				require.NoError(t, json.Unmarshal(mustJSON(t, tool.OutputSchema), &schema))
+				resolved, err := schema.Resolve(nil)
+				require.NoError(t, err)
+				var result map[string]any
+				if tool.Name == "kata.cron_job_request_run" {
+					result = response
+				} else {
+					result = cronOK(t, f.session, "cron_request_list", map[string]any{})
+				}
+				assert.NoError(t, resolved.Validate(result), "%s: %s", tool.Name, mustJSON(t, result))
+			}
+		})
+	}
 }
