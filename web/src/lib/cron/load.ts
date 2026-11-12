@@ -9,7 +9,7 @@ import {
 } from '../api/generated'
 import type { KataProjectSummary } from '../kata/types'
 
-// Run history loads one bounded page per project at a time, newest first.
+// Run history is one bounded newest page per project.
 export const cronRunPageSize = 50
 export const cronRecentJobRuns = 5
 // Never more reads in flight than this, however many projects are readable.
@@ -25,15 +25,10 @@ export class CronReadError extends Error {
   }
 }
 
-export interface CronRunPage {
-  runs: CronRun[]
-  nextBeforeUID?: string | undefined
-}
-
 export interface CronProjectRecords {
   jobs: CronJob[]
   workflows: CronWorkflow[]
-  runs: CronRunPage
+  runs: CronRun[]
 }
 
 export function cronReadFailure(error: unknown): CronReadFailure {
@@ -62,19 +57,18 @@ export async function readCronProject(
 export async function readCronRuns(
   projectID: number,
   signal: AbortSignal,
-  query: { beforeUID?: string | undefined; jobUID?: string | undefined; limit?: number } = {},
-): Promise<CronRunPage> {
+  query: { jobUID?: string | undefined; limit?: number } = {},
+): Promise<CronRun[]> {
   const response = await listCronRuns(
     { projectId: projectID },
     {
       limit: query.limit ?? cronRunPageSize,
-      ...(query.beforeUID ? { before_uid: query.beforeUID } : {}),
       ...(query.jobUID ? { job_uid: query.jobUID } : {}),
     },
     { signal, retry: true },
   )
   if (response.status !== 200) throw failureFor(response.status)
-  return { runs: response.data.runs, nextBeforeUID: response.data.next_before_uid || undefined }
+  return response.data.runs
 }
 
 export async function readCronRun(
@@ -106,31 +100,6 @@ export async function mapLimit<T, R>(
   }
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
   return results
-}
-
-// Appends an older page, keeping the first copy of a run the history already holds.
-export function appendRuns(loaded: readonly CronRun[], older: readonly CronRun[]): CronRun[] {
-  const seen = new Set(loaded.map((run) => run.uid))
-  return [...loaded, ...older.filter((run) => !seen.has(run.uid))]
-}
-
-// A refresh reads the newest page again. Older pages the reader already
-// loaded stay when that page reaches into them, so the history has no gap.
-export function refreshedRuns(
-  loaded: CronRunPage & { extended: boolean },
-  newest: CronRunPage,
-): CronRunPage & { extended: boolean } {
-  const oldest = newest.runs.at(-1)
-  if (!loaded.extended || !newest.nextBeforeUID || !oldest) {
-    return { ...newest, extended: false }
-  }
-  const index = loaded.runs.findIndex((run) => run.uid === oldest.uid)
-  if (index < 0) return { ...newest, extended: false }
-  return {
-    runs: appendRuns(newest.runs, loaded.runs.slice(index + 1)),
-    nextBeforeUID: loaded.nextBeforeUID,
-    extended: true,
-  }
 }
 
 // Newest first across projects. Each project's page already arrives in this

@@ -196,18 +196,22 @@ the chosen statuses. Each filter appears as a chip; select a chip to remove it.
 The tab, filters, and open record are part of the address, so a copied link
 reopens the same view.
 
-Runs load 50 at a time for each project. Filters apply only to runs already
-loaded, so a filtered list is not a complete count. **Load older runs** reads
-that project's next page; if a page fails, the button asks you to try again
-from the same place. **Refresh** reads every project again, and the page also
-refreshes when Kata reports new changes.
+Runs shows each project's newest 50 runs. Filters apply only to those loaded
+runs, so a filtered list is not a complete count, and the Jobs tab makes no
+claim about a job's latest result or failure totals. **Refresh** reads every
+project and the open record again. When Kata reports new changes, only the
+open record is read again; use Refresh for the lists.
+
+The page shows job definitions, including prompts, to anyone whose browser
+session can read the project, as it shows issues.
 
 Select a record to open its details beside the page:
 
 - A run shows its summary, status, times, executor, teammate, and token counts
   when they were recorded. **Open issue** opens its linked issue in the
   ordinary issue view, which finds the issue even if it moved to another
-  project. A run without an issue says so.
+  project. A run without an issue says so. A run whose job was deleted is
+  listed as **Deleted job**, and its drawer keeps the job's UID.
 - A job shows its trigger, action, and settings, and reads its five newest runs
   so **Latest recorded run** reflects that job's own history.
 - A workflow shows its description, input, and steps.
@@ -218,7 +222,9 @@ connection cannot read says so without reading it.
 
 When one project's records cannot be read, the page names that project and
 keeps showing the others. A project the connection is not allowed to read says
-so; any other failure offers **Try again**. An issue-scoped credential cannot
+so and shows none of its records. Any other failure offers **Try again**; if
+the project was read before, its last records stay on the page and the notice
+says they are from the last read. An issue-scoped credential cannot
 read Cron, so the page makes no requests and explains why. Switching daemons,
 signing out, or losing the connection clears the page; it reads again once Kata
 reconnects.

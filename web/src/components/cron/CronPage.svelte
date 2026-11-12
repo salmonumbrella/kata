@@ -15,7 +15,6 @@
   import type { CronJob, CronRun, CronWorkflow } from '../../lib/api/generated'
   import { cronRunDot, cronTriggerLabel, formatCronTime } from '../../lib/cron/format'
   import {
-    appendRuns,
     compareRunsNewestFirst,
     cronReadConcurrency,
     cronReadFailure,
@@ -25,7 +24,6 @@
     readCronProject,
     readCronRun,
     readCronRuns,
-    refreshedRuns,
     type CronProject,
     type CronReadFailure,
   } from '../../lib/cron/load'
@@ -44,8 +42,8 @@
     route: CronRoute
     // Readable projects from the accepted snapshot catalog.
     projects: readonly CronProject[]
-    // The accepted snapshot cursor. It advances when cron records change, and
-    // each advance reads the open page and detail again.
+    // The accepted snapshot cursor. It advances on every daemon event, so it
+    // revalidates only the open detail; Refresh rereads the lists.
     cursor: number
     onNavigate: (route: CronRoute) => void
     onOpenIssue: (issueUID: string) => void
@@ -59,10 +57,6 @@
     jobs: CronJob[]
     workflows: CronWorkflow[]
     runs: CronRun[]
-    nextBeforeUID?: string | undefined
-    // Older pages were loaded after the newest one.
-    extended: boolean
-    older: 'idle' | 'loading' | 'failed'
     retrying: boolean
   }
 
@@ -80,15 +74,20 @@
   let refreshGeneration = $state(0)
   let detail = $state.raw<Detail>({ status: 'idle' })
   let detailGeneration = $state(0)
-  // Load older and retry reads belong to the catalog read that is current
-  // when they start, and stop with it.
+  // Retry reads belong to the catalog read that is current when they start,
+  // and stop with it.
   let catalogSignal: AbortSignal | undefined
   let loadedCatalog: string | undefined
   let loadedDetail = ''
 
   let catalogKey = $derived(projects.map((project) => `${project.id}:${project.uid}`).join(','))
   let projectNames = $derived(new Map(projects.map((project) => [project.uid, project.name])))
-  let shown = $derived(records.filter((entry) => !entry.failure && inFilter(entry.project.uid)))
+  // A failed refresh keeps the project's last records beside its notice.
+  let shown = $derived(
+    records.filter(
+      (entry) => (!entry.failure || entry.failure === 'failed') && inFilter(entry.project.uid),
+    ),
+  )
   let failed = $derived(records.filter((entry) => entry.failure && inFilter(entry.project.uid)))
   let jobNames = $derived(
     new Map(
@@ -125,8 +124,6 @@
         : workflowRows.length,
   )
   let filtered = $derived(route.projectUIDs.length > 0 || route.statuses.length > 0)
-  let extended = $derived(shown.some((entry) => entry.extended))
-  let pageable = $derived(shown.filter((entry) => entry.nextBeforeUID))
 
   let selectionKey = $derived.by(() => {
     const selection = route.selection
@@ -162,12 +159,12 @@
         : (selectedWorkflow?.name ?? 'Workflow'),
   )
 
-  // The catalog read follows the readable projects, the accepted cursor and
-  // Refresh. A different set of projects drops the records it no longer
-  // vouches for; the same set keeps them on screen until the new read lands.
+  // The catalog read follows the readable projects and Refresh, not the
+  // accepted cursor, which advances on every daemon event. A different set of
+  // projects drops the records it no longer vouches for; the same set keeps
+  // them on screen until the new read lands.
   $effect(() => {
     const key = catalogKey
-    void cursor
     void refreshGeneration
     const targets = untrack(() => [...projects])
     const abort = new AbortController()
@@ -182,11 +179,13 @@
   })
 
   // The open detail has its own lifetime: changing the selection stops its
-  // read without touching the catalog read, and the cursor revalidates it.
+  // read without touching the catalog read. The cursor and Refresh both
+  // revalidate it.
   $effect(() => {
     const key = selectionKey
     const projectID = selectedProjectID
     void cursor
+    void refreshGeneration
     void detailGeneration
     const selection = untrack(() => route.selection)
     const abort = new AbortController()
@@ -214,28 +213,21 @@
   }
 
   async function readProject(project: CronProject, signal: AbortSignal): Promise<ProjectRecords> {
-    const empty = { project, jobs: [], workflows: [], runs: [], extended: false }
+    const empty = { project, jobs: [], workflows: [], runs: [], retrying: false }
     try {
-      if (signal.aborted) return { ...empty, failure: 'failed', older: 'idle', retrying: false }
+      if (signal.aborted) return { ...empty, failure: 'failed' }
       const read = await readCronProject(project, signal)
-      return {
-        project,
-        jobs: read.jobs,
-        workflows: read.workflows,
-        runs: read.runs.runs,
-        nextBeforeUID: read.runs.nextBeforeUID,
-        extended: false,
-        older: 'idle',
-        retrying: false,
-      }
+      return { project, ...read, retrying: false }
     } catch (error) {
-      return { ...empty, failure: cronReadFailure(error), older: 'idle', retrying: false }
+      return { ...empty, failure: cronReadFailure(error) }
     }
   }
 
+  // A read that failed keeps the last records it replaces, marked failed. A
+  // project the connection can no longer read, or that is gone, is cleared.
   function refreshed(previous: ProjectRecords | undefined, next: ProjectRecords): ProjectRecords {
-    if (!previous || previous.failure || next.failure) return next
-    return { ...next, ...refreshedRuns(previous, next) }
+    if (next.failure !== 'failed' || !previous) return next
+    return { ...previous, failure: 'failed', retrying: false }
   }
 
   async function loadDetail(
@@ -249,11 +241,11 @@
         if (!signal.aborted) detail = { status: 'run', run }
         return
       }
-      const page = await readCronRuns(projectID, signal, {
+      const runs = await readCronRuns(projectID, signal, {
         jobUID: selection.uid,
         limit: cronRecentJobRuns,
       })
-      if (!signal.aborted) detail = { status: 'job', runs: page.runs }
+      if (!signal.aborted) detail = { status: 'job', runs }
     } catch (error) {
       if (!signal.aborted) detail = { status: 'failed', failure: cronReadFailure(error) }
     }
@@ -265,29 +257,6 @@
     )
   }
 
-  async function loadOlder(projectUID: string): Promise<void> {
-    const signal = catalogSignal
-    const entry = records.find((candidate) => candidate.project.uid === projectUID)
-    const before = entry?.nextBeforeUID
-    if (!signal || signal.aborted || !entry || !before || entry.older === 'loading') return
-    update(projectUID, { older: 'loading' })
-    try {
-      const page = await readCronRuns(entry.project.id, signal, { beforeUID: before })
-      if (signal.aborted) return
-      const current = records.find((candidate) => candidate.project.uid === projectUID)
-      if (!current || current.nextBeforeUID !== before) return
-      update(projectUID, {
-        runs: appendRuns(current.runs, page.runs),
-        nextBeforeUID: page.nextBeforeUID,
-        extended: true,
-        older: 'idle',
-      })
-    } catch {
-      // The cursor stays, so the reader can ask for the same page again.
-      if (!signal.aborted) update(projectUID, { older: 'failed' })
-    }
-  }
-
   async function retryProject(projectUID: string): Promise<void> {
     const signal = catalogSignal
     const entry = records.find((candidate) => candidate.project.uid === projectUID)
@@ -295,7 +264,9 @@
     update(projectUID, { retrying: true })
     const next = await readProject(entry.project, signal)
     if (signal.aborted) return
-    records = records.map((candidate) => (candidate.project.uid === projectUID ? next : candidate))
+    records = records.map((candidate) =>
+      candidate.project.uid === projectUID ? refreshed(candidate, next) : candidate,
+    )
   }
 
   function openRunJob(): void {
@@ -336,9 +307,10 @@
     onNavigate({ ...route, projectUIDs: [], statuses: [] })
   }
 
+  // A job that is no longer listed has been deleted; its UID stays in the drawer.
   function runJobName(projectUID: string, run: CronRun): string {
     if (!run.job_uid) return 'Run'
-    return jobNames.get(`${projectUID}:${run.job_uid}`) ?? run.job_uid
+    return jobNames.get(`${projectUID}:${run.job_uid}`) ?? 'Deleted job'
   }
 
   function projectName(projectUID: string): string {
@@ -346,9 +318,14 @@
   }
 
   function failureMessage(entry: ProjectRecords): string {
-    return entry.failure === 'forbidden'
-      ? `${projectName(entry.project.uid)}: this connection cannot read its cron records.`
-      : `${projectName(entry.project.uid)}: cron records could not be loaded.`
+    const name = projectName(entry.project.uid)
+    if (entry.failure === 'forbidden') {
+      return `${name}: this connection cannot read its cron records.`
+    }
+    const kept = entry.jobs.length + entry.workflows.length + entry.runs.length > 0
+    return kept
+      ? `${name}: cron records could not be loaded. Showing the last records read.`
+      : `${name}: cron records could not be loaded.`
   }
 
   function detailFailure(failure: CronReadFailure, kind: CronSelection['kind']): string {
@@ -578,21 +555,7 @@
 
   {#if route.tab === 'runs' && shown.length > 0}
     <footer class="cron-history">
-      <p>
-        {extended
-          ? 'Showing loaded runs, newest first. Filters apply to loaded runs.'
-          : `Showing the latest ${cronRunPageSize} runs per project. Filters apply to loaded runs.`}
-      </p>
-      {#each pageable as entry (entry.project.uid)}
-        <Button
-          size="sm"
-          label={entry.older === 'failed'
-            ? `Try older runs again · ${projectName(entry.project.uid)}`
-            : `Load older runs · ${projectName(entry.project.uid)}`}
-          busy={entry.older === 'loading'}
-          onclick={() => void loadOlder(entry.project.uid)}
-        />
-      {/each}
+      <p>Showing the latest {cronRunPageSize} runs per project. Filters apply to loaded runs.</p>
     </footer>
   {/if}
 </section>
@@ -609,7 +572,9 @@
         <CronRunDetail
           run={detail.run}
           projectName={selectedProject.name}
-          jobName={runJobName(selection.projectUID, detail.run)}
+          jobName={detail.run.job_uid
+            ? jobNames.get(`${selection.projectUID}:${detail.run.job_uid}`)
+            : undefined}
           onOpenJob={detail.run.job_uid ? openRunJob : undefined}
           {onOpenIssue}
         />
