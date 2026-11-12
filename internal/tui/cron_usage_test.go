@@ -20,10 +20,10 @@ import (
 )
 
 // cronUsageDaemon is a fake daemon for project 7 serving the fixture's cron
-// lists, the capabilities document with the given usage source (source "error"
-// fails that read), and a complete $2.41 usage answer for the fixture run. It
-// counts usage requests and those asking for a refresh.
-func cronUsageDaemon(t *testing.T, data cronData, source string) (*httptest.Server, *atomic.Int64, *atomic.Int64) {
+// lists, the capabilities document with the usage source currently in source
+// ("error" fails that read), and a complete $2.41 usage answer for the fixture
+// run. It counts usage requests and those asking for a refresh.
+func cronUsageDaemon(t *testing.T, data cronData, source *atomic.Value) (*httptest.Server, *atomic.Int64, *atomic.Int64) {
 	t.Helper()
 	var usage, refreshes atomic.Int64
 	base := "/api/v1/projects/7/cron"
@@ -35,6 +35,7 @@ func cronUsageDaemon(t *testing.T, data cronData, source string) (*httptest.Serv
 		}
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		source, _ := source.Load().(string)
 		switch {
 		case r.Method != http.MethodGet:
 			w.WriteHeader(http.StatusAccepted)
@@ -126,7 +127,9 @@ func TestCronRunUsageOpenDetail(t *testing.T) {
 			data := *m.cron.data
 			data.runs = slices.Clone(data.runs)
 			data.runs[0].Summary.Sessions = []generated.SessionResponse{{Agent: "claude", SessionID: "00000000-0000-4000-8000-000000000001", Step: new("main")}}
-			srv, usage, refreshes := cronUsageDaemon(t, data, tc.source)
+			var source atomic.Value
+			source.Store(tc.source)
+			srv, usage, refreshes := cronUsageDaemon(t, data, &source)
 			m.api = NewClient(srv.URL, srv.Client())
 
 			// The existing refresh key rereads the cron data from the daemon.
@@ -141,8 +144,27 @@ func TestCronRunUsageOpenDetail(t *testing.T) {
 
 			body := stripANSI(m.viewBody())
 			if tc.source == "error" {
-				require.Regexp(t, regexp.MustCompile(`Cost:\s+unavailable: internal_error: daemon busy · r: refresh`), body)
+				unavailable := regexp.MustCompile(`Cost:\s+unavailable: internal_error: daemon busy · r: refresh`)
+				require.Regexp(t, unavailable, body)
 				require.Zero(t, usage.Load())
+				// A source last read as off is not known to be off once its
+				// next read fails; r recovers when the daemon answers again.
+				for _, next := range []string{"none", "error", "agentsview"} {
+					source.Store(next)
+					m, cmd = updateModel(m, keyRune('r'))
+					m = cronUsageSettle(t, m, cmd)
+					body = stripANSI(m.viewBody())
+					switch next {
+					case "none":
+						require.NotContains(t, body, "Cost:")
+					case "error":
+						require.Regexp(t, unavailable, body)
+					case "agentsview":
+						require.Regexp(t, regexp.MustCompile(`Cost:\s+\$2\.41\b`), body)
+					}
+				}
+				require.Equal(t, int64(1), usage.Load())
+				require.Zero(t, refreshes.Load())
 				return
 			}
 			if tc.enabled {
