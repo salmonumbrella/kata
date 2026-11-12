@@ -1,0 +1,63 @@
+name: Cron run cost web proof
+
+on:
+  push:
+    branches: [proof/cron-run-cost-web-ci]
+
+permissions:
+  contents: read
+
+env:
+  GOMAXPROCS: '2'
+  GOFLAGS: '-p=1'
+  GOTRACEBACK: all
+  KATA_HOME: /tmp/kata-proof/home
+  KATA_DB: /tmp/kata-proof/home/kata.db
+  KATA_WORKSPACE: /tmp/kata-proof/workspace
+  KATA_TEST_FAST_SQLITE: '1'
+  KATA_TEST_POSTGRES_AUTO_CONTAINER: '0'
+
+jobs:
+  go:
+    name: Go browser cron usage admission
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Local-web allowlist admits exact cron capabilities and usage reads
+        run: env -u KATA_AUTH_TOKEN go test -p 1 -v ./internal/daemon -run '^TestWebLocalSessionIsLimitedToSPAOperations$' -count=1
+
+  web:
+    name: Web run drawer cost
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 26.12.1
+      - uses: step-security/setup-bun@v2.1.3
+        with:
+          bun-version: 1.4.4
+      - uses: kenn-io/kit/.github/actions/kit-retry@v0.47.3
+      - name: Install frozen web dependencies
+        id: install
+        run: kit-retry 3 5 make web-install
+      - name: Open run shows its cost when usage is on
+        working-directory: web
+        run: bun x vp test src/components/cron/CronPage.test.ts -t 'shows the cost of an open run with one usage read when usage is on'
+      - name: Open run shows no cost and reads no usage when usage is off
+        if: always() && steps.install.outcome == 'success'
+        working-directory: web
+        run: bun x vp test src/components/cron/CronPage.test.ts -t 'shows no cost and reads no usage when usage is off'
+      - name: New tests type-check
+        if: always() && steps.install.outcome == 'success'
+        working-directory: web
+        run: bun run typecheck
