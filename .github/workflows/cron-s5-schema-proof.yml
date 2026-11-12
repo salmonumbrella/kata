@@ -1,7 +1,7 @@
 name: Cron request MCP schema proof
 on:
   push:
-    branches: [proof/cron-s5-schema-red-20261112, proof/cron-s5-schema-green-20261112]
+    branches: [proof/cron-s5-schema-green2-20261112]
 permissions:
   contents: read
 jobs:
