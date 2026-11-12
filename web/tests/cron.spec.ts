@@ -1,7 +1,7 @@
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
-import type { Page, TestInfo } from '@playwright/test'
+import type { BrowserContext, Page, TestInfo } from '@playwright/test'
 
 import { expect, test, type KataFixture } from './fixtures'
 
@@ -321,12 +321,14 @@ function seedRuns(
 }
 
 test('shows live run cost from each daemon without exposing its AgentsView token', async ({
+  browser,
   page,
   kata,
 }, testInfo) => {
   test.setTimeout(180_000)
   const local = await fakeAgentsView()
   const remote = await fakeAgentsView()
+  let anonymousContext: BrowserContext | undefined
   try {
     local.answers.set(sessionUID('a1'), priced(sessionUID('a1'), 2_410_000))
     local.answers.set(sessionUID('a2'), priced(sessionUID('a2'), 1_205_000, 'computed'))
@@ -348,20 +350,21 @@ test('shows live run cost from each daemon without exposing its AgentsView token
     seedRuns(kata, 'remote', remoteJobUID, [{ uid: remoteRunUID, sessions: [sessionUID('e1')] }])
 
     const browserTraffic: Promise<string>[] = []
-    page.on('request', (request) => {
-      browserTraffic.push(Promise.resolve(JSON.stringify(request.headers())))
-    })
-    // Only finished requests have a body to read; reading the body of one a
-    // navigation or abort cancelled would wait forever.
-    page.on('requestfinished', (request) => {
-      if (!request.url().includes('/cron/')) return
-      const body = request.response().then((response) => response?.text() ?? '')
-      browserTraffic.push(body.catch(() => ''))
-    })
     const usageRequests: string[] = []
-    page.on('request', (request) => {
-      if (request.url().includes('/usage')) usageRequests.push(request.url())
-    })
+    const watch = (target: Page) => {
+      target.on('request', (request) => {
+        browserTraffic.push(Promise.resolve(JSON.stringify(request.headers())))
+        if (request.url().includes('/usage')) usageRequests.push(request.url())
+      })
+      // Only finished requests have a body to read; reading the body of one a
+      // navigation or abort cancelled would wait forever.
+      target.on('requestfinished', (request) => {
+        if (!request.url().includes('/cron/')) return
+        const body = request.response().then((response) => response?.text() ?? '')
+        browserTraffic.push(body.catch(() => ''))
+      })
+    }
+    watch(page)
     const runRoute = (uid: string) =>
       `${kata.origin}/kata?view=cron&cron_tab=runs&cron_kind=run&cron_scope=${kata.projectUID}&cron_uid=${uid}`
     const drawer = page.getByRole('dialog', { name: 'Run' })
@@ -428,16 +431,46 @@ test('shows live run cost from each daemon without exposing its AgentsView token
     expect(remote.bearers.length).toBeGreaterThan(0)
     expect(new Set(local.bearers)).toEqual(new Set([`Bearer ${kata.agentsViewTokens.local}`]))
     expect(new Set(remote.bearers)).toEqual(new Set([`Bearer ${kata.agentsViewTokens.remote}`]))
-    const traffic = (await Promise.all(browserTraffic)).join('\n') + (await page.content())
+
+    // A read-only daemon still lets this tab mint its local session, so it is a
+    // signed-in read-only reader and still sees the cost.
+    await kata.restartReadonly()
+    await page.goto(runRoute(completeRunUID))
+    await expect(page.getByRole('status', { name: 'Active connection' })).toContainText('Read-only')
+    await expect(cost.getByText('$2.41', { exact: true })).toBeVisible()
+    await capture(page, testInfo, 'cost-desktop-read-only')
+
+    // Without a static token, a session-less request is the anonymous reader.
+    // The forwarding header makes the daemon refuse the loopback session mint
+    // (directLoopbackSessionAllowed), so this fresh tab stays anonymous.
+    await kata.restartReadonly({ tokenless: true })
+    anonymousContext = await browser.newContext({
+      colorScheme: 'dark',
+      viewport: { width: 1440, height: 960 },
+      extraHTTPHeaders: { 'X-Forwarded-For': '127.0.0.1' },
+    })
+    const anonymous = await anonymousContext.newPage()
+    watch(anonymous)
+    usageRequests.length = 0
+    await anonymous.goto(runRoute(completeRunUID))
+    await expect(anonymous.getByRole('status', { name: 'Active connection' })).toContainText(
+      'Anonymous (read-only)',
+    )
+    const anonymousCost = anonymous
+      .getByRole('dialog', { name: 'Run' })
+      .getByRole('region', { name: 'Cost' })
+    await expect(anonymousCost.getByText('Cost needs a signed-in session')).toBeVisible()
+    expect(usageRequests).toEqual([])
+    await capture(anonymous, testInfo, 'cost-desktop-anonymous')
+
+    const traffic =
+      (await Promise.all(browserTraffic)).join('\n') +
+      (await page.content()) +
+      (await anonymous.content())
     expect(traffic).not.toContain(kata.agentsViewTokens.local)
     expect(traffic).not.toContain(kata.agentsViewTokens.remote)
-
-    await kata.restartReadonly()
-    usageRequests.length = 0
-    await page.goto(runRoute(completeRunUID))
-    await expect(cost.getByText('Cost needs a signed-in session')).toBeVisible()
-    expect(usageRequests).toEqual([])
-    await capture(page, testInfo, 'cost-desktop-anonymous')
+    await anonymousContext.close()
+    anonymousContext = undefined
 
     await kata.agentsView({})
     await kata.launch(page)
@@ -447,6 +480,7 @@ test('shows live run cost from each daemon without exposing its AgentsView token
     expect(usageRequests).toEqual([])
     await capture(page, testInfo, 'cost-desktop-off')
   } finally {
+    await anonymousContext?.close()
     await kata.agentsView({})
     await Promise.all([local.close(), remote.close()])
   }

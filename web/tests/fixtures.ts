@@ -60,7 +60,9 @@ export interface KataFixture {
   // Restarts both daemons with the given AgentsView usage sources, or none.
   agentsView(targets: { local?: string; remote?: string }): Promise<void>
   restart(): Promise<void>
-  restartReadonly(): Promise<void>
+  // Restarts the local daemon read-only. Tokenless also drops its static token,
+  // so a request without a browser session is the anonymous reader.
+  restartReadonly(options?: { tokenless?: boolean }): Promise<void>
   restartIdentity(enabled?: boolean): Promise<void>
 }
 
@@ -280,9 +282,11 @@ listen = "127.0.0.1:${port}"
       daemon = startDaemon(binary, workspace, environment)
       await waitForPing(origin, daemon)
     },
-    async restartReadonly() {
+    async restartReadonly(options = {}) {
       await stopDaemon(daemon)
-      daemon = startDaemon(binary, workspace, environment, ['--insecure-readonly'])
+      // An empty KATA_AUTH_TOKEN is ignored, leaving no static token.
+      const env = options.tokenless ? { ...environment, KATA_AUTH_TOKEN: '' } : environment
+      daemon = startDaemon(binary, workspace, env, ['--insecure-readonly'])
       await waitForPing(origin, daemon)
     },
   }
