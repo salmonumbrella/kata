@@ -429,6 +429,29 @@ describe('CronPage', () => {
     expect(screen.queryByText('$2.41')).toBeNull()
   })
 
+  // A daemon older than run usage answers capabilities without a usage
+  // member; that means usage is off, as a source of none does.
+  const olderCapabilities = { project_uid: exampleProject.uid, event_features: [] }
+  it.each<[string, 'agentsview' | 'none', UsageFixture]>([
+    ['no usage source', 'none', {}],
+    [
+      'a daemon older than run usage',
+      'agentsview',
+      { capabilities: () => settledJSON(olderCapabilities) },
+    ],
+  ])('shows no Cost and reads no usage for %s', async (_name, source, fixture) => {
+    const fetcher = serveRunUsage(source, fixture)
+    render(CronPage, { props: runSelectionProps() })
+    expect(await screen.findByText(`Run ${runC}`)).not.toBeNull()
+    await waitFor(() =>
+      expect(requested(fetcher, cronPath(exampleProject, 'capabilities'))).toHaveLength(1),
+    )
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(screen.queryByRole('heading', { name: 'Cost' })).toBeNull()
+    expect(usageReads(fetcher)).toEqual([])
+  })
+
   it('drops a late capability answer when another run opens', async () => {
     let answer: (response: Response) => void = () => {}
     const fetcher = serveRunUsage('agentsview', {
