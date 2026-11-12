@@ -14,6 +14,7 @@ All notable changes to kata, grouped by release. Versioned releases start with
   Go harness and offline `kata cron conformance export|check`. Frozen v1 stays
   the default; explicit v2 adds successful dependency and multi-parent coverage.
   Adapters can also declare drop records and occupied-gate expiry.
+- Restart a local daemon from Settings after turning on search by meaning. Confirm the interruption for every project and client, then reopen `kata ui` if the browser address changes. The API reports the `restart` job state and `restart_in_progress` during the handoff.
 
 - Use `kata daemon status` in scripts to check the selected daemon's readiness.
   It exits 0 only for a ready selected daemon. Stopped or unavailable
