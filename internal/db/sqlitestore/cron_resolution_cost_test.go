@@ -21,14 +21,16 @@ import (
 )
 
 type evidenceConnector struct {
-	driver driver.Driver
-	path string
+	driver  driver.Driver
+	path    string
 	queries *atomic.Int64
 }
 
 func (c evidenceConnector) Connect(context.Context) (driver.Conn, error) {
 	conn, err := c.driver.Open(c.path)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	return evidenceConn{Conn: conn, queries: c.queries}, nil
 }
 func (c evidenceConnector) Driver() driver.Driver { return c.driver }
