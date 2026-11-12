@@ -380,14 +380,53 @@ describe('CronPage', () => {
     expect(requested(fetcher, cronPath(exampleProject, 'capabilities'))).toHaveLength(2)
   })
 
-  it('shows the text for a failed usage read in the Cost section', async () => {
-    serveRunUsage('agentsview', {
-      usage: () => Response.json({ error: { code: 'usage_source_disabled' } }, { status: 503 }),
-    })
+  const futureSession = { ...usageBody().sessions[0]!, state: 'future_state' }
+  const failing = (code: string, status: number) => () =>
+    Response.json({ error: { code } }, { status })
+
+  it.each<[string, UsageFixture, string]>([
+    [
+      'disabled usage',
+      { usage: failing('usage_source_disabled', 503) },
+      'Usage is disabled on this daemon.',
+    ],
+    // A gateway that cannot reach the selected daemon also answers 502, but its
+    // error code says the total did not overflow.
+    [
+      'an unreachable daemon',
+      { usage: failing('daemon_unreachable', 502) },
+      'Could not read cost. Refresh to retry.',
+    ],
+    // A capability read that fails is not the same as usage being off.
+    [
+      'a failed capability read',
+      { capabilities: failing('internal', 500) },
+      'Could not read cost. Refresh to retry.',
+    ],
+    [
+      'an unreachable capability read',
+      { capabilities: () => Promise.reject(new TypeError('network unreachable')) },
+      'Could not read cost. Refresh to retry.',
+    ],
+    // A state this page does not know is refused rather than guessed.
+    [
+      'an unknown total state',
+      { usage: () => Response.json(usageBody({ state: 'future_state' })) },
+      'Unsupported usage state. Refresh to retry.',
+    ],
+    [
+      'an unknown session state',
+      { usage: () => Response.json(usageBody({ sessions: [futureSession] })) },
+      'Unsupported usage state. Refresh to retry.',
+    ],
+  ])('shows the Cost text for %s', async (_name, fixture, text) => {
+    serveRunUsage('agentsview', fixture)
     render(CronPage, { props: runSelectionProps() })
 
-    expect(await screen.findByText('Usage is disabled on this daemon.')).not.toBeNull()
+    expect(await screen.findByText(text)).not.toBeNull()
     expect(screen.getByRole('heading', { name: 'Cost' })).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'Refresh cost' })).not.toBeNull()
+    expect(screen.queryByText('$2.41')).toBeNull()
   })
 
   // A healthy daemon echoes the requested run and project, so these answers are
