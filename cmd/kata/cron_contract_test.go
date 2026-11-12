@@ -255,6 +255,8 @@ func TestCronRequestInputsRetainedRetry(t *testing.T) {
 		require.NoError(t, err)
 		require.Contains(t, out, `"replayed":true`)
 		_, _, err = executeCronCLI(t, env.URL, nil, "job", "request-run", job.UID, "--request-uid", id, "--input", "count=1", "--input", "note=true")
-		require.Error(t, err)
+		require.ErrorContains(t, err, "identity conflicts")
+		_, _, err = executeCronCLI(t, env.URL, nil, "job", "request-run", job.UID, "--request-uid", id, "--input", "count=-0", "--input", "extra=true")
+		require.ErrorContains(t, err, "identity conflicts")
 	})
 }
