@@ -147,6 +147,17 @@ func checkCronRequests(t *testing.T, s db.Storage, b Backend) error {
 		require.NotContains(t, string(project.Metadata), "cron.request_inputs."+in.UID)
 		require.NotContains(t, string(project.Metadata), "cron.request."+in.UID)
 	})
+	t.Run("invalid declaration diagnostic", func(t *testing.T) {
+		p, job, _ := requestJobFixture(t, s, "diagnostic-project")
+		job.Definition.Action.WorkflowUID = ""
+		job.Definition.Action.Prompt = "Inspect"
+		job.Definition.Options = []byte(`{"inputs":42}`)
+		job, _, e := s.PutCronJob(ctx, db.PutCronJob{ProjectID: p.ID, UID: job.UID, Name: job.Name, Definition: job.Definition, ExpectedEventUID: job.DefinitionEventUID, Actor: "operator"})
+		require.NoError(t, e)
+		_, e = s.RequestCron(ctx, db.RequestCronIn{ProjectID: p.ID, UID: requestUIDAt(t, now), Kind: "run", TargetUID: job.UID, Actor: "operator", TTLSeconds: 60, Now: now})
+		require.ErrorIs(t, e, cron.ErrInvalid)
+		require.NotContains(t, e.Error(), ": :")
+	})
 	t.Run("cancel while paused", func(t *testing.T) {
 		p, job, wf := requestJobFixture(t, s, "cancel-project")
 		_, e := s.SetCronProjectPause(ctx, db.SetCronProjectPauseIn{ProjectID: p.ID, Actor: "operator", Paused: true})
