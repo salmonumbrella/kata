@@ -87,7 +87,7 @@ func TestCronRunUsageWireAndVersion(t *testing.T) {
 	require.Equal(t, decode(body), decode(string(envelope.Result.StructuredContent)))
 	require.Equal(t, 1, requests)
 	require.Equal(t, "true", query)
-	for _, replacement := range []string{"0.45.0", ""} {
+	for _, replacement := range []string{"0.45.0", "0.46.0-rc.1", "0.46.0+", ""} {
 		version = replacement
 		refused := call()
 		require.True(t, refused.IsError)

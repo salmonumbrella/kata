@@ -998,17 +998,14 @@ func TestMCPCronUsage(t *testing.T) {
 
 func TestMCPCronUsageStartupDiscovery(t *testing.T) {
 	for _, tc := range []struct {
-		name, version, projects, capabilities string
-		status                                int
-		want                                  bool
-		wantRequests                          int
+		name, projects, capabilities string
+		status                       int
+		want                         bool
+		wantRequests                 int
 	}{
-		{name: "no projects", version: mcpserver.CronUsageAPIFloor, projects: `{"projects":[]}`, wantRequests: 1},
-		{name: "old API", version: "0.45.0", status: http.StatusInternalServerError},
-		{name: "floor prerelease", version: "0.46.0-rc.1", status: http.StatusInternalServerError},
-		{name: "malformed version", version: "0.46.0+", status: http.StatusInternalServerError},
-		{name: "capability failure", version: mcpserver.CronUsageAPIFloor, projects: `{"projects":[{"id":42,"uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","name":"spoke-project","metadata":{},"revision":1,"created_at":"2026-08-11T00:00:00Z"}]}`, status: http.StatusForbidden, wantRequests: 2},
-		{name: "catalog failure", version: mcpserver.CronUsageAPIFloor, status: http.StatusInternalServerError, wantRequests: 1},
+		{name: "no projects", projects: `{"projects":[]}`, wantRequests: 1},
+		{name: "capability failure", projects: `{"projects":[{"id":42,"uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","name":"spoke-project","metadata":{},"revision":1,"created_at":"2026-08-11T00:00:00Z"}]}`, status: http.StatusForbidden, wantRequests: 2},
+		{name: "catalog failure", status: http.StatusInternalServerError, wantRequests: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			requests := 0
@@ -1028,9 +1025,33 @@ func TestMCPCronUsageStartupDiscovery(t *testing.T) {
 			t.Cleanup(daemon.Close)
 			client, err := kataclient.NewWithHTTPClient(daemon.URL, daemon.Client())
 			require.NoError(t, err)
-			got := resolveMCPCronUsage(t.Context(), tc.version, mcpserver.NewAllScope(), client)
+			got := resolveMCPCronUsage(t.Context(), mcpserver.NewAllScope(), client)
 			require.Equal(t, tc.want, got)
 			require.Equal(t, tc.wantRequests, requests)
+		})
+	}
+	project := mcpserver.ProjectIdentity{ID: 42, UID: "01HBBBBBBBBBBBBBBBBBBBBBBB", Name: "spoke-project"}
+	bound, err := mcpserver.NewBoundScope(project)
+	require.NoError(t, err)
+	allowlist, err := mcpserver.NewAllowlistScope([]mcpserver.ProjectIdentity{project})
+	require.NoError(t, err)
+	for name, scope := range map[string]*mcpserver.Scope{"bound": bound, "allowlist": allowlist} {
+		t.Run(name, func(t *testing.T) {
+			var paths []string
+			daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				paths = append(paths, r.URL.Path)
+				w.Header().Set("Content-Type", "application/json")
+				if r.URL.Path != "/api/v1/projects/42/cron/capabilities" {
+					http.NotFound(w, r)
+					return
+				}
+				_, _ = io.WriteString(w, `{"project_uid":"01HBBBBBBBBBBBBBBBBBBBBBBB","event_features":[],"usage":{"source":"agentsview"}}`)
+			}))
+			t.Cleanup(daemon.Close)
+			client, err := kataclient.NewWithHTTPClient(daemon.URL, daemon.Client())
+			require.NoError(t, err)
+			require.True(t, resolveMCPCronUsage(t.Context(), scope, client))
+			require.Equal(t, []string{"/api/v1/projects/42/cron/capabilities"}, paths)
 		})
 	}
 }
