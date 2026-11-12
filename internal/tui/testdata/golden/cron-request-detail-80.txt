@@ -2,17 +2,17 @@
 kata カタ [jobs] runs workflows
  jobs / Digest
 
-      "title": "Digest"
-    },
-    "kind": "job",
-    "overlap": "forbid",
-    "trigger": {
-      "kind": "manual"
-    },
     "version": 1
   }
 
-  Loaded runs (1) · newest 100
+  Run history from the latest 100 project runs
+  Sample: 1 observation
+  succeeded 1 · failed 0 · cancelled 0 · running 0 · unknown 0
+  Order: S
+  Oldest left, newest right; S succeeded, F failed, C cancelled, R running, ?
+  unknown
+
+  Loaded run links · newest 100
   succeeded · 2026-05-01T11:00:00Z · Report ready
 
   Requests (1)
