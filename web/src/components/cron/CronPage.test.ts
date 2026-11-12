@@ -97,11 +97,10 @@ function notFound(): Response {
   return Response.json({ error: { code: 'not_found' } }, { status: 404 })
 }
 
-function props(route: Partial<CronRoute>, projects: Project[], cursor = 1) {
+function props(route: Partial<CronRoute>, projects: Project[]) {
   return {
     route: { tab: 'jobs' as const, projectUIDs: [], statuses: [], ...route },
     projects,
-    cursor,
     readOnly: false,
     anonymous: false,
     onNavigate: vi.fn(),
@@ -200,11 +199,19 @@ describe('CronPage', () => {
     }))
     let inFlight = 0
     let mostInFlight = 0
+    const refreshFailures = new Map<string, number>()
+    // One project's first read stays pending until the test releases it.
+    let releaseSlow: () => void = () => {}
+    const slow = new Promise<void>((resolve) => (releaseSlow = resolve))
+    let slowReads = 0
     serve(async (url) => {
       inFlight += 1
       mostInFlight = Math.max(mostInFlight, inFlight)
       await new Promise((resolve) => setTimeout(resolve, 1))
+      if (url.pathname === cronPath(projects[4]!, 'jobs') && slowReads++ === 0) await slow
       inFlight -= 1
+      const failure = refreshFailures.get(url.pathname)
+      if (failure) return Response.json({ error: { code: 'example' } }, { status: failure })
       if (url.pathname === cronPath(projects[2]!, 'jobs')) {
         return Response.json({ error: { code: 'forbidden' } }, { status: 403 })
       }
@@ -220,34 +227,54 @@ describe('CronPage', () => {
 
     render(CronPage, { props: props({}, projects) })
 
+    // A slow project does not hold back the projects that already answered.
     expect(await screen.findByRole('button', { name: 'Review example-project-1' })).not.toBeNull()
-    expect(screen.getByRole('button', { name: 'Review example-project-6' })).not.toBeNull()
+    expect(await screen.findByRole('button', { name: 'Review example-project-6' })).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'Review example-project-5' })).toBeNull()
+    releaseSlow()
+    expect(await screen.findByRole('button', { name: 'Review example-project-5' })).not.toBeNull()
     expect(
       screen.getByText('example-project-3: this connection cannot read its cron records.'),
     ).not.toBeNull()
     expect(screen.getByText('example-project-4: cron records could not be loaded.')).not.toBeNull()
-    expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1)
     expect(mostInFlight).toBe(4)
+
+    // A failed Refresh keeps the last records it read and says they failed to
+    // refresh; a project the connection can no longer read is cleared.
+    const refresh = async () => {
+      const button = screen.getByRole('button', { name: 'Refresh' })
+      await waitFor(() => expect(button.getAttribute('aria-busy')).toBeNull())
+      await fireEvent.click(button)
+    }
+    refreshFailures.set(cronPath(projects[0]!, 'jobs'), 400)
+    refreshFailures.set(cronPath(projects[1]!, 'jobs'), 403)
+    await refresh()
+    await screen.findByText(/^example-project-1: cron records could not be loaded\./)
+    expect(screen.getByRole('button', { name: 'Review example-project-1' })).not.toBeNull()
+    expect(
+      screen.getByText('example-project-2: this connection cannot read its cron records.'),
+    ).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'Review example-project-2' })).toBeNull()
+
+    // The next Refresh recovers the project.
+    refreshFailures.clear()
+    await refresh()
+    await waitFor(() =>
+      expect(screen.queryByText(/^example-project-1: cron records could not be loaded/)).toBeNull(),
+    )
+    expect(screen.getByRole('button', { name: 'Review example-project-1' })).not.toBeNull()
   })
 
-  it('loads older runs per project and keeps the cursor when an older page fails', async () => {
-    let olderAttempts = 0
+  it('shows only the newest bounded page of runs per project', async () => {
     const fetcher = serve((url) => {
       if (url.pathname === cronPath(exampleProject, 'jobs')) {
         return Response.json({ jobs: [job(exampleProject, 'Daily review')] })
       }
       if (url.pathname === cronPath(exampleProject, 'runs')) {
-        if (!url.searchParams.has('before_uid')) {
-          return Response.json({
-            runs: [run(exampleProject, runA, 3), run(exampleProject, runB, 2)],
-            next_before_uid: runB,
-          })
-        }
-        olderAttempts += 1
-        if (olderAttempts === 1) {
-          return Response.json({ error: { code: 'invalid' } }, { status: 400 })
-        }
-        return Response.json({ runs: [run(exampleProject, runC, 1, { status: 'failed' })] })
+        return Response.json({
+          runs: [run(exampleProject, runA, 3), run(exampleProject, runB, 2)],
+          next_before_uid: runB,
+        })
       }
       return emptyCatalog(url) ?? notFound()
     })
@@ -260,23 +287,10 @@ describe('CronPage', () => {
       ),
     ).not.toBeNull()
     expect(screen.getAllByRole('button', { name: 'Daily review' })).toHaveLength(2)
-    await fireEvent.click(screen.getByRole('button', { name: 'Load older runs · example-project' }))
-    const retry = await screen.findByRole('button', {
-      name: 'Try older runs again · example-project',
-    })
-    await fireEvent.click(retry)
-
-    await waitFor(() =>
-      expect(screen.getAllByRole('button', { name: 'Daily review' })).toHaveLength(3),
-    )
-    expect(screen.queryByRole('button', { name: /older runs/ })).toBeNull()
-    expect(
-      screen.getByText('Showing loaded runs, newest first. Filters apply to loaded runs.'),
-    ).not.toBeNull()
     const runsPath = cronPath(exampleProject, 'runs')
-    const older = requested(fetcher, runsPath).filter((url) => url.searchParams.has('before_uid'))
-    expect(older.map((url) => url.searchParams.get('before_uid'))).toEqual([runB, runB])
-    expect(older.every((url) => url.searchParams.get('limit') === '50')).toBe(true)
+    expect(requested(fetcher, runsPath).map((url) => url.searchParams.toString())).toEqual([
+      'limit=50',
+    ])
   })
 
   it('filters loaded runs by status and tells a filtered page from an empty one', async () => {
@@ -305,8 +319,13 @@ describe('CronPage', () => {
 
   it('opens a run older than the loaded history by UID and names a missing run', async () => {
     const issueUID = '01J00000000000000000000001'
+    let detailReads = 0
     const fetcher = serve((url) => {
       if (url.pathname === cronPath(exampleProject, `runs/${runC}`)) {
+        detailReads += 1
+        if (detailReads === 1) {
+          return Response.json({ error: { code: 'invalid' } }, { status: 400 })
+        }
         return Response.json({
           run: run(exampleProject, runC, 1, { status: 'failed', issue_uid: issueUID }),
         })
@@ -317,6 +336,9 @@ describe('CronPage', () => {
     const current = props({ tab: 'runs', selection }, [exampleProject])
     const view = render(CronPage, { props: current })
 
+    // Refresh reads the open drawer again, so it also retries a failed detail.
+    expect(await screen.findByText('The run could not be loaded.')).not.toBeNull()
+    await fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
     expect(await screen.findByText(`Run ${runC}`)).not.toBeNull()
     await fireEvent.click(screen.getByRole('button', { name: 'Open issue' }))
     expect(current.onOpenIssue).toHaveBeenCalledWith(issueUID)
@@ -416,13 +438,16 @@ describe('CronPage', () => {
     const view = render(CronPage, { props: current })
     expect(await screen.findByText('$2.41')).not.toBeNull()
 
+    // Refresh rereads the open run; a new revision clears its cost.
     revision = 2
-    await view.rerender({ ...current, cursor: 2 })
+    const refresh = screen.getByRole('button', { name: 'Refresh' })
+    await waitFor(() => expect(refresh.getAttribute('aria-busy')).toBeNull())
+    await fireEvent.click(refresh)
     expect(await screen.findByText('Run changed. Refresh cost.')).not.toBeNull()
     expect(screen.queryByText('$2.41')).toBeNull()
     expect(usageReads(fetcher)).toHaveLength(1)
 
-    await view.rerender({ ...current, cursor: 2, readOnly: true })
+    await view.rerender({ ...current, readOnly: true })
     expect(await screen.findByText('$2.41')).not.toBeNull()
     expect(usageReads(fetcher)).toHaveLength(2)
   })
@@ -518,12 +543,12 @@ describe('CronPage', () => {
     expect(screen.queryByText('example-project: cron records could not be loaded.')).toBeNull()
   })
 
-  it('reads the page and the open job again when the accepted cursor advances', async () => {
-    let cursorReads = 0
+  it('reads the catalog and the open job again on Refresh', async () => {
+    let jobsReads = 0
     const fetcher = serve((url) => {
       if (url.pathname === cronPath(exampleProject, 'jobs')) {
-        cursorReads += 1
-        return Response.json({ jobs: [job(exampleProject, `Daily review ${cursorReads}`)] })
+        jobsReads += 1
+        return Response.json({ jobs: [job(exampleProject, `Daily review ${jobsReads}`)] })
       }
       if (url.pathname === cronPath(exampleProject, 'runs') && url.searchParams.has('job_uid')) {
         return Response.json({ runs: [run(exampleProject, runA, 1, { status: 'failed' })] })
@@ -531,15 +556,16 @@ describe('CronPage', () => {
       return emptyCatalog(url) ?? notFound()
     })
     const selection = { kind: 'job' as const, projectUID: exampleProject.uid, uid: jobUID }
-    const current = props({ selection }, [exampleProject])
-    const view = render(CronPage, { props: current })
+    render(CronPage, { props: props({ selection }, [exampleProject]) })
 
     expect(await screen.findByRole('button', { name: 'Daily review 1' })).not.toBeNull()
     await waitFor(() =>
       expect(screen.getAllByRole('button', { name: /^failed · / })).toHaveLength(1),
     )
 
-    await view.rerender({ ...current, cursor: 2 })
+    const refresh = screen.getByRole('button', { name: 'Refresh' })
+    await waitFor(() => expect(refresh.getAttribute('aria-busy')).toBeNull())
+    await fireEvent.click(refresh)
 
     expect(await screen.findByRole('button', { name: 'Daily review 2' })).not.toBeNull()
     const jobRuns = () => requested(fetcher, cronPath(exampleProject, 'runs')).filter(jobRead)
