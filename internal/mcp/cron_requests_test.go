@@ -54,8 +54,8 @@ func TestCronRequestInputsTools(t *testing.T) {
 // Contract: published output schemas accept the actual retained scalar values.
 func TestCronRequestInputsOutputSchema(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		kind string
+		name  string
+		kind  string
 		value any
 	}{
 		{"string", "string", "example"},
