@@ -217,19 +217,19 @@ Select a record to open its details beside the page:
 - A workflow shows its description, input, and steps.
 
 The **Cost** section reads the run's cost from the daemon when the drawer
-opens; nothing is stored in the browser. It shows the total, using the same
-text as `kata cron run usage`: `~` marks an estimate, and a partial total ends
-in `+` with the number of sessions that could not be priced. Each session line
-gives its state and, when AgentsView reports a safe address, an **Open in
-AgentsView** link that opens in a new tab. **Refresh cost** asks again and
-bypasses cached results older than ten seconds. If the run changes while the
+opens; nothing is stored in the browser. It shows the total in the same text
+as `kata cron run usage`; see [Live run cost](../reference/cron.md#live-run-cost)
+for what each form means. Each session line gives its state and, when
+AgentsView reports a safe address, an **Open in AgentsView** link that opens in
+a new tab. **Refresh cost** asks the daemon again. If the run changes while the
 drawer is open, the old cost is cleared and the section says **Run changed.
 Refresh cost.** A failed read says why, such as **Cost needs a signed-in
 session** for an anonymous reader or **Could not read cost. Refresh to retry.**
 for an unreachable daemon. Without a usage source there is no Cost section and
 no usage request. Through the daemon switcher, the cost comes from the selected
 daemon's own AgentsView configuration; the browser never receives its token.
-Signing out, switching daemons, or losing write access clears the result.
+Signing out or switching daemons clears the result; losing write access clears
+it and reads it again.
 
 A link to a run that is older than the loaded history still opens it. A run
 that no longer exists shows **Run not found**, and a record in a project the
