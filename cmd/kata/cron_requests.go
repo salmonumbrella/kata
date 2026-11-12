@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"strings"
 
@@ -43,8 +44,44 @@ func newCronRequestWriteCmd(cancel bool) *cobra.Command {
 					return nil, err
 				}
 				var declarations map[string]string
-				read, readErr := c.GetCronJobInputsWithResponse(ctx, &generated.GetCronJobInputsRequestOptions{PathParams: &generated.GetCronJobInputsPath{ProjectID: projectID, CronUID: target}})
-				if readErr == nil && read != nil && read.StatusCode == 200 {
+				list, listErr := c.ListCronRequestsWithResponse(ctx, &generated.ListCronRequestsRequestOptions{PathParams: &generated.ListCronRequestsPath{ProjectID: projectID}})
+				if listErr == nil && list != nil && list.StatusCode == 200 {
+					var retained struct {
+						Requests []struct {
+							UID string `json:"uid"`
+							Inputs map[string]jsontext.Value `json:"inputs"`
+						} `json:"requests"`
+					}
+					if json.Unmarshal(list.Body, &retained) == nil {
+						for _, request := range retained.Requests {
+							if request.UID != body.UID {
+								continue
+							}
+							declarations = map[string]string{}
+							for name, value := range request.Inputs {
+								switch value.Kind() {
+								case jsontext.KindString:
+									declarations[name] = "string"
+								case jsontext.KindNumber:
+									declarations[name] = "int"
+								case jsontext.KindTrue, jsontext.KindFalse:
+									declarations[name] = "bool"
+								}
+							}
+							// Let the server compare changed names to the retained identity.
+							for _, input := range inputs {
+								name, _, ok := strings.Cut(input, "=")
+								if _, known := declarations[name]; ok && !known {
+									declarations[name] = ""
+								}
+							}
+							break
+						}
+					}
+				}
+				if declarations == nil {
+					read, readErr := c.GetCronJobInputsWithResponse(ctx, &generated.GetCronJobInputsRequestOptions{PathParams: &generated.GetCronJobInputsPath{ProjectID: projectID, CronUID: target}})
+					if readErr == nil && read != nil && read.StatusCode == 200 {
 					var resolved struct {
 						Inputs []struct {
 							Name string `json:"name"`
@@ -65,6 +102,7 @@ func newCronRequestWriteCmd(cancel bool) *cobra.Command {
 								declarations[input.Name] = input.Type
 							}
 						}
+					}
 					}
 				}
 				values, err := parseCronRequestInputs(inputs, declarations)

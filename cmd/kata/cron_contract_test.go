@@ -5,6 +5,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -233,8 +234,14 @@ func TestCronRequestInputsRetainedRetry(t *testing.T) {
 	job, _, err := env.DB.PutCronJob(t.Context(), db.PutCronJob{ProjectID: project.ID, Name: "Inspect", Actor: "operator", Definition: definition})
 	require.NoError(t, err)
 	id := cronCLIUID(t)
-	_, err = env.DB.RequestCron(t.Context(), db.RequestCronIn{ProjectID: project.ID, UID: id, Kind: db.CronRequestKindRun, TargetUID: job.UID, Actor: "operator", TTLSeconds: 600, Inputs: map[string]jsontext.Value{"count": jsontext.Value("-0"), "note": jsontext.Value(`"true"`)}})
+	path := fmt.Sprintf("%s/api/v1/projects/%d/cron/jobs/%s/requests", env.URL, project.ID, job.UID)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, path, strings.NewReader(fmt.Sprintf(`{"uid":%q,"actor":"operator","ttl_seconds":600,"inputs":{"count":-0,"note":"true"}}`, id)))
 	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 	t.Run("literal", func(t *testing.T) {
 		out, _, err := executeCronCLI(t, env.URL, nil, "job", "request-run", job.UID, "--request-uid", id, "--input", "count=-0", "--input", "note=true")
 		require.NoError(t, err)

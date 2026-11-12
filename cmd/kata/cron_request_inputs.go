@@ -40,6 +40,9 @@ func parseCronRequestInputs(args []string, declarations map[string]string) (map[
 					return nil, fmt.Errorf("%s: invalid integer", name)
 				}
 				raw = jsontext.Value(strconv.FormatInt(n, 10))
+				if candidate := jsontext.Value(value); candidate.IsValid() && candidate.Kind() == jsontext.KindNumber {
+					raw = candidate
+				}
 			case "bool":
 				if value != "true" && value != "false" {
 					return nil, fmt.Errorf("%s: invalid boolean", name)
