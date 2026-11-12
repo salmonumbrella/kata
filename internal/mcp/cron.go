@@ -105,12 +105,20 @@ func cronExpected(value string) (string, error) {
 // cronOutputSchema replaces the generated union wrapper with its wire scalar schema.
 func cronOutputSchema[Out any](name string) *jsonschema.Schema {
 	schema := schemaFor[Out]()
-	if name == "kata.cron_job_inputs" {
+	scalar := func() *jsonschema.Schema {
+		return &jsonschema.Schema{Types: []string{"string", "integer", "boolean"}}
+	}
+	switch name {
+	case "kata.cron_job_inputs":
 		inputs := schema.Properties["inputs"]
 		if inputs == nil || inputs.Items == nil {
 			panic("cron job inputs output schema lacks inputs items")
 		}
-		inputs.Items.Properties["value"] = &jsonschema.Schema{Types: []string{"string", "integer", "boolean"}}
+		inputs.Items.Properties["value"] = scalar()
+	case "kata.cron_job_request_run":
+		schema.Properties["request"].Properties["inputs"].AdditionalProperties = scalar()
+	case "kata.cron_request_list":
+		schema.Properties["requests"].Items.Properties["inputs"].AdditionalProperties = scalar()
 	}
 	return schema
 }
