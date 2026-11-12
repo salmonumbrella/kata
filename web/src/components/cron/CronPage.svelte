@@ -197,7 +197,10 @@
     await mapLimit(targets, cronReadConcurrency, async (project) => {
       const next = await readProject(project, signal)
       if (signal.aborted) return
-      const settled = refreshed(records.find((entry) => entry.project.uid === project.uid), next)
+      const settled = refreshed(
+        records.find((entry) => entry.project.uid === project.uid),
+        next,
+      )
       records = targets.flatMap((target) =>
         target.uid === project.uid
           ? [settled]
