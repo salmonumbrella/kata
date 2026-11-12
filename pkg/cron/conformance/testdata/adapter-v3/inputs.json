@@ -144,10 +144,19 @@
       ]
     },
     {
-      "name": "inputs/request-values-trigger",
+      "name": "inputs/request-values-unavailable",
       "steps": [
         {
           "inputs": {"job_options": {}, "workflow_options": {}, "has_workflow": false, "request_inputs": true, "api_version": "0.48.0", "definition_event_uid": "job-1", "workflow_definition_event_uid": "", "observations": [{"definition_event_uid": "job-1", "workflow_definition_event_uid": "", "resolution": {"declared_by": "none", "inputs": [], "errors": []}}], "step": {"kind": "command", "command": "echo ${KATA_INPUT_TEXT}", "argv": ["$(echo nope)", "${KATA_INPUT_TEXT}"], "prompt": ""}},
+          "expect": {"calls": 0, "refreshes": 0, "status": "cancelled", "message": "reason: inputs_unavailable", "env": {}, "command": "", "argv": [], "prompt": ""}
+        }
+      ]
+    },
+    {
+      "name": "inputs/request-values-trigger",
+      "steps": [
+        {
+          "inputs": {"job_options": {}, "workflow_options": {}, "has_workflow": false, "request_inputs": true, "api_version": "0.49.0", "definition_event_uid": "job-1", "workflow_definition_event_uid": "", "observations": [{"definition_event_uid": "job-1", "workflow_definition_event_uid": "", "resolution": {"declared_by": "none", "inputs": [], "errors": []}}], "step": {"kind": "command", "command": "echo ${KATA_INPUT_TEXT}", "argv": ["$(echo nope)", "${KATA_INPUT_TEXT}"], "prompt": ""}},
           "expect": {"calls": 1, "refreshes": 0, "status": "launch", "message": "", "env": {}, "command": "echo ${KATA_INPUT_TEXT}", "argv": ["$(echo nope)", "${KATA_INPUT_TEXT}"], "prompt": ""}
         }
       ]
