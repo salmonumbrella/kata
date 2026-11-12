@@ -17,6 +17,9 @@ import (
 // APIVersionJobInputs is the first daemon API with input resolution.
 const APIVersionJobInputs = "0.48.0"
 
+// APIVersionRequestInputs adds run request values and request-aware resolution.
+const APIVersionRequestInputs = "0.49.0"
+
 var inputName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
 
 type inputDeclaration struct {
@@ -321,7 +324,7 @@ func ValidateInputs(options []byte, workflowUID string, workflowOptions []byte) 
 }
 
 // ResolveInputs reports all usable values and errors without changing stored definitions.
-func ResolveInputs(job JobDefinition, workflow *WorkflowDefinition) InputResolution {
+func ResolveInputs(job JobDefinition, workflow *WorkflowDefinition, requestInputs ...map[string]jsontext.Value) InputResolution {
 	r := InputResolution{DeclaredBy: "none", Inputs: []ResolvedInput{}, Errors: []InputError{}}
 	o, err := inputObject(job.Options)
 	if err != nil {
@@ -368,6 +371,17 @@ func ResolveInputs(job JobDefinition, workflow *WorkflowDefinition) InputResolut
 		r.Errors = append(r.Errors, InputError{Code: "invalid_value", Message: err.Error()})
 		values = map[string]any{}
 	}
+	request := map[string]any{}
+	if len(requestInputs) > 0 {
+		for name, raw := range requestInputs[0] {
+			var value any
+			if err := json.Unmarshal(raw, &value, jsonutil.PreserveNumberLiterals()); err != nil {
+				r.Errors = append(r.Errors, InputError{Name: name, Code: "invalid_value", Message: "invalid input value"})
+				continue
+			}
+			request[name] = value
+		}
+	}
 	names := make([]string, 0, len(ds))
 	for n := range ds {
 		names = append(names, n)
@@ -383,6 +397,14 @@ func ResolveInputs(job JobDefinition, workflow *WorkflowDefinition) InputResolut
 		if fixed, ok := values[n]; ok {
 			v = fixed
 			source = "job"
+			if _, overridden := request[n]; !overridden && !validInputValue(d, v) {
+				r.Errors = append(r.Errors, InputError{Name: n, Code: "invalid_value", Message: "invalid input value"})
+				v = nil
+			}
+		}
+		if override, ok := request[n]; ok {
+			v = override
+			source = "request"
 			if !validInputValue(d, v) {
 				r.Errors = append(r.Errors, InputError{Name: n, Code: "invalid_value", Message: "invalid input value"})
 				v = nil
@@ -399,9 +421,16 @@ func ResolveInputs(job JobDefinition, workflow *WorkflowDefinition) InputResolut
 			names = append(names, n)
 		}
 	}
+	for n := range request {
+		if !declared[n] {
+			names = append(names, n)
+		}
+	}
 	slices.Sort(names)
-	for _, n := range names {
-		r.Errors = append(r.Errors, InputError{Name: n, Code: "undeclared_value", Message: "undeclared input"})
+	for i, n := range names {
+		if i == 0 || n != names[i-1] {
+			r.Errors = append(r.Errors, InputError{Name: n, Code: "undeclared_value", Message: "undeclared input"})
+		}
 	}
 	return r
 }

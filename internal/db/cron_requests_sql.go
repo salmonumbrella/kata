@@ -2,8 +2,10 @@ package db
 
 import (
 	"context"
+	"bytes"
 	"database/sql"
 	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"sort"
@@ -23,11 +25,18 @@ func (a CronSQL) Request(ctx context.Context, in RequestCronIn) (RequestCronOut,
 	if in.Kind != CronRequestKindRun && in.Kind != CronRequestKindCancel {
 		return result, fmt.Errorf("%w: unknown request kind", cron.ErrInvalid)
 	}
+	canonicalInputs, err := canonicalCronRequestInputs(in.Inputs)
+	if err != nil {
+		return result, err
+	}
+	if in.Kind == CronRequestKindCancel && len(in.Inputs) != 0 {
+		return result, fmt.Errorf("%w: cancel requests cannot have inputs", cron.ErrInvalid)
+	}
 	// The REST schema bounds a supplied TTL to 60..86400 seconds.
 	if in.TTLSeconds == 0 {
 		in.TTLSeconds = CronRequestDefaultTTL
 	}
-	err := a.transactProject(ctx, in.ProjectID, func(tx *sql.Tx) error {
+	err = a.transactProject(ctx, in.ProjectID, func(tx *sql.Tx) error {
 		result = RequestCronOut{}
 		project, err := a.openCronRootProject(ctx, tx, in.ProjectID)
 		if err != nil {
@@ -42,6 +51,7 @@ func (a CronSQL) Request(ctx context.Context, in RequestCronIn) (RequestCronOut,
 			return err
 		}
 		key := CronRequestMetadataPrefix + in.UID
+		inputsKey := CronRequestInputsMetadataPrefix + in.UID
 		if raw, exists := values[key]; exists {
 			retained, err := decodeCronRequest(in.UID, raw)
 			if err != nil {
@@ -52,6 +62,16 @@ func (a CronSQL) Request(ctx context.Context, in RequestCronIn) (RequestCronOut,
 				target = *retained.RunUID
 			}
 			if retained.Kind != in.Kind || target != in.TargetUID || retained.RequestedBy != actor || retained.ExpiresAt.Sub(retained.RequestedAt) != time.Duration(in.TTLSeconds)*time.Second {
+				return ErrCronRequestConflict
+			}
+			var existing jsontext.Value
+			if rawInputs, ok := values[inputsKey]; ok {
+				retained.Inputs, existing, err = decodeCronRequestInputs(in.UID, rawInputs)
+				if err != nil {
+					return ErrCronRequestConflict
+				}
+			}
+			if !bytes.Equal(existing, canonicalInputs) {
 				return ErrCronRequestConflict
 			}
 			result = RequestCronOut{Request: retained, Replayed: true}
@@ -84,6 +104,24 @@ func (a CronSQL) Request(ctx context.Context, in RequestCronIn) (RequestCronOut,
 			if job.DeletedAt != nil || !job.Definition.Enabled || CronProjectPauseFromMetadata(project.Metadata) != nil {
 				return ErrCronRequestUnavailable
 			}
+			var workflow *cron.WorkflowDefinition
+			if job.Definition.Action.WorkflowUID != "" {
+				row, readErr := scanCron(tx.QueryRowContext(ctx, "SELECT "+cronDefinitionColumns+" FROM cron_workflows WHERE project_id=$1 AND uid=$2", in.ProjectID, job.Definition.Action.WorkflowUID))
+				if readErr != nil && !errors.Is(readErr, ErrNotFound) {
+					return readErr
+				}
+				if readErr == nil && row.DeletedAt == nil {
+					w, decodeErr := workflowFromRow(row)
+					if decodeErr != nil { return decodeErr }
+					workflow = &w.Definition
+				}
+			}
+			resolution := cron.ResolveInputs(job.Definition, workflow, in.Inputs)
+			if len(resolution.Errors) > 0 {
+				problem := resolution.Errors[0]
+				return fmt.Errorf("%w: %s: %s", cron.ErrInvalid, problem.Name, problem.Message)
+			}
+			if len(in.Inputs) > 0 { request.Inputs = in.Inputs }
 			request.JobUID, request.DefinitionEventUID = job.UID, job.DefinitionEventUID
 		case CronRequestKindCancel:
 			run, err := scanCronRunRow(tx.QueryRowContext(ctx, "SELECT "+cronRunColumns+" FROM cron_runs WHERE project_id=$1 AND uid=$2", in.ProjectID, in.TargetUID))
@@ -121,7 +159,13 @@ func (a CronSQL) Request(ctx context.Context, in RequestCronIn) (RequestCronOut,
 		if err != nil {
 			return err
 		}
-		written, err := a.writeCronProjectMetadataTx(ctx, tx, project, actor, map[string]jsontext.Value{key: raw})
+		patch := map[string]jsontext.Value{key: raw}
+		if len(canonicalInputs) != 0 {
+			wrapper, marshalErr := json.Marshal(cronRequestInputsValue{Version: 1, Values: in.Inputs}, json.Deterministic(true))
+			if marshalErr != nil { return marshalErr }
+			patch[inputsKey] = wrapper
+		}
+		written, err := a.writeCronProjectMetadataTx(ctx, tx, project, actor, patch)
 		if err != nil {
 			return err
 		}
@@ -160,6 +204,10 @@ func (a CronSQL) Requests(ctx context.Context, in CronRequestList) ([]CronReques
 			request, err := decodeCronRequest(strings.TrimPrefix(key, CronRequestMetadataPrefix), value)
 			if err != nil {
 				return fmt.Errorf("request %s: %w", key, err)
+			}
+			if rawInputs, ok := values[CronRequestInputsMetadataPrefix+request.UID]; ok {
+				request.Inputs, _, err = decodeCronRequestInputs(request.UID, rawInputs)
+				if err != nil { return err }
 			}
 			var answered bool
 			if request.Kind == CronRequestKindRun {
@@ -239,6 +287,7 @@ func (a CronSQL) SweepRequests(ctx context.Context, projectID int64, now time.Ti
 				continue
 			}
 			patch[key] = jsontext.Value("null")
+			patch[CronRequestInputsMetadataPrefix+strings.TrimPrefix(key, CronRequestMetadataPrefix)] = jsontext.Value("null")
 		}
 		if len(patch) == 0 {
 			return nil

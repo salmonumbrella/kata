@@ -72,7 +72,7 @@ func CronProjectPauseFromMetadata(blob JSONBlob) *CronProjectPause {
 
 // cronControlKey identifies metadata reserved for root-owned cron controls.
 func cronControlKey(key string) bool {
-	return key == CronProjectPauseMetadataKey || strings.HasPrefix(key, CronRequestMetadataPrefix) || cronPassoverKey(key)
+	return key == CronProjectPauseMetadataKey || strings.HasPrefix(key, CronRequestMetadataPrefix) || strings.HasPrefix(key, CronRequestInputsMetadataPrefix) || cronPassoverKey(key)
 }
 
 // CheckCronControlAdoption prevents retained root policy from becoming a
@@ -90,7 +90,7 @@ func CheckCronControlAdoption(project Project) error {
 		if key == CronProjectPauseMetadataKey {
 			instruction = "resume the project cron pause before federation adoption"
 		}
-		if strings.HasPrefix(key, CronRequestMetadataPrefix) {
+		if strings.HasPrefix(key, CronRequestMetadataPrefix) || strings.HasPrefix(key, CronRequestInputsMetadataPrefix) {
 			instruction = "wait until retained requests expire and the root collects them before federation adoption"
 		}
 		return fmt.Errorf("%w: %s", ErrFederatedSpokeUnsupported, instruction)
@@ -145,6 +145,8 @@ func validateCronControlChange(key string, from, to jsontext.Value) error {
 	switch {
 	case cronPassoverKey(key):
 		err = ValidateCronPassoverChange(key, from, to)
+	case strings.HasPrefix(key, CronRequestInputsMetadataPrefix):
+		err = validateCronRequestInputsChange(strings.TrimPrefix(key, CronRequestInputsMetadataPrefix), from, to)
 	case strings.HasPrefix(key, CronRequestMetadataPrefix):
 		err = validateCronRequestEventChange(strings.TrimPrefix(key, CronRequestMetadataPrefix), from, to)
 	case key == CronProjectPauseMetadataKey && to.Kind() != jsontext.KindNull:

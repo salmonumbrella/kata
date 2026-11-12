@@ -21,6 +21,7 @@ func checkCronControlIngress(t *testing.T, store db.Storage) error {
 		{"pause", "cron.pause", `{"paused_by":"operator","paused_at":"2026-01-02T03:04:05Z","reason":"maintenance"}`},
 		{"passover", "cron.passover", `{"version":1,"through":"2026-01-02T03:04:05Z","by":"operator"}`},
 		{"request", "cron.request." + requestUIDAt(t, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)), string(request)},
+		{"request-inputs", "cron.request_inputs." + requestUIDAt(t, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)), `{"version":1,"values":{"batch":3}}`},
 	} {
 		t.Run(control.name, func(t *testing.T) { checkCronControlIngressValue(t, store, control.name, control.key, control.value) })
 	}

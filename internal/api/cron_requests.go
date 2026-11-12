@@ -12,10 +12,18 @@ type CronRequestBody struct {
 	TTLSeconds *int   `json:"ttl_seconds,omitempty" minimum:"60" maximum:"86400"`
 }
 
+// CronJobRequestRunBody extends run admission with per-request values.
+type CronJobRequestRunBody struct {
+	UID        string `json:"uid" minLength:"26" maxLength:"26"`
+	Actor      string `json:"actor,omitempty"`
+	TTLSeconds *int `json:"ttl_seconds,omitempty" minimum:"60" maximum:"86400"`
+	Inputs     JSONRawMap `json:"inputs,omitempty"`
+}
+
 // CronJobRequestRun addresses an adapter execute job.
 type CronJobRequestRun struct {
 	CronDefinitionRequest
-	Body CronRequestBody
+	Body CronJobRequestRunBody
 }
 
 // CronRunRequestCancel addresses a currently running observation.

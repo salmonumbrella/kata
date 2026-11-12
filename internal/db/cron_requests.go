@@ -41,6 +41,7 @@ type CronRequest struct {
 	RequestedAt        time.Time `json:"requested_at"`
 	ExpiresAt          time.Time `json:"expires_at"`
 	State              string    `json:"state,omitempty"`
+	Inputs             map[string]jsontext.Value `json:"inputs,omitempty"`
 }
 
 type cronRequestValue struct {
@@ -59,6 +60,7 @@ type RequestCronIn struct {
 	ProjectID                   int64
 	UID, Kind, TargetUID, Actor string
 	TTLSeconds                  int
+	Inputs                      map[string]jsontext.Value
 	Now                         time.Time
 }
 

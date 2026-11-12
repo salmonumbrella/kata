@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"errors"
 	"net/http"
 	"strings"
@@ -28,7 +29,7 @@ func cronRequestAPIError(ctx context.Context, cfg ServerConfig, err error, pid i
 	}
 }
 
-func admitCronRequest(ctx context.Context, cfg ServerConfig, pid int64, target, kind string, body api.CronRequestBody) (*api.CronRequestResponse, error) {
+func admitCronRequest(ctx context.Context, cfg ServerConfig, pid int64, target, kind string, body api.CronRequestBody, inputs map[string]jsontext.Value) (*api.CronRequestResponse, error) {
 	ctx, actor, err := cronWriteContext(ctx, body.Actor)
 	if err != nil {
 		return nil, err
@@ -40,7 +41,7 @@ func admitCronRequest(ctx context.Context, cfg ServerConfig, pid int64, target, 
 	if body.TTLSeconds != nil {
 		ttl = *body.TTLSeconds
 	}
-	result, err := cfg.DB.RequestCron(ctx, db.RequestCronIn{ProjectID: pid, UID: body.UID, TargetUID: strings.ToUpper(target), Kind: kind, Actor: actor, TTLSeconds: ttl})
+	result, err := cfg.DB.RequestCron(ctx, db.RequestCronIn{ProjectID: pid, UID: body.UID, TargetUID: strings.ToUpper(target), Kind: kind, Actor: actor, TTLSeconds: ttl, Inputs: inputs})
 	if err != nil {
 		return nil, cronRequestAPIError(ctx, cfg, err, pid)
 	}
@@ -57,10 +58,10 @@ func admitCronRequest(ctx context.Context, cfg ServerConfig, pid int64, target, 
 func registerCronRequestHandlers(h huma.API, cfg ServerConfig) {
 	base := "/api/v1/projects/{project_id}/cron"
 	huma.Register(h, huma.Operation{OperationID: "requestCronJobRun", Method: http.MethodPost, Path: base + "/jobs/{cron_uid}/requests"}, func(ctx context.Context, in *api.CronJobRequestRun) (*api.CronRequestResponse, error) {
-		return admitCronRequest(ctx, cfg, in.ProjectID, in.UID, db.CronRequestKindRun, in.Body)
+		return admitCronRequest(ctx, cfg, in.ProjectID, in.UID, db.CronRequestKindRun, api.CronRequestBody{UID: in.Body.UID, Actor: in.Body.Actor, TTLSeconds: in.Body.TTLSeconds}, in.Body.Inputs)
 	})
 	huma.Register(h, huma.Operation{OperationID: "requestCronRunCancel", Method: http.MethodPost, Path: base + "/runs/{run_uid}/cancel-request"}, func(ctx context.Context, in *api.CronRunRequestCancel) (*api.CronRequestResponse, error) {
-		return admitCronRequest(ctx, cfg, in.ProjectID, in.RunUID, db.CronRequestKindCancel, in.Body)
+		return admitCronRequest(ctx, cfg, in.ProjectID, in.RunUID, db.CronRequestKindCancel, in.Body, nil)
 	})
 	huma.Register(h, huma.Operation{OperationID: "listCronRequests", Method: http.MethodGet, Path: base + "/requests"}, func(ctx context.Context, in *api.CronRequestListRequest) (*api.CronRequestListResponse, error) {
 		if _, err := activeProjectByID(ctx, cfg.DB, in.ProjectID); err != nil {

@@ -213,6 +213,12 @@ func (CronResolvedInput) TransformSchema(_ huma.Registry, schema *huma.Schema) *
 	return schema
 }
 
+// CronJobInputsRequest selects an optional retained run request.
+type CronJobInputsRequest struct {
+	CronDefinitionRequest
+	RequestUID string `query:"request_uid"`
+}
+
 // CronJobInputsResponse resolves the current job and workflow definitions.
 type CronJobInputsResponse struct {
 	Body struct {
