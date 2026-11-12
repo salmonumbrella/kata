@@ -148,10 +148,7 @@ func newMCPServeCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("resolve MCP project scope: %w", err)
 			}
-			cronUsage, err := resolveMCPCronUsage(ctx, health.APISchemaVersion, scope, apiClient)
-			if err != nil {
-				return err
-			}
+			cronUsage := resolveMCPCronUsage(ctx, health.APISchemaVersion, scope, apiClient)
 			observe, stopReporting := startMCPAgentUseReporter(ctx, apiClient, resolved, false)
 			defer stopReporting()
 			// Events forwards to the daemon, which owns every subscription, and is
@@ -403,20 +400,17 @@ func resolveMCPRuntime(ctx context.Context, directory string) (client.ResolvedDa
 }
 
 // resolveMCPCronUsage uses the startup handshake and first readable project.
-func resolveMCPCronUsage(ctx context.Context, apiVersion string, scope *mcpserver.Scope, client *kataclient.Client) (bool, error) {
+func resolveMCPCronUsage(ctx context.Context, apiVersion string, scope *mcpserver.Scope, client *kataclient.Client) bool {
 	if !mcpserver.APIVersionAtLeast(apiVersion, mcpserver.CronUsageAPIFloor) {
-		return false, nil
+		return false
 	}
 	projects, err := scope.Projects(ctx, client, false)
-	if err != nil {
-		return false, nil
-	}
-	if len(projects) == 0 {
-		return false, nil
+	if err != nil || len(projects) == 0 {
+		return false
 	}
 	capabilities, err := client.GetCronCapabilities(ctx, &generated.GetCronCapabilitiesRequestOptions{PathParams: &generated.GetCronCapabilitiesPath{ProjectID: projects[0].ID}})
 	if err != nil {
-		return false, nil
+		return false
 	}
-	return string(capabilities.Usage.Source) == "agentsview", nil
+	return string(capabilities.Usage.Source) == "agentsview"
 }
