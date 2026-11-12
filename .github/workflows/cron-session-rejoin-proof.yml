@@ -50,3 +50,5 @@ jobs:
         run: go test -p 1 -v ./internal/daemon ./internal/federation ./internal/mcp -run '^(TestCronSessionProbeClassifiesHubFailures|TestRelaySession.*|TestReconcileSessionProbeClassificationAndGuidance|TestReconcileReadOnlyAdoptionGuidance|TestCronRunObserveHelpExplainsSessionReplacement|TestCronRunObserveSessionInputSchema)$' -count=1
       - if: always()
         run: go test -p 1 ./cmd/kata -run '^TestCronCLIRejectsInvalidInputBeforeNetwork$' -count=1
+      - if: always()
+        run: go test -p 1 -v ./internal/db/sqlitestore ./internal/db/pgstore -run '^TestStorageConformance$/^adoption_session_features$' -count=1
