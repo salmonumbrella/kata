@@ -28,4 +28,4 @@ jobs:
       - if: always()
         run: go test -p 1 -v ./internal/mcp -run 'TestCronRunUsage|TestCronOutputSchemasAreObjects|Test.*(ToolSearch|Section|Catalog)' -count=1
       - if: always()
-        run: go test -p 1 -v ./cmd/kata -run 'TestDaemonMCP(CronUsageCatalog|Identity|Mount)' -count=1
+        run: go test -p 1 -v ./cmd/kata -run 'TestDaemonMCP(CronUsageCatalog|Identity|Mount)|TestDaemonServesMCPWithSeparateBearer' -count=1
