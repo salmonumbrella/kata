@@ -20,9 +20,9 @@ import (
 )
 
 // cronUsageDaemon is a fake daemon for project 7 serving the fixture's cron
-// lists, the capabilities document with the given usage source, and a complete
-// $2.41 usage answer for the fixture run. It counts usage requests and those
-// asking for a refresh.
+// lists, the capabilities document with the given usage source (source "error"
+// fails that read), and a complete $2.41 usage answer for the fixture run. It
+// counts usage requests and those asking for a refresh.
 func cronUsageDaemon(t *testing.T, data cronData, source string) (*httptest.Server, *atomic.Int64, *atomic.Int64) {
 	t.Helper()
 	var usage, refreshes atomic.Int64
@@ -45,6 +45,10 @@ func cronUsageDaemon(t *testing.T, data cronData, source string) (*httptest.Serv
 			write(w, map[string]any{"workflows": data.workflows})
 		case r.URL.Path == base+"/runs":
 			write(w, map[string]any{"runs": data.runs})
+		case r.URL.Path == base+"/capabilities" && source == "error":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"status":500,"error":{"code":"internal_error","message":"daemon busy"}}`))
 		case r.URL.Path == base+"/capabilities":
 			write(w, map[string]any{
 				"project_uid":    "01ARZ3NDEKTSV4RRFFQ69G5FB5",
@@ -104,6 +108,8 @@ func cronUsageSettle(t *testing.T, m Model, cmd tea.Cmd) Model {
 // TestCronRunUsageOpenDetail covers the spec's done-when for the TUI run
 // detail: with usage on, opening a run with sessions shows its cost after one
 // usage request; with usage off there is no cost line and no usage request.
+// When the usage source could not be read, the cost says so and no usage
+// request is sent.
 func TestCronRunUsageOpenDetail(t *testing.T) {
 	for _, tc := range []struct {
 		source  string
@@ -111,6 +117,7 @@ func TestCronRunUsageOpenDetail(t *testing.T) {
 	}{
 		{"agentsview", true},
 		{"none", false},
+		{"error", false},
 	} {
 		t.Run(tc.source, func(t *testing.T) {
 			m := cronFixture(t)
@@ -133,6 +140,11 @@ func TestCronRunUsageOpenDetail(t *testing.T) {
 			require.Equal(t, data.runs[0].UID, m.cron.stack[0].ref.uid)
 
 			body := stripANSI(m.viewBody())
+			if tc.source == "error" {
+				require.Regexp(t, regexp.MustCompile(`Cost:\s+unavailable: internal_error: daemon busy · r: refresh`), body)
+				require.Zero(t, usage.Load())
+				return
+			}
 			if tc.enabled {
 				require.Regexp(t, regexp.MustCompile(`Cost:\s+\$2\.41\b`), body)
 				require.Equal(t, int64(1), usage.Load())
@@ -232,11 +244,14 @@ func cronUsageSessions(source string, cost int64, states ...generated.RunSession
 // stale-result fence: a late answer never replaces a newer one.
 func TestCronRunUsageStates(t *testing.T) {
 	complete := generated.RunUsage{State: generated.Complete, CostMicrodollars: new(int64(2410000)), Sessions: cronUsageSessions("reported", 1205000, generated.Priced, generated.Priced)}
-	for _, name := range []string{"refresh", "newer state", "leave and reopen", "project", "daemon", "row removed"} {
+	for _, name := range []string{"refresh", "newer state", "incomplete list", "leave and reopen", "project", "daemon", "row removed"} {
 		t.Run(name, func(t *testing.T) {
 			m, a, cmd := cronUsageModel(t, complete)
-			if name == "newer state" {
+			switch name {
+			case "newer state":
 				a.usage.State = "future_state"
+			case "incomplete list":
+				a.usage.State, a.usage.SessionsIncomplete = generated.Partial, true
 			}
 			first := cronUsageRead(cmd)
 			require.Len(t, first, 1)
@@ -254,17 +269,23 @@ func TestCronRunUsageStates(t *testing.T) {
 				refreshed := cronUsageRead(cmd)
 				require.Len(t, refreshed, 1)
 				m, _ = updateModel(m, refreshed[0])
-				require.Contains(t, body(), "Cost:       unavailable: daemon busy · r to retry")
+				require.Contains(t, body(), "Cost:       unavailable: daemon busy · r: refresh")
 				require.NotContains(t, body(), "$2.41")
 				require.Equal(t, []string{"01ARZ3NDEKTSV4RRFFQ69G5FAY false", "01ARZ3NDEKTSV4RRFFQ69G5FAY true"}, a.usageReads)
 			case "newer state":
 				m, _ = updateModel(m, first[0])
-				require.Contains(t, body(), "Cost:       unavailable: unsupported usage state · r to retry")
+				require.Contains(t, body(), "Cost:       unavailable: unsupported usage state · r: refresh")
+			case "incomplete list":
+				m, _ = updateModel(m, first[0])
+				require.Contains(t, body(), "Cost:       $2.41+ (session list incomplete)")
 			case "leave and reopen":
 				m = sendRune(m, 'h')
 				m, cmd = updateModel(m, tea.KeyPressMsg{Code: tea.KeyEnter})
 				m, _ = updateModel(m, first[0])
-				require.Contains(t, body(), "Cost:       loading…")
+				require.Contains(t, body(), "Cost:       loading… · press r after it loads")
+				var again tea.Cmd
+				m, again = updateModel(m, keyRune('r'))
+				require.Empty(t, cronUsageRead(again), "r waits for the first read")
 				latest := cronUsageRead(cmd)
 				require.Len(t, latest, 1)
 				m, _ = updateModel(m, latest[0])
