@@ -282,7 +282,7 @@ func newOrderedReplicaServiceStore(
 		release[kind] = make(chan struct{})
 	}
 	return &orderedReplicaServiceStore{
-		TransactionalStore: dbtest.TransactionalStore{Storage: store}, hubProjectUID: hubUID,
+		Storage: store, hubProjectUID: hubUID,
 		seen: make(map[string]bool), arrived: arrived, release: release,
 	}
 }
@@ -1100,7 +1100,7 @@ func TestReconcileMappingAtomicRekeyCrashBeforeAdoptionReusesHubKeyOnRestart(t *
 	require.NoError(t, err)
 	credentials := newFakeCredentialStore()
 	store := &failAdoptionLookupAfterRekeyStore{
-		TransactionalStore: dbtest.TransactionalStore{Storage: baseStore}, credentials: credentials,
+		Storage: baseStore, credentials: credentials,
 		localUID: project.UID, hubUID: hubProjectUID,
 	}
 	manual := managedCredential()
