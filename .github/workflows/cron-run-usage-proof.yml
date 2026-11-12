@@ -52,3 +52,5 @@ jobs:
       - run: go test -p 1 ./internal/config ./internal/daemon ./cmd/kata -run 'Test.*(AgentsView|CronUsage|CronRunUsage|CronCapabilities|DoctorReturnsHooks)' -count=1
       - run: go test -p 1 ./cmd/kata -run '^TestDoctorLocalConfiguration$' -count=1
       - run: go test -p 1 ./cmd/kata -run '^(TestCronCLIParentRefs|TestCronCLIParentValidation|TestCronCLIParentUpdateKeepsBindingProtections|TestCronCLICapabilitiesEmptyProject|TestCronUsageCommandOutputAndRefresh)$' -count=1
+      - if: always()
+        run: go test -p 1 ./internal/daemon -run '^TestAPISchemaVersionMatchesRecordedContract$' -count=1
