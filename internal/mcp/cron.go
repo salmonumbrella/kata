@@ -27,7 +27,7 @@ type CronListInput struct {
 	IncludeDeleted bool `json:"include_deleted,omitempty"`
 }
 
-// CronIdentityInput selects a retained definition UID.
+// CronIdentityInput selects an existing resource or a new UID for creation.
 type CronIdentityInput struct {
 	CronProjectInput
 	UID string `json:"uid" jsonschema:"Existing resource UID, or a UID from kata.cron_new_uid for creation"`

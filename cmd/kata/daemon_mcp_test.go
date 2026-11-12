@@ -63,9 +63,10 @@ func TestDaemonServesMCPWithSeparateBearer(t *testing.T) {
 		startup                              string
 		unavailable, checkMountPolicy        bool
 		identity                             bool
+		checkUsage, usageEnabled             bool
 	}{
-		{name: "shared TCP", listen: "127.0.0.1:0", web: "public_origin = 'https://daemon.example'\n", host: "daemon.example", contentType: "application/json", checkMountPolicy: true},
-		{name: "identity TCP", listen: "127.0.0.1:0", web: "public_origin = 'https://daemon.example'\n", host: "daemon.example", contentType: "application/json", checkMountPolicy: true, identity: true},
+		{name: "shared TCP", listen: "127.0.0.1:0", web: "public_origin = 'https://daemon.example'\n", host: "daemon.example", contentType: "application/json", checkMountPolicy: true, startup: `startup_sections = ["cron"]`, checkUsage: true, usageEnabled: true},
+		{name: "identity TCP", listen: "127.0.0.1:0", web: "public_origin = 'https://daemon.example'\n", host: "daemon.example", contentType: "application/json", checkMountPolicy: true, identity: true, startup: `startup_sections = ["cron"]`, checkUsage: true},
 		{name: "identity Unix with web listener", web: "listen = '127.0.0.1:0'\n", contentType: "application/json", checkMountPolicy: true, identity: true},
 		{name: "mixed-case JSON", listen: "127.0.0.1:0", web: "public_origin = 'https://daemon.example'\n", host: "daemon.example", contentType: "Application/JSON"},
 		{name: "Unix with web listener", web: "listen = '127.0.0.1:0'\n", contentType: "application/json"},
@@ -93,7 +94,11 @@ func TestDaemonServesMCPWithSeparateBearer(t *testing.T) {
 				tokenConfig = ""
 				identityConfig = "[auth]\ntoken = 'example-daemon-token'\nrequire_token_identity = true\n"
 			}
-			require.NoError(t, os.WriteFile(filepath.Join(home, "config.toml"), []byte(identityConfig+`[mcp]
+			usageConfig := ""
+			if tt.usageEnabled {
+				usageConfig = "[agentsview]\nurl = 'https://agentsview.example'\n"
+			}
+			require.NoError(t, os.WriteFile(filepath.Join(home, "config.toml"), []byte(identityConfig+usageConfig+`[mcp]
 enabled = true
 actor = " gateway-agent "
 all_projects = true
@@ -224,8 +229,12 @@ all_projects = true
 				}
 				tools, err := session.ListTools(callCtx, nil)
 				require.NoError(t, err)
-				if tt.startup != "" {
+				if strings.Contains(tt.startup, "issue_mutation") {
 					require.True(t, slices.ContainsFunc(tools.Tools, func(tool *sdkmcp.Tool) bool { return tool.Name == "kata.create" }))
+				}
+				if tt.checkUsage {
+					found := slices.ContainsFunc(tools.Tools, func(tool *sdkmcp.Tool) bool { return tool.Name == "kata.cron_run_usage" })
+					require.Equal(t, tt.usageEnabled, found)
 				}
 				if tt.checkMountPolicy {
 					loaded, err := session.CallTool(callCtx, &sdkmcp.CallToolParams{Name: "kata.load_issue_mutation"})
