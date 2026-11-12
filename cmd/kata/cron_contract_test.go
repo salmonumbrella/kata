@@ -217,3 +217,32 @@ func TestCronRequestInputCommands(t *testing.T) {
 	_, _, err = executeCronCLI(t, env.URL, nil, "job", "request-run", job.UID, "--request-uid", cronCLIUID(t), "--input", "unknown=value")
 	require.ErrorContains(t, err, "unknown")
 }
+
+// A retained request remains retryable after declaration edits and across clients.
+func TestCronRequestInputsRetainedRetry(t *testing.T) {
+	t.Setenv("KATA_AUTHOR", "operator")
+	env := testenv.New(t)
+	project, err := env.DB.CreateProject(t.Context(), "spoke-project")
+	require.NoError(t, err)
+	definition := cron.JobDefinition{Version: 1, Kind: "job", Enabled: true, Trigger: cron.Trigger{Kind: "manual"}, Action: cron.Action{Kind: "execute", Prompt: "Inspect"}, Issue: &cron.IssuePolicy{Kind: "per-run", Title: "Result"}, Overlap: "forbid", Catchup: "skip", Options: jsontext.Value(`{"inputs":{"count":{"type":"int"},"note":{"type":"string"}}}`)}
+	job, _, err := env.DB.PutCronJob(t.Context(), db.PutCronJob{ProjectID: project.ID, Name: "Inspect", Actor: "operator", Definition: definition})
+	require.NoError(t, err)
+	id := cronCLIUID(t)
+	_, err = env.DB.RequestCron(t.Context(), db.RequestCronIn{ProjectID: project.ID, UID: id, Kind: db.CronRequestKindRun, TargetUID: job.UID, Actor: "operator", TTLSeconds: 600, Inputs: map[string]jsontext.Value{"count": jsontext.Value("-0"), "note": jsontext.Value(`"true"`)}})
+	require.NoError(t, err)
+	t.Run("literal", func(t *testing.T) {
+		out, _, err := executeCronCLI(t, env.URL, nil, "job", "request-run", job.UID, "--request-uid", id, "--input", "count=-0", "--input", "note=true")
+		require.NoError(t, err)
+		require.Contains(t, out, `"replayed":true`)
+	})
+	definition.Options = jsontext.Value(`{"inputs":{"note":{"type":"bool"}}}`)
+	_, _, err = env.DB.PutCronJob(t.Context(), db.PutCronJob{ProjectID: project.ID, UID: job.UID, Name: job.Name, Actor: "operator", Definition: definition, ExpectedEventUID: job.DefinitionEventUID})
+	require.NoError(t, err)
+	t.Run("edited declaration", func(t *testing.T) {
+		out, _, err := executeCronCLI(t, env.URL, nil, "job", "request-run", job.UID, "--request-uid", id, "--input", "count=-0", "--input", "note=true")
+		require.NoError(t, err)
+		require.Contains(t, out, `"replayed":true`)
+		_, _, err = executeCronCLI(t, env.URL, nil, "job", "request-run", job.UID, "--request-uid", id, "--input", "count=1", "--input", "note=true")
+		require.Error(t, err)
+	})
+}
