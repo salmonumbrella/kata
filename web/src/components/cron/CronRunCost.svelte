@@ -145,7 +145,12 @@
             <li>
               <span title={session.session_id}>{sessionLine(session)}</span>
               {#if url}
-                <a href={url} target="_blank" rel="noopener noreferrer">Open in AgentsView</a>
+                <a
+                  href={url}
+                  class="cron-detail-link"
+                  target="_blank"
+                  rel="noopener noreferrer">Open in AgentsView</a
+                >
               {/if}
             </li>
           {/each}
@@ -188,10 +193,5 @@
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
-    overflow-wrap: anywhere;
-  }
-
-  a {
-    color: var(--accent-blue);
   }
 </style>

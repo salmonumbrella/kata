@@ -17,6 +17,9 @@ export function runCostText(usage: RunUsage): string {
   const total = formatAmount(usage.cost_microdollars, usage.estimated)
   if (usage.state === 'complete') return total
   const missing = usage.sessions.filter((session) => session.state !== 'priced').length
+  // Every session priced still leaves a partial total when the recorded
+  // session list was incomplete (S5 agentsview.TotalText).
+  if (missing === 0 && usage.sessions_incomplete) return `${total}+ (session list incomplete)`
   return `${total}+ (${missing} of ${usage.sessions.length} sessions not priced)`
 }
 
