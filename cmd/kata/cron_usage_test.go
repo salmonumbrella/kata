@@ -28,11 +28,11 @@ func TestCronUsageOutputStatesAndSanitization(t *testing.T) {
 		})
 	}
 	amount := int64(2410000)
-	step := "main"
+	step := "main\x1b[31m"
 	source := "computed"
 	usage := generated.RunUsage{State: "partial", CostMicrodollars: &amount, Estimated: true, SessionsIncomplete: true, Sessions: []generated.RunSession{
 		{Agent: "example", SessionID: "one", Step: &step, State: "priced", CostMicrodollars: &amount, CostSource: &source},
-		{Agent: "example", SessionID: "two", State: "unpriced", UnpricedModels: []string{"model\x1b[31m"}},
+		{Agent: "example", SessionID: "two", State: "unpriced", UnpricedModels: []string{"model"}},
 		{Agent: "example", SessionID: "three", State: "not_found"},
 		{Agent: "example", SessionID: "four", State: "ambiguous", Candidates: []string{"archive~id"}},
 		{Agent: "example", SessionID: "five", State: "no_usage"},
@@ -41,7 +41,9 @@ func TestCronUsageOutputStatesAndSanitization(t *testing.T) {
 	}}
 	var out bytes.Buffer
 	require.NoError(t, writeCronUsage(&out, usage))
-	for _, text := range []string{"~$2.41+ (6 of 7 sessions not priced)", "session list is incomplete", "unpriced", "not in AgentsView yet", "ambiguous session", "no usage recorded", "AgentsView rejected Kata's token", "AgentsView unavailable"} {
+	// The shared formatter owns each state's wording; the CLI counts unpriced
+	// sessions, passes each session's fields and sanitizes the step.
+	for _, text := range []string{"~$2.41+ (6 of 7 sessions not priced)", "session list is incomplete", "example one main: ~$2.41\n", "example two: unpriced (model)", "example four: ambiguous session (archive~id)"} {
 		require.Contains(t, out.String(), text)
 	}
 	require.NotContains(t, out.String(), "\x1b")
@@ -51,7 +53,6 @@ func TestCronUsageOutputStatesAndSanitization(t *testing.T) {
 	}{
 		{generated.RunUsage{State: "complete", CostMicrodollars: &amount, Sessions: []generated.RunSession{{Agent: "example", SessionID: "id", State: "priced", CostMicrodollars: &amount}}}, "Cost: $2.41\n"},
 		{generated.RunUsage{State: "partial", CostMicrodollars: &amount, SessionsIncomplete: true, Sessions: []generated.RunSession{{Agent: "example", SessionID: "id", State: "priced", CostMicrodollars: &amount}}}, "Cost: $2.41+ (0 of 1 sessions not priced)\n"},
-		{generated.RunUsage{State: "unknown", Sessions: []generated.RunSession{{Agent: "example", SessionID: "id", State: "not_found"}}}, "Cost: unknown\n"},
 		{generated.RunUsage{State: "no_sessions"}, "Cost: no sessions\n"},
 	} {
 		t.Run(string(tc.usage.State), func(t *testing.T) {

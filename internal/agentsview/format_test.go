@@ -21,17 +21,23 @@ func TestUsageText(t *testing.T) {
 		require.Equal(t, tc.want, Amount(tc.value, tc.estimated))
 	}
 	cost := int64(2410000)
+	// A priced total that arrives without an amount reads unknown, never $0.00.
 	for _, tc := range []struct {
-		state string
-		cost  *int64
-		want  string
+		state              string
+		cost               *int64
+		unpriced, sessions int
+		want               string
 	}{
-		{"complete", &cost, "~$2.41"}, {"partial", &cost, "~$2.41+ (1 of 2 sessions not priced)"},
-		{"complete", nil, "unknown"}, {"unknown", nil, "unknown"}, {"no_sessions", nil, "no sessions"},
+		{"complete", &cost, 0, 2, "~$2.41"}, {"partial", &cost, 1, 2, "~$2.41+ (1 of 2 sessions not priced)"},
+		{"complete", nil, 0, 2, "unknown"}, {"unknown", nil, 2, 2, "unknown"}, {"no_sessions", nil, 0, 0, "no sessions"},
 	} {
-		require.Equal(t, tc.want, TotalText(tc.state, tc.cost, true, 1, 2))
+		require.Equal(t, tc.want, TotalText(tc.state, tc.cost, true, tc.unpriced, tc.sessions))
 	}
 	require.Equal(t, "~$2.41", SessionText("priced", &cost, "mixed", nil, nil))
 	require.Equal(t, "unpriced (model)", SessionText("unpriced", nil, "", []string{"model\x1b[31m"}, nil))
 	require.Equal(t, "AgentsView unavailable", SessionText("unavailable", nil, "", nil, nil))
+	require.Equal(t, "not in AgentsView yet", SessionText("not_found", nil, "", nil, nil))
+	require.Equal(t, "ambiguous session (archive~id)", SessionText("ambiguous", nil, "", nil, []string{"archive~id"}))
+	require.Equal(t, "no usage recorded", SessionText("no_usage", nil, "", nil, nil))
+	require.Equal(t, "AgentsView rejected Kata's token", SessionText("unauthorized", nil, "", nil, nil))
 }

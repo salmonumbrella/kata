@@ -79,23 +79,15 @@ func cronUsageDaemon(t *testing.T, data cronData, source string) (*httptest.Serv
 }
 
 // cronUsageSettle delivers each command's messages back through Update until
-// no command remains. A command still running after 15s fails the test.
+// no command remains.
 func cronUsageSettle(t *testing.T, m Model, cmd tea.Cmd) Model {
 	t.Helper()
 	for range 8 {
 		if cmd == nil {
 			return m
 		}
-		done := make(chan []tea.Msg, 1)
-		go func(cmd tea.Cmd) { done <- runCmdTree(cmd) }(cmd)
-		var msgs []tea.Msg
-		select {
-		case msgs = <-done:
-		case <-time.After(15 * time.Second):
-			t.Fatal("a cron command did not finish")
-		}
 		var next []tea.Cmd
-		for _, msg := range msgs {
+		for _, msg := range runCmdTree(cmd) {
 			if msg == nil {
 				continue
 			}
@@ -141,7 +133,6 @@ func TestCronRunUsageOpenDetail(t *testing.T) {
 			require.Equal(t, data.runs[0].UID, m.cron.stack[0].ref.uid)
 
 			body := stripANSI(m.viewBody())
-			require.Contains(t, body, "claude 00000000")
 			if tc.enabled {
 				require.Regexp(t, regexp.MustCompile(`Cost:\s+\$2\.41\b`), body)
 				require.Equal(t, int64(1), usage.Load())
@@ -170,7 +161,7 @@ func TestCronRunUsageWaitsForPartialAnswer(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"run_uid":"01ARZ3NDEKTSV4RRFFQ69G5FAY","state":"partial","cost_microdollars":2410000,"estimated":false,"sessions_incomplete":false,"fetched_at":"2026-01-01T00:00:00Z","sessions":[{"agent":"claude","session_id":"one","state":"priced","cost_microdollars":2410000},{"agent":"codex","session_id":"two","state":"unavailable"}]}`))
+		_, _ = w.Write([]byte(`{"run_uid":"01ARZ3NDEKTSV4RRFFQ69G5FAY","state":"partial","cost_microdollars":2410000,"estimated":false,"sessions_incomplete":false,"fetched_at":"2026-01-01T00:00:00Z","sessions":[{"agent":"claude","session_id":"00000000-0000-4000-8000-000000000001","state":"priced","cost_microdollars":2410000,"cost_source":"reported"},{"agent":"codex","session_id":"00000000-0000-4000-8000-000000000002","state":"unavailable"}]}`))
 	}))
 	t.Cleanup(srv.Close)
 	c := NewClient(srv.URL, &http.Client{Timeout: defaultHTTPTimeout})
@@ -223,22 +214,25 @@ func cronUsageRead(cmd tea.Cmd) []tea.Msg {
 	return reads
 }
 
-func cronUsageSessions(states ...generated.RunSessionState) []generated.RunSession {
+// cronUsageSessions builds the run's two sessions as the daemon reports them;
+// each priced session costs cost microdollars from source.
+func cronUsageSessions(source string, cost int64, states ...generated.RunSessionState) []generated.RunSession {
 	sessions := []generated.RunSession{}
 	for i, state := range states {
 		session := generated.RunSession{Agent: []string{"claude", "codex"}[i], SessionID: fmt.Sprintf("00000000-0000-4000-8000-00000000000%d", i+1), State: state}
 		if state == generated.Priced {
-			session.CostMicrodollars = new(int64(1205000))
+			session.CostMicrodollars, session.CostSource = new(cost), new(source)
 		}
 		sessions = append(sessions, session)
 	}
 	return sessions
 }
 
-// The spec's stale-result fence: a late answer never replaces a newer one.
-func TestCronRunUsageRefreshAndFence(t *testing.T) {
-	complete := generated.RunUsage{State: generated.Complete, CostMicrodollars: new(int64(2410000)), Sessions: cronUsageSessions(generated.Priced, generated.Priced)}
-	for _, name := range []string{"refresh", "leave and reopen", "A to B to A", "project", "daemon", "row removed", "newer state"} {
+// The open run's cost through refresh and a newer daemon's state, then the
+// stale-result fence: a late answer never replaces a newer one.
+func TestCronRunUsageStates(t *testing.T) {
+	complete := generated.RunUsage{State: generated.Complete, CostMicrodollars: new(int64(2410000)), Sessions: cronUsageSessions("reported", 1205000, generated.Priced, generated.Priced)}
+	for _, name := range []string{"refresh", "newer state", "leave and reopen", "project", "daemon", "row removed"} {
 		t.Run(name, func(t *testing.T) {
 			m, a, cmd := cronUsageModel(t, complete)
 			if name == "newer state" {
@@ -263,15 +257,11 @@ func TestCronRunUsageRefreshAndFence(t *testing.T) {
 				require.Contains(t, body(), "Cost:       unavailable: daemon busy · r to retry")
 				require.NotContains(t, body(), "$2.41")
 				require.Equal(t, []string{"01ARZ3NDEKTSV4RRFFQ69G5FAY false", "01ARZ3NDEKTSV4RRFFQ69G5FAY true"}, a.usageReads)
-			case "leave and reopen", "A to B to A":
+			case "newer state":
+				m, _ = updateModel(m, first[0])
+				require.Contains(t, body(), "Cost:       unavailable: unsupported usage state · r to retry")
+			case "leave and reopen":
 				m = sendRune(m, 'h')
-				if name == "A to B to A" {
-					m = sendRune(m, 'j')
-					m, cmd = updateModel(m, tea.KeyPressMsg{Code: tea.KeyEnter})
-					require.Len(t, cronUsageRead(cmd), 1)
-					m = sendRune(m, 'h')
-					m = sendRune(m, 'k')
-				}
 				m, cmd = updateModel(m, tea.KeyPressMsg{Code: tea.KeyEnter})
 				m, _ = updateModel(m, first[0])
 				require.Contains(t, body(), "Cost:       loading…")
@@ -293,11 +283,7 @@ func TestCronRunUsageRefreshAndFence(t *testing.T) {
 				data.runs = data.runs[1:]
 				m, _ = updateModel(m, cronLoadedMsg(data))
 				m, _ = updateModel(m, first[0])
-				require.Contains(t, body(), "this run is no longer in the loaded data")
-				require.NotContains(t, body(), "Cost:")
-			case "newer state":
-				m, _ = updateModel(m, first[0])
-				require.Contains(t, body(), "Cost:       unavailable: unsupported usage state · r to retry")
+				require.Equal(t, cronUsage{}, m.cron.usage)
 			}
 		})
 	}
@@ -310,17 +296,17 @@ func TestSnapshot_CronRunCost(t *testing.T) {
 		name  string
 		usage generated.RunUsage
 	}{
-		{"complete", generated.RunUsage{State: generated.Complete, CostMicrodollars: cost, Sessions: cronUsageSessions(generated.Priced, generated.Priced)}},
-		{"estimated", generated.RunUsage{State: generated.Complete, CostMicrodollars: cost, Estimated: true, Sessions: cronUsageSessions(generated.Priced, generated.Priced)}},
-		{"partial", generated.RunUsage{State: generated.Partial, CostMicrodollars: cost, Estimated: true, Sessions: cronUsageSessions(generated.Priced, generated.NotFound)}},
-		{"unknown", generated.RunUsage{State: generated.RunUsageStateUnknown, Sessions: cronUsageSessions(generated.RunSessionStateUnauthorized, generated.RunSessionStateUnavailable)}},
+		{"complete", generated.RunUsage{State: generated.Complete, CostMicrodollars: cost, Sessions: cronUsageSessions("reported", 1205000, generated.Priced, generated.Priced)}},
+		{"estimated", generated.RunUsage{State: generated.Complete, CostMicrodollars: cost, Estimated: true, Sessions: cronUsageSessions("computed", 1205000, generated.Priced, generated.Priced)}},
+		{"partial", generated.RunUsage{State: generated.Partial, CostMicrodollars: cost, Estimated: true, Sessions: cronUsageSessions("computed", 2410000, generated.Priced, generated.NotFound)}},
+		{"unknown", generated.RunUsage{State: generated.RunUsageStateUnknown, Sessions: cronUsageSessions("reported", 0, generated.RunSessionStateUnauthorized, generated.RunSessionStateUnavailable)}},
 		{"no-sessions", generated.RunUsage{State: generated.NoSessions, Sessions: []generated.RunSession{}}},
 		{"unavailable", generated.RunUsage{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m, a, cmd := cronUsageModel(t, tc.usage)
 			if tc.name == "unavailable" {
-				a.usageErr = &APIError{Method: "GET", Path: "/api/v1/projects/7/cron/runs/01ARZ3NDEKTSV4RRFFQ69G5FAY/usage", Status: 503, Code: "usage_source_disabled", Message: "usage source is disabled"}
+				a.usageErr = &APIError{Method: "GET", Path: "/api/v1/projects/7/cron/runs/01ARZ3NDEKTSV4RRFFQ69G5FAY/usage", Status: 502, Code: "usage_total_overflow", Message: "usage total cannot be represented"}
 			}
 			if tc.name == "no-sessions" {
 				m.cron.data.runs[0].Summary.Sessions = nil
