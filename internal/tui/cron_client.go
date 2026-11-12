@@ -17,7 +17,6 @@ import (
 	"go.kenn.io/kata/internal/db"
 	"go.kenn.io/kata/internal/jsonutil"
 	"go.kenn.io/kata/pkg/client/generated"
-	"golang.org/x/mod/semver"
 )
 
 type cronAPI interface {
@@ -406,16 +405,11 @@ func (c *Client) CronJobInputs(ctx context.Context, pid int64, uid string) (cron
 	if err != nil {
 		return out, err
 	}
-	health, err := client.Health(ctx)
-	if err != nil {
+	if err := requireAPIVersion(ctx, client, cron.APIVersionRequestInputs, errCronInputsUnsupported.Error()); err != nil {
+		if _, tooOld := errors.AsType[*apiVersionTooOld](err); tooOld {
+			return out, errCronInputsUnsupported
+		}
 		return out, err
-	}
-	version := ""
-	if health.APISchemaVersion != nil {
-		version = *health.APISchemaVersion
-	}
-	if !semver.IsValid("v"+version) || semver.Compare("v"+version, "v"+cron.APIVersionRequestInputs) < 0 {
-		return out, errCronInputsUnsupported
 	}
 	wire, err := client.GetCronJobInputsWithResponse(ctx, &generated.GetCronJobInputsRequestOptions{PathParams: &generated.GetCronJobInputsPath{ProjectID: pid, CronUID: uid}})
 	if wire == nil {

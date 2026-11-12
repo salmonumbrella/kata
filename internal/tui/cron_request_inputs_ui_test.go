@@ -17,7 +17,7 @@ func inputsFormFixture(t *testing.T, width int) (Model, *cronRuntimeTestAPI) {
 	t.Helper()
 	m, api := runtimeFixture(t, false)
 	m.width, m.height = width, 24
-	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": true}
+	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"target": map[string]any{"type": "enum", "values": []string{"production", "staging"}}, "batch_size": map[string]any{"type": "int", "required": true}, "dry_run": map[string]any{"type": "bool"}, "note": map[string]any{"type": "string"}, "window": map[string]any{"type": "int"}}}
 	lo, hi, maxLength := int64(1), int64(500), int64(200)
 	api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{
 		Inputs: []cron.ResolvedInput{
@@ -61,7 +61,7 @@ func TestSnapshot_CronRequestInputs(t *testing.T) {
 			if tc.state == "loading" {
 				m, _ = runtimeFixture(t, false)
 				m.width, m.height = tc.width, 24
-				m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": true}
+				m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"count": map[string]any{"type": "int"}}}
 				m, _ = press(m, keyRune('R'))
 			} else {
 				var api *cronRuntimeTestAPI

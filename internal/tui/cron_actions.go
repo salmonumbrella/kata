@@ -345,10 +345,14 @@ func (m Model) cronActionDone(a cronPending, err error) (Model, tea.Cmd) {
 		m.cron.action = &a
 		return m, nil
 	}
-	if err != nil && a.inputs != nil && a.requestUID != "" {
+	if apiErr, known := errors.AsType[*APIError](err); err != nil && a.inputs != nil && (a.requestUID != "" || !known || apiErr.Status >= 500) {
+		message := "Could not read job: "
+		if a.requestUID != "" {
+			message = "Request refused: "
+		}
 		a.requestUID, a.inflight, a.err = "", false, nil
 		a.values = nil
-		a.inputs.general = "Request refused: " + err.Error()
+		a.inputs.general = message + err.Error()
 		m.cron.action = &a
 		return m, nil
 	}

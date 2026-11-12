@@ -14,15 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// A declared input must be loaded before asking the operator to request a run.
-func TestCronRunRequestOpensInputForm(t *testing.T) {
-	m, _ := runtimeFixture(t, false)
-	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"count": map[string]any{"type": "int", "required": true}}}
-	m, cmd := press(m, keyRune('R'))
-	require.Equal(t, modalNone, m.modal)
-	require.NotNil(t, cmd)
-}
-
 func TestCronRequestInputDraftValues(t *testing.T) {
 	resolution := cron.InputResolution{Inputs: []cron.ResolvedInput{
 		{Name: "count", Type: "int", Source: "unset"},
@@ -36,19 +27,6 @@ func TestCronRequestInputDraftValues(t *testing.T) {
 	values, err := d.freeze()
 	require.NoError(t, err)
 	require.Equal(t, map[string]jsontext.Value{"count": []byte("9223372036854775807"), "flag": []byte("false"), "note": []byte(`""`)}, values)
-	d.fields[0].text = ""
-	values, err = d.freeze()
-	require.NoError(t, err)
-	require.NotContains(t, values, "count")
-}
-
-func TestCronRequestInputDraftRefusesInvalid(t *testing.T) {
-	d := newCronRequestInputs(cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "count", Type: "int", Required: true, Source: "unset"}}})
-	_, err := d.freeze()
-	require.Error(t, err)
-	d.fields[0].set, d.fields[0].text = true, "9223372036854775808"
-	_, err = d.freeze()
-	require.Error(t, err)
 }
 
 func TestCronRequestInputsRefusalAndRetry(t *testing.T) {
@@ -91,8 +69,8 @@ func TestCronRequestInputsResolutionOutcomes(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m, api := runtimeFixture(t, false)
-			m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": true}
-			api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "count", Type: "int", Source: "unset"}}, Errors: []cron.InputError{tc.problem}}}
+			m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"count": map[string]any{"type": "int"}}}
+			api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "count", Type: "int", Required: tc.name == "required", Source: "unset"}}, Errors: []cron.InputError{tc.problem}}}
 			m, cmd := press(m, keyRune('R'))
 			m = runtimeDone(t, m, cmd)
 			if tc.form {
@@ -110,7 +88,7 @@ func TestCronRequestInputsCompatibilityAndStaleRead(t *testing.T) {
 	m = runtimeDialog(t, m, 'R')
 	require.Zero(t, api.inputCalls)
 	m = m.dropCronAction()
-	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": true}
+	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"count": map[string]any{"type": "int"}}}
 	api.inputsErr = errCronInputsUnsupported
 	m, cmd := press(m, keyRune('R'))
 	m = runtimeDone(t, m, cmd)
@@ -123,6 +101,12 @@ func TestCronRequestInputsCompatibilityAndStaleRead(t *testing.T) {
 }
 
 func TestCronRequestInputsChangedFieldsAndLimit(t *testing.T) {
+	invalid := newCronRequestInputs(cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "count", Type: "int", Required: true, Source: "unset"}}})
+	_, err := invalid.freeze()
+	require.Error(t, err)
+	invalid.fields[0].set, invalid.fields[0].text = true, "9223372036854775808"
+	_, err = invalid.freeze()
+	require.Error(t, err)
 	d := newCronRequestInputs(cron.InputResolution{Inputs: []cron.ResolvedInput{
 		{Name: "count", Type: "int", Source: "job", Value: jsontext.Value("42")},
 		{Name: "note", Type: "string", Source: "default", Value: "unchanged"},
@@ -148,32 +132,64 @@ func TestCronRequestInputsChangedFieldsAndLimit(t *testing.T) {
 	require.ErrorContains(t, err, "4 KiB")
 }
 
-func TestCronRequestInputsChangedJobAndEditor(t *testing.T) {
+func TestCronRequestInputsChangedJob(t *testing.T) {
+	for _, tc := range []struct{ name, want string }{
+		{"read mismatch", "cron_conflict: The job changed; refresh before retrying"},
+		{"local while loading", "The job changed; press R to reload its inputs"},
+		{"local before submit", "The job changed; press R to reload its inputs"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, api := runtimeFixture(t, false)
+			m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"note": map[string]any{"type": "string"}}}
+			api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "note", Type: "string", Multiline: true}}}}
+			if tc.name == "read mismatch" {
+				api.inputsRead.DefinitionEventUID = "different"
+			}
+			m, cmd := press(m, keyRune('R'))
+			if tc.name == "local while loading" {
+				m.cron.data.jobs[0].DefinitionEventUID = "changed"
+			}
+			m = runtimeDone(t, m, cmd)
+			if tc.name == "local before submit" {
+				m.cron.data.jobs[0].DefinitionEventUID = "changed"
+				m, _ = press(m, ctrlKey('o'))
+			}
+			require.Empty(t, api.calls)
+			require.Nil(t, m.cron.action)
+			require.Equal(t, tc.want, m.toast.text)
+		})
+	}
+}
+
+func TestCronRequestInputsEditorReturn(t *testing.T) {
 	m, api := runtimeFixture(t, false)
-	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": true}
-	api.inputsRead = cronInputsRead{DefinitionEventUID: "different", InputResolution: cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "note", Type: "string", Multiline: true}}}}
+	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"note": map[string]any{"type": "string"}}}
+	api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "note", Type: "string", Multiline: true}}}}
 	m, cmd := press(m, keyRune('R'))
-	m = runtimeDone(t, m, cmd)
-	require.Nil(t, m.cron.action)
-	require.Contains(t, m.toast.text, "changed")
-	api.inputsRead.DefinitionEventUID = api.shown.DefinitionEventUID
-	m, cmd = press(m, keyRune('R'))
 	m = runtimeDone(t, m, cmd)
 	d := m.cron.action.inputs
 	m, _ = m.routeEditorReturn(editorReturnedMsg{formGen: d.formGen, content: "first\nsecond"})
 	values, err := d.freeze()
 	require.NoError(t, err)
 	require.Equal(t, jsontext.Value(`"first\nsecond"`), values["note"])
-	m.cron.data.jobs[0].DefinitionEventUID = "changed"
-	m, _ = press(m, ctrlKey('o'))
-	require.Empty(t, api.calls, "a changed job must not send the request")
-	require.Nil(t, m.cron.action)
-	require.Contains(t, m.toast.text, "changed")
+}
+
+func TestCronRequestInputsOptionalIntegerCleared(t *testing.T) {
+	m, api := runtimeFixture(t, false)
+	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"count": map[string]any{"type": "int"}}}
+	api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "count", Type: "int", Source: "unset"}}}}
+	m, cmd := press(m, keyRune('R'))
+	m = runtimeDone(t, m, cmd)
+	m, _ = press(m, keyRune('7'))
+	m, _ = press(m, tea.KeyPressMsg{Code: tea.KeyBackspace})
+	values, err := m.cron.action.inputs.freeze()
+	require.NoError(t, err)
+	require.NotContains(t, values, "count")
 }
 
 func TestCronRequestInputsValidationUpdatesWhileEditing(t *testing.T) {
 	m, api := runtimeFixture(t, false)
-	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": true}
+	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"count": map[string]any{"type": "int"}}}
 	api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "count", Type: "int", Required: true, Source: "unset"}}, Errors: []cron.InputError{{Name: "count", Code: "missing_required"}}}}
 	m, cmd := press(m, keyRune('R'))
 	m = runtimeDone(t, m, cmd)
@@ -186,7 +202,7 @@ func TestCronRequestInputsValidationUpdatesWhileEditing(t *testing.T) {
 
 func TestCronRequestInputsChoiceAndReset(t *testing.T) {
 	m, api := runtimeFixture(t, false)
-	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": true}
+	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": map[string]any{"flag": map[string]any{"type": "bool"}}}
 	api.inputsRead = cronInputsRead{DefinitionEventUID: api.shown.DefinitionEventUID, InputResolution: cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "flag", Type: "bool", Source: "default", Value: true}}}}
 	m, cmd := press(m, keyRune('R'))
 	m = runtimeDone(t, m, cmd)
@@ -198,17 +214,6 @@ func TestCronRequestInputsChoiceAndReset(t *testing.T) {
 	values, err = m.cron.action.inputs.freeze()
 	require.NoError(t, err)
 	require.Nil(t, values)
-}
-
-func TestCronRequestInputsChangedWhileLoading(t *testing.T) {
-	m, api := runtimeFixture(t, false)
-	m.cron.data.jobs[0].Definition.Options = map[string]any{"inputs": true}
-	api.inputsRead.DefinitionEventUID = api.shown.DefinitionEventUID
-	m, cmd := press(m, keyRune('R'))
-	m.cron.data.jobs[0].DefinitionEventUID = "changed"
-	m = runtimeDone(t, m, cmd)
-	require.Nil(t, m.cron.action)
-	require.Contains(t, m.toast.text, "changed")
 }
 
 func TestCronRequestInputsInvalidJobValueNeedsOverride(t *testing.T) {

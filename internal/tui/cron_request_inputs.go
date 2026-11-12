@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"strings"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
@@ -40,7 +41,7 @@ type cronInputsMsg struct {
 
 func newCronRequestInputs(r cron.InputResolution) *cronRequestInputs {
 	d := &cronRequestInputs{}
-	slices.SortFunc(r.Inputs, func(a, b cron.ResolvedInput) int { return stringsCompare(a.Name, b.Name) })
+	slices.SortFunc(r.Inputs, func(a, b cron.ResolvedInput) int { return strings.Compare(a.Name, b.Name) })
 	for _, in := range r.Inputs {
 		f := cronRequestInputField{input: in, set: in.Value != nil}
 		if f.set {
@@ -67,15 +68,6 @@ func newCronRequestInputs(r cron.InputResolution) *cronRequestInputs {
 	return d
 }
 
-func stringsCompare(a, b string) int {
-	if a < b {
-		return -1
-	}
-	if a > b {
-		return 1
-	}
-	return 0
-}
 func (d *cronRequestInputs) choice() bool {
 	return d.fields[d.focus].input.Type == "bool" || d.fields[d.focus].input.Type == "enum"
 }
@@ -144,9 +136,6 @@ func (d *cronRequestInputs) values(focusError bool) (map[string]jsontext.Value, 
 	d.syncEditor()
 	values := map[string]jsontext.Value{}
 	for i, f := range d.fields {
-		if f.input.Type == "int" && !f.prefillSet && f.text == "" {
-			f.set = false
-		}
 		if !f.set {
 			if f.input.Required || f.jobInvalid {
 				if focusError {
@@ -248,7 +237,11 @@ func (m Model) cronInputsAnswered(msg cronInputsMsg) (Model, tea.Cmd) {
 			}
 		}
 		if !((e.Code == "missing_required" || e.Code == "invalid_value") && e.Name != "" && declared) {
-			return m.dropCronAction().undoNotice("Cannot request "+msg.action.name+": "+e.Name+": "+e.Message+"; fix the definition", toastError)
+			name := ""
+			if e.Name != "" {
+				name = e.Name + ": "
+			}
+			return m.dropCronAction().undoNotice("Cannot request "+msg.action.name+": "+name+e.Message+"; fix the definition", toastError)
 		}
 	}
 	if len(msg.read.Inputs) == 0 {

@@ -1391,6 +1391,10 @@ func (c *Client) CheckDateFilter(ctx context.Context) error {
 	return requireAPIVersion(ctx, apiClient, "0.36.0", "date filters require daemon API 0.36.0 or newer")
 }
 
+type apiVersionTooOld struct{ message string }
+
+func (e *apiVersionTooOld) Error() string { return e.message }
+
 func requireAPIVersion(ctx context.Context, apiClient *generated.Client, minimum, requirement string) error {
 	health, err := apiClient.Health(ctx)
 	if err != nil {
@@ -1401,7 +1405,7 @@ func requireAPIVersion(ctx context.Context, apiClient *generated.Client, minimum
 		reported = *health.APISchemaVersion
 	}
 	if !semver.IsValid("v"+reported) || semver.Compare("v"+reported, "v"+minimum) < 0 {
-		return fmt.Errorf("%s; upgrade the daemon", requirement)
+		return &apiVersionTooOld{message: requirement + "; upgrade the daemon"}
 	}
 	return nil
 }
