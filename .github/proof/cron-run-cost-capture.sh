@@ -143,16 +143,16 @@ cat >"$OUT/fixtures/agentsview-sessions.json" <<'EOF'
 EOF
 
 observation() {
-    local message="$1" first_agent="$2" first_id="$3" second_agent="$4" second_id="$5"
+    local message="$1" first_agent="$2" first_id="$3" second_agent="$4" second_id="$5" job_uid="$6" event_uid="$7"
     cat <<EOF
-{"actor": "demo-operator", "status": "succeeded", "started_at": "2026-11-12T07:00:00Z", "ended_at": "2026-11-12T07:04:00Z", "expected_revision": 0,
+{"actor": "demo-operator", "job_uid": "$job_uid", "definition_event_uid": "$event_uid", "status": "succeeded", "started_at": "2026-11-12T07:00:00Z", "ended_at": "2026-11-12T07:04:00Z", "expected_revision": 0,
  "summary": {"version": 1, "message": "$message", "input_tokens": 30, "output_tokens": 10,
   "sessions": [{"agent": "$first_agent", "session_id": "$first_id", "step": "main"}, {"agent": "$second_agent", "session_id": "$second_id", "step": "review"}]}}
 EOF
 }
-observation "Complete cost run" claude 11111111-1111-4111-8111-111111111111 codex 22222222-2222-4222-8222-222222222222 >"$OUT/fixtures/run-a.json"
-observation "Partial cost run" claude 33333333-3333-4333-8333-333333333333 codex 44444444-4444-4444-8444-444444444444 >"$OUT/fixtures/run-b.json"
-observation "Unavailable cost run" claude 55555555-5555-4555-8555-555555555555 codex 66666666-6666-4666-8666-666666666666 >"$OUT/fixtures/run-c.json"
+cat >"$OUT/fixtures/job.json" <<'EOF'
+{"name":"Example cost","definition":{"version":1,"kind":"job","enabled":false,"trigger":{"kind":"manual"},"action":{"kind":"execute","prompt":"Example task"},"issue":{"kind":"per-run","title":"Example task"},"overlap":"forbid","catchup":"latest","checkout_key":"example-project"}}
+EOF
 
 delay 0
 env -i PATH="$SAFE_PATH" HOME="$TMP_ROOT" LANG=C.UTF-8 python3 -I "$PROOF_DIR/fake_agentsview.py" \
@@ -195,10 +195,16 @@ seed() {
     STARTED_HOMES+=("$home")
     STARTED_BINS+=("$bin")
     kenv "$home" "$bin" --workspace "$home/ws" init --project demo-cost-project >/dev/null
-    local run
+    local run job_uid=01JD5000000000000000000010 event_uid
+    kenv "$home" "$bin" --workspace "$home/ws" cron job create --uid "$job_uid" \
+        --file "$OUT/fixtures/job.json" --json >"$OUT/fixtures/job-$name.json"
+    event_uid="$(python3 -I -c 'import json,sys; j=json.load(open(sys.argv[1]))["job"]; assert j["uid"] == sys.argv[2]; print(j["definition_event_uid"])' "$OUT/fixtures/job-$name.json" "$job_uid")"
+    observation "Complete cost run" claude 11111111-1111-4111-8111-111111111111 codex 22222222-2222-4222-8222-222222222222 "$job_uid" "$event_uid" >"$OUT/fixtures/run-$name-a.json"
+    observation "Partial cost run" claude 33333333-3333-4333-8333-333333333333 codex 44444444-4444-4444-8444-444444444444 "$job_uid" "$event_uid" >"$OUT/fixtures/run-$name-b.json"
+    observation "Unavailable cost run" claude 55555555-5555-4555-8555-555555555555 codex 66666666-6666-4666-8666-666666666666 "$job_uid" "$event_uid" >"$OUT/fixtures/run-$name-c.json"
     for run in a:01JD5000000000000000000001 b:01JD5000000000000000000002 c:01JD5000000000000000000003; do
         kenv "$home" "$bin" --workspace "$home/ws" cron run observe "${run#*:}" \
-            --json-input "$OUT/fixtures/run-${run%%:*}.json" --json >/dev/null
+            --json-input "$OUT/fixtures/run-$name-${run%%:*}.json" --json >/dev/null
     done
 }
 
