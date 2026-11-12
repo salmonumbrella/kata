@@ -15,7 +15,7 @@ import (
 	"go.kenn.io/kata/internal/cron"
 )
 
-type inputTestBridge struct { Reference }
+type inputTestBridge struct{ Reference }
 
 func (a inputTestBridge) DeliverInputs(_ context.Context, in InputDelivery) (InputDeliveryOutput, error) {
 	out := InputDeliveryOutput{Status: "launch", Env: map[string]string{}, Argv: append([]string{}, in.Step.Argv...), Command: in.Step.Command, Prompt: in.Step.Prompt}
@@ -133,7 +133,9 @@ func TestInputBridgeAndResolver(t *testing.T) {
 			expected := cron.ResolveInputs(job, workflow)
 			for _, observation := range in.Observations {
 				// Only the observation matching the loaded definition is resolved here.
-				if observation.DefinitionEventUID != in.DefinitionEventUID || observation.WorkflowDefinitionEventUID != in.WorkflowDefinitionEventUID { continue }
+				if observation.DefinitionEventUID != in.DefinitionEventUID || observation.WorkflowDefinitionEventUID != in.WorkflowDefinitionEventUID {
+					continue
+				}
 				var actual cron.InputResolution
 				if err := json.Unmarshal(observation.Resolution, &actual); err != nil {
 					t.Fatal(err)
@@ -247,27 +249,44 @@ func TestInputDecisionStrictness(t *testing.T) {
 
 func TestInputDeliveryRejectsWrongFields(t *testing.T) {
 	suite, err := NewSuite(t.Context(), SchemaV3, Reference{}.Declare())
-	if err != nil { t.Fatal(err) }
-	for _, tc := range []struct { scenario, field string; mutate func(*InputDeliveryOutput) }{
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		scenario, field string
+		mutate          func(*InputDeliveryOutput)
+	}{
 		{"inputs/typed-command", "env", func(o *InputDeliveryOutput) { o.Env["KATA_INPUT_ZERO"] = "-0" }},
 		{"inputs/typed-command", "command", func(o *InputDeliveryOutput) { o.Command = "rewritten" }},
 		{"inputs/typed-command", "argv", func(o *InputDeliveryOutput) { o.Argv[0] = "rewritten" }},
 		{"inputs/prompt-data", "number", func(o *InputDeliveryOutput) { o.Prompt = strings.Replace(o.Prompt, `"zero":0`, `"zero":1`, 1) }},
-		{"inputs/prompt-data", "type", func(o *InputDeliveryOutput) { o.Prompt = strings.Replace(o.Prompt, `"flag":false`, `"flag":"false"`, 1) }},
+		{"inputs/prompt-data", "type", func(o *InputDeliveryOutput) {
+			o.Prompt = strings.Replace(o.Prompt, `"flag":false`, `"flag":"false"`, 1)
+		}},
 	} {
 		t.Run(tc.field, func(t *testing.T) {
 			for _, scenario := range suite.Scenarios {
-				if scenario.Name != tc.scenario { continue }
+				if scenario.Name != tc.scenario {
+					continue
+				}
 				answer, err := Execute(t.Context(), inputTestBridge{}, scenario)
-				if err != nil { t.Fatal(err) }
+				if err != nil {
+					t.Fatal(err)
+				}
 				var out InputDeliveryOutput
-				if err := json.Unmarshal(answer.Outputs[0], &out); err != nil { t.Fatal(err) }
+				if err := json.Unmarshal(answer.Outputs[0], &out); err != nil {
+					t.Fatal(err)
+				}
 				tc.mutate(&out)
 				answer.Outputs[0], err = json.Marshal(out)
-				if err != nil { t.Fatal(err) }
+				if err != nil {
+					t.Fatal(err)
+				}
 				one := FixtureSuite{Schema: SchemaV3, Declaration: suite.Declaration, Scenarios: []Scenario{scenario}}
 				report, err := one.Check(t.Context(), []Answer{answer})
-				if err != nil || len(report.Failed) != 1 { t.Fatalf("%+v %v", report, err) }
+				if err != nil || len(report.Failed) != 1 {
+					t.Fatalf("%+v %v", report, err)
+				}
 				return
 			}
 			t.Fatal("scenario missing")
@@ -295,10 +314,15 @@ func TestInputCancellationReasonPrefix(t *testing.T) {
 			if err := json.Unmarshal(answer.Outputs[0], &out); err != nil {
 				t.Fatal(err)
 			}
-			for _, tc := range []struct { message string; failures int }{{out.Message + ": detail", 0}, {"reason: wrong", 1}} {
+			for _, tc := range []struct {
+				message  string
+				failures int
+			}{{out.Message + ": detail", 0}, {"reason: wrong", 1}} {
 				out.Message = tc.message
 				answer.Outputs[0], err = json.Marshal(out)
-				if err != nil { t.Fatal(err) }
+				if err != nil {
+					t.Fatal(err)
+				}
 				report, err := one.Check(t.Context(), []Answer{answer})
 				if err != nil || len(report.Failed) != tc.failures {
 					t.Errorf("message %q: %+v %v", tc.message, report, err)
