@@ -207,6 +207,9 @@ test('shows live run cost from each daemon without exposing its AgentsView token
     await page.getByRole('button', { name: 'Remote cost review', exact: true }).click()
     await expect(cost.getByText('$7.77', { exact: true })).toBeVisible()
     await capture(page, testInfo, 'cost-desktop-remote')
+    // The open drawer's overlay covers the page, so a reader closes it first.
+    await drawer.getByRole('button', { name: 'Close' }).click()
+    await expect(drawer).toBeHidden()
     await page.getByRole('button', { name: 'Switch Kata daemon: example-remote' }).click()
     await page.getByRole('menuitemradio', { name: /example-local/ }).click()
 
