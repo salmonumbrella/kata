@@ -265,3 +265,36 @@ func TestInputDecisionStrictness(t *testing.T) {
 		}
 	}
 }
+
+// Cancellation messages may add detail after the required reason prefix.
+func TestInputCancellationReasonPrefix(t *testing.T) {
+	suite, err := NewSuite(t.Context(), SchemaV3, Reference{}.Declare())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, scenario := range suite.Scenarios {
+		if scenario.Name != "inputs/invalid-inputs" && scenario.Name != "inputs/unavailable" {
+			continue
+		}
+		t.Run(scenario.Name, func(t *testing.T) {
+			one := FixtureSuite{Schema: SchemaV3, Declaration: suite.Declaration, Scenarios: []Scenario{scenario}}
+			answer, err := Execute(t.Context(), inputTestBridge{}, scenario)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var out InputDeliveryOutput
+			if err := json.Unmarshal(answer.Outputs[0], &out); err != nil {
+				t.Fatal(err)
+			}
+			for _, tc := range []struct { message string; failures int }{{out.Message + ": detail", 0}, {"reason: wrong", 1}} {
+				out.Message = tc.message
+				answer.Outputs[0], err = json.Marshal(out)
+				if err != nil { t.Fatal(err) }
+				report, err := one.Check(t.Context(), []Answer{answer})
+				if err != nil || len(report.Failed) != tc.failures {
+					t.Errorf("message %q: %+v %v", tc.message, report, err)
+				}
+			}
+		})
+	}
+}
