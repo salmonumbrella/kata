@@ -52,7 +52,7 @@ func TestCronUsageOutputStatesAndSanitization(t *testing.T) {
 		want  string
 	}{
 		{generated.RunUsage{State: "complete", CostMicrodollars: &amount, Sessions: []generated.RunSession{{Agent: "example", SessionID: "id", State: "priced", CostMicrodollars: &amount}}}, "Cost: $2.41\n"},
-		{generated.RunUsage{State: "partial", CostMicrodollars: &amount, SessionsIncomplete: true, Sessions: []generated.RunSession{{Agent: "example", SessionID: "id", State: "priced", CostMicrodollars: &amount}}}, "Cost: $2.41+ (0 of 1 sessions not priced)\n"},
+		{generated.RunUsage{State: "partial", CostMicrodollars: &amount, SessionsIncomplete: true, Sessions: []generated.RunSession{{Agent: "example", SessionID: "id", State: "priced", CostMicrodollars: &amount}}}, "Cost: $2.41+ (session list incomplete)\n"},
 		{generated.RunUsage{State: "no_sessions"}, "Cost: no sessions\n"},
 	} {
 		t.Run(string(tc.usage.State), func(t *testing.T) {
