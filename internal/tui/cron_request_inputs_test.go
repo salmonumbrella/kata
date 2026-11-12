@@ -205,3 +205,13 @@ func TestCronRequestInputsChangedWhileLoading(t *testing.T) {
 	require.Nil(t, m.cron.action)
 	require.Contains(t, m.toast.text, "changed")
 }
+
+func TestCronRequestInputsInvalidJobValueNeedsOverride(t *testing.T) {
+	d := newCronRequestInputs(cron.InputResolution{Inputs: []cron.ResolvedInput{{Name: "target", Type: "enum", Values: []string{"staging", "production"}, Source: "job"}}, Errors: []cron.InputError{{Name: "target", Code: "invalid_value"}}})
+	_, err := d.freeze()
+	require.Error(t, err)
+	d.step(1)
+	values, err := d.freeze()
+	require.NoError(t, err)
+	require.Equal(t, jsontext.Value(`"staging"`), values["target"])
+}
