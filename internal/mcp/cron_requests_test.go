@@ -71,10 +71,12 @@ func TestCronRequestInputsOutputSchema(t *testing.T) {
 			listed, err := f.session.ListTools(t.Context(), nil)
 			require.NoError(t, err)
 			response := cronOK(t, f.session, "cron_job_request_run", map[string]any{"uid": job["uid"], "request_uid": cronNewUID(t, f.session), "inputs": map[string]any{"value": tc.value}})
+			checked := 0
 			for _, tool := range listed.Tools {
 				if tool.Name != "kata.cron_job_request_run" && tool.Name != "kata.cron_request_list" {
 					continue
 				}
+				checked++
 				var schema jsonschema.Schema
 				require.NoError(t, json.Unmarshal(mustJSON(t, tool.OutputSchema), &schema))
 				resolved, err := schema.Resolve(nil)
@@ -85,8 +87,18 @@ func TestCronRequestInputsOutputSchema(t *testing.T) {
 				} else {
 					result = cronOK(t, f.session, "cron_request_list", map[string]any{})
 				}
+				var request map[string]any
+				if tool.Name == "kata.cron_job_request_run" {
+					request = result["request"].(map[string]any)
+				} else {
+					requests := result["requests"].([]any)
+					require.Len(t, requests, 1)
+					request = requests[0].(map[string]any)
+				}
+				assert.JSONEq(t, string(mustJSON(t, tc.value)), string(mustJSON(t, request["inputs"].(map[string]any)["value"])))
 				assert.NoError(t, resolved.Validate(result), "%s: %s", tool.Name, mustJSON(t, result))
 			}
+			require.Equal(t, 2, checked)
 		})
 	}
 }
