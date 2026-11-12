@@ -107,6 +107,49 @@ function props(route: Partial<CronRoute>, projects: Project[], cursor = 1) {
   }
 }
 
+const sessionID = '01K0000000000000000000000S'
+
+// A run recorded with one session, its project's usage source and the
+// daemon's usage answer for it.
+function serveRunUsage(source: 'agentsview' | 'none') {
+  return serve((url) => {
+    if (url.pathname === cronPath(exampleProject, `runs/${runC}`)) {
+      const summary = {
+        version: 1,
+        message: `Run ${runC}`,
+        sessions: [{ agent: 'codex', session_id: sessionID }],
+      }
+      return Response.json({ run: run(exampleProject, runC, 1, { summary }) })
+    }
+    if (url.pathname === cronPath(exampleProject, 'capabilities')) {
+      return Response.json({
+        project_uid: exampleProject.uid,
+        event_features: [],
+        usage: { source },
+      })
+    }
+    if (url.pathname === cronPath(exampleProject, `runs/${runC}/usage`)) {
+      return Response.json({
+        run_uid: runC,
+        state: 'complete',
+        estimated: false,
+        cost_microdollars: 2_410_000,
+        fetched_at: '2026-10-01T09:30:00Z',
+        sessions_incomplete: false,
+        sessions: [
+          { agent: 'codex', session_id: sessionID, state: 'priced', cost_microdollars: 2_410_000 },
+        ],
+      })
+    }
+    return emptyCatalog(url) ?? notFound()
+  })
+}
+
+function runSelectionProps() {
+  const selection = { kind: 'run' as const, projectUID: exampleProject.uid, uid: runC }
+  return props({ tab: 'runs', selection }, [exampleProject])
+}
+
 afterEach(cleanup)
 
 describe('CronPage', () => {
@@ -245,6 +288,27 @@ describe('CronPage', () => {
     })
     expect(await screen.findByText('Run not found.')).not.toBeNull()
     expect(requested(fetcher, cronPath(exampleProject, `runs/${runB}`))).toHaveLength(1)
+  })
+
+  it('shows the cost of an open run with one usage read when usage is on', async () => {
+    const fetcher = serveRunUsage('agentsview')
+    render(CronPage, { props: runSelectionProps() })
+
+    expect(await screen.findByText(`Run ${runC}`)).not.toBeNull()
+    expect(await screen.findByRole('heading', { name: 'Cost' })).not.toBeNull()
+    expect(screen.getByText('$2.41')).not.toBeNull()
+    const usage = requested(fetcher, cronPath(exampleProject, `runs/${runC}/usage`))
+    expect(usage.map((url) => url.searchParams.get('refresh'))).toEqual(['false'])
+  })
+
+  it('shows no cost and reads no usage when usage is off', async () => {
+    const fetcher = serveRunUsage('none')
+    render(CronPage, { props: runSelectionProps() })
+
+    expect(await screen.findByText(`Run ${runC}`)).not.toBeNull()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(screen.queryByRole('heading', { name: 'Cost' })).toBeNull()
+    expect(requested(fetcher, cronPath(exampleProject, `runs/${runC}/usage`))).toEqual([])
   })
 
   it('shows a selected project the connection cannot read without reading it', async () => {
