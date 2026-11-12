@@ -285,7 +285,9 @@ func (o *cronCLIOptions) execute(cmd *cobra.Command) error {
 		minimum := cron.APIVersionJobInputs
 		if o.requestUID != "" {
 			o.requestUID, err = normalizedCronCLIUID(o.requestUID)
-			if err != nil { return err }
+			if err != nil {
+				return err
+			}
 			minimum = cron.APIVersionRequestInputs
 		}
 		if err := requireDaemonAPIVersion(cmd.Context(), daemon.client, daemon.baseURL, minimum, "cron job inputs"); err != nil {
@@ -690,7 +692,9 @@ func (o cronCLIOptions) callRead(a daemonAPI, c *kataclient.Client, projectID in
 		return cronCLIResponse(response.StatusCode, response.Body, err)
 	case o.resource == "job" && o.action == "inputs":
 		options := &generated.GetCronJobInputsRequestOptions{PathParams: &generated.GetCronJobInputsPath{ProjectID: projectID, CronUID: o.identity}}
-		if o.requestUID != "" { options.Query = &generated.GetCronJobInputsQuery{RequestUID: &o.requestUID} }
+		if o.requestUID != "" {
+			options.Query = &generated.GetCronJobInputsQuery{RequestUID: &o.requestUID}
+		}
 		response, err := c.GetCronJobInputsWithResponse(a.ctx, options)
 		if response == nil {
 			return nil, externalCLITransportError(response, err)

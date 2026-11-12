@@ -55,8 +55,12 @@ func (h toolHandlers) cronJobRequestRun(ctx context.Context, _ *sdkmcp.CallToolR
 	}
 	if in.Inputs != nil {
 		supported, err := h.daemonSupportsAPIVersion(ctx, cron.APIVersionRequestInputs)
-		if err != nil { return nil, generated.RequestCronJobRunResponse{}, err }
-		if !supported { return nil, generated.RequestCronJobRunResponse{}, fmt.Errorf("cron request inputs requires daemon API %s or newer", cron.APIVersionRequestInputs) }
+		if err != nil {
+			return nil, generated.RequestCronJobRunResponse{}, err
+		}
+		if !supported {
+			return nil, generated.RequestCronJobRunResponse{}, fmt.Errorf("cron request inputs requires daemon API %s or newer", cron.APIVersionRequestInputs)
+		}
 	}
 	runBody := &generated.CronJobRequestRunBody{UID: body.UID, Actor: body.Actor, TTLSeconds: body.TTLSeconds, Inputs: in.Inputs}
 	return cronResult(h.options.Client.RequestCronJobRun(ctx, &generated.RequestCronJobRunRequestOptions{PathParams: &generated.RequestCronJobRunPath{ProjectID: projectID, CronUID: target}, Body: runBody}))

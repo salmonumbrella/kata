@@ -1,8 +1,8 @@
 package db
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
@@ -112,7 +112,9 @@ func (a CronSQL) Request(ctx context.Context, in RequestCronIn) (RequestCronOut,
 				}
 				if readErr == nil && row.DeletedAt == nil {
 					w, decodeErr := workflowFromRow(row)
-					if decodeErr != nil { return decodeErr }
+					if decodeErr != nil {
+						return decodeErr
+					}
 					workflow = &w.Definition
 				}
 			}
@@ -121,7 +123,9 @@ func (a CronSQL) Request(ctx context.Context, in RequestCronIn) (RequestCronOut,
 				problem := resolution.Errors[0]
 				return fmt.Errorf("%w: %s: %s", cron.ErrInvalid, problem.Name, problem.Message)
 			}
-			if len(in.Inputs) > 0 { request.Inputs = in.Inputs }
+			if len(in.Inputs) > 0 {
+				request.Inputs = in.Inputs
+			}
 			request.JobUID, request.DefinitionEventUID = job.UID, job.DefinitionEventUID
 		case CronRequestKindCancel:
 			run, err := scanCronRunRow(tx.QueryRowContext(ctx, "SELECT "+cronRunColumns+" FROM cron_runs WHERE project_id=$1 AND uid=$2", in.ProjectID, in.TargetUID))
@@ -162,7 +166,9 @@ func (a CronSQL) Request(ctx context.Context, in RequestCronIn) (RequestCronOut,
 		patch := map[string]jsontext.Value{key: raw}
 		if len(canonicalInputs) != 0 {
 			wrapper, marshalErr := json.Marshal(cronRequestInputsValue{Version: 1, Values: in.Inputs}, json.Deterministic(true))
-			if marshalErr != nil { return marshalErr }
+			if marshalErr != nil {
+				return marshalErr
+			}
 			patch[inputsKey] = wrapper
 		}
 		written, err := a.writeCronProjectMetadataTx(ctx, tx, project, actor, patch)
@@ -207,7 +213,9 @@ func (a CronSQL) Requests(ctx context.Context, in CronRequestList) ([]CronReques
 			}
 			if rawInputs, ok := values[CronRequestInputsMetadataPrefix+request.UID]; ok {
 				request.Inputs, _, err = decodeCronRequestInputs(request.UID, rawInputs)
-				if err != nil { return err }
+				if err != nil {
+					return err
+				}
 			}
 			var answered bool
 			if request.Kind == CronRequestKindRun {

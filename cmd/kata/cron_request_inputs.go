@@ -36,14 +36,20 @@ func parseCronRequestInputs(args []string, declarations map[string]string) (map[
 				raw, _ = json.Marshal(value)
 			case "int":
 				n, err := strconv.ParseInt(value, 10, 64)
-				if err != nil { return nil, fmt.Errorf("%s: invalid integer", name) }
+				if err != nil {
+					return nil, fmt.Errorf("%s: invalid integer", name)
+				}
 				raw = jsontext.Value(strconv.FormatInt(n, 10))
 			case "bool":
-				if value != "true" && value != "false" { return nil, fmt.Errorf("%s: invalid boolean", name) }
+				if value != "true" && value != "false" {
+					return nil, fmt.Errorf("%s: invalid boolean", name)
+				}
 				raw = jsontext.Value(value)
 			default:
 				candidate := jsontext.Value(value)
-				if candidate.IsValid() && candidate.Kind() == jsontext.KindNull { return nil, fmt.Errorf("%s: null is not an input value", name) }
+				if candidate.IsValid() && candidate.Kind() == jsontext.KindNull {
+					return nil, fmt.Errorf("%s: null is not an input value", name)
+				}
 				if candidate.IsValid() && (candidate.Kind() == jsontext.KindNumber || candidate.Kind() == jsontext.KindTrue || candidate.Kind() == jsontext.KindFalse) {
 					raw = candidate
 				} else {

@@ -32,15 +32,15 @@ var (
 // CronRequest is a root-admitted request and its locally derived answer state.
 // UID lives in the metadata key; State is never part of the stored value.
 type CronRequest struct {
-	UID                string    `json:"uid"`
-	Kind               string    `json:"kind"`
-	JobUID             string    `json:"job_uid,omitempty"`
-	DefinitionEventUID string    `json:"definition_event_uid,omitempty"`
-	RunUID             *string   `json:"run_uid,omitempty"`
-	RequestedBy        string    `json:"requested_by"`
-	RequestedAt        time.Time `json:"requested_at"`
-	ExpiresAt          time.Time `json:"expires_at"`
-	State              string    `json:"state,omitempty"`
+	UID                string                    `json:"uid"`
+	Kind               string                    `json:"kind"`
+	JobUID             string                    `json:"job_uid,omitempty"`
+	DefinitionEventUID string                    `json:"definition_event_uid,omitempty"`
+	RunUID             *string                   `json:"run_uid,omitempty"`
+	RequestedBy        string                    `json:"requested_by"`
+	RequestedAt        time.Time                 `json:"requested_at"`
+	ExpiresAt          time.Time                 `json:"expires_at"`
+	State              string                    `json:"state,omitempty"`
 	Inputs             map[string]jsontext.Value `json:"inputs,omitempty"`
 }
 

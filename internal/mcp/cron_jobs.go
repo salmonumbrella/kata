@@ -45,6 +45,7 @@ func (h toolHandlers) cronJob(ctx context.Context, _ *sdkmcp.CallToolRequest, in
 	}
 	return cronResult(h.options.Client.ShowCronJob(ctx, &generated.ShowCronJobRequestOptions{PathParams: &generated.ShowCronJobPath{ProjectID: p.ID, CronUID: id}}))
 }
+
 type CronJobInputsInput struct {
 	CronIdentityInput
 	RequestUID string `json:"request_uid,omitempty" jsonschema:"Optional retained run request UID"`
@@ -58,7 +59,9 @@ func (h toolHandlers) cronJobInputs(ctx context.Context, _ *sdkmcp.CallToolReque
 	minimum := cron.APIVersionJobInputs
 	if in.RequestUID != "" {
 		in.RequestUID, err = cronUID(in.RequestUID)
-		if err != nil { return nil, generated.GetCronJobInputsResponse{}, err }
+		if err != nil {
+			return nil, generated.GetCronJobInputsResponse{}, err
+		}
 		minimum = cron.APIVersionRequestInputs
 	}
 	supported, err := h.daemonSupportsAPIVersion(ctx, minimum)
@@ -73,7 +76,9 @@ func (h toolHandlers) cronJobInputs(ctx context.Context, _ *sdkmcp.CallToolReque
 		return nil, generated.GetCronJobInputsResponse{}, err
 	}
 	options := &generated.GetCronJobInputsRequestOptions{PathParams: &generated.GetCronJobInputsPath{ProjectID: p.ID, CronUID: id}}
-	if in.RequestUID != "" { options.Query = &generated.GetCronJobInputsQuery{RequestUID: &in.RequestUID} }
+	if in.RequestUID != "" {
+		options.Query = &generated.GetCronJobInputsQuery{RequestUID: &in.RequestUID}
+	}
 	return cronResult(h.options.Client.GetCronJobInputs(ctx, options))
 }
 func (h toolHandlers) cronJobCreate(ctx context.Context, _ *sdkmcp.CallToolRequest, in CronJobCreateInput) (*sdkmcp.CallToolResult, generated.ReplaceCronJobResponse, error) {

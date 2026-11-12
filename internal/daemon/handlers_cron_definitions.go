@@ -259,7 +259,9 @@ func registerCronJobHandlers(h huma.API, cfg ServerConfig) {
 		var inputs map[string]jsontext.Value
 		if in.RequestUID != "" {
 			requests, err := cfg.DB.ListCronRequests(ctx, db.CronRequestList{ProjectID: in.ProjectID})
-			if err != nil { return nil, cronAPIError(ctx, cfg, err, in.ProjectID, in.UID, true) }
+			if err != nil {
+				return nil, cronAPIError(ctx, cfg, err, in.ProjectID, in.UID, true)
+			}
 			found := false
 			for _, request := range requests {
 				if request.UID == strings.ToUpper(in.RequestUID) && request.Kind == db.CronRequestKindRun && request.JobUID == job.UID {
@@ -267,7 +269,9 @@ func registerCronJobHandlers(h huma.API, cfg ServerConfig) {
 					break
 				}
 			}
-			if !found { return nil, api.NewError(404, "request_not_found", "cron run request not found", "", nil) }
+			if !found {
+				return nil, api.NewError(404, "request_not_found", "cron run request not found", "", nil)
+			}
 		}
 		result := cron.ResolveInputs(job.Definition, workflow, inputs)
 		out.Body.DeclaredBy = result.DeclaredBy

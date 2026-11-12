@@ -210,7 +210,7 @@ func TestCronRequestInputsResolutionScope(t *testing.T) {
 	base := fmt.Sprintf("/api/v1/projects/%d/cron", p.ID)
 	status, raw := cronHTTP(t, env, http.MethodPost, base+"/jobs/"+job.UID+"/requests", map[string]any{"uid": id, "actor": "operator"})
 	require.Equal(t, 200, status, string(raw))
-	for _, path := range []string{base+"/jobs/"+other.UID+"/inputs?request_uid="+id, base+"/jobs/"+job.UID+"/inputs?request_uid="+cronHTTPUID(t)} {
+	for _, path := range []string{base + "/jobs/" + other.UID + "/inputs?request_uid=" + id, base + "/jobs/" + job.UID + "/inputs?request_uid=" + cronHTTPUID(t)} {
 		status, raw = cronHTTP(t, env, http.MethodGet, path, nil)
 		require.Equal(t, 404, status, string(raw))
 		require.Contains(t, string(raw), "request_not_found")
