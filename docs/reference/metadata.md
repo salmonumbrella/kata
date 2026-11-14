@@ -1,7 +1,7 @@
 ---
 title: Metadata
 description: Reference Kata's issue and project metadata model, reserved keys, scheduling fields, and update rules.
-last_edited: 2026-11-06
+last_edited: 2026-11-14
 ---
 
 # Metadata
@@ -52,10 +52,16 @@ rejected. Everything else is stored verbatim.
 | `deadline_on` | Issue | Date, local date-time, or UTC timestamp |
 | `someday` | Issue | Boolean |
 | `checklist` | Issue | Checklist structure |
-| `timezone` | Issue | IANA timezone name |
+| `timezone` | Issue | `UTC` or IANA timezone name containing `/` |
 | `area` | Project | String |
 
-A date-only `scheduled_on` value becomes ready on that calendar day. A local
+New timezone writes require `UTC` or a loadable IANA name containing `/`, such as
+`America/New_York`. Empty names, `Local`, numeric offsets and abbreviations such
+as `EST` are rejected. Existing issues with saved abbreviations remain readable.
+
+A date-only `scheduled_on` value becomes ready at the first existing instant of
+that calendar day and remains ready if the clock moves back across midnight.
+A date skipped by its zone becomes ready at the next existing day's start. A local
 date-time (`YYYY-MM-DDTHH:MM` or `YYYY-MM-DDTHH:MM:SS`) becomes ready at that
 wall-clock time. Both use the issue `timezone`, then the daemon's top-level
 `timezone`, then UTC. An RFC 3339 value ending in `Z` is an exact UTC instant

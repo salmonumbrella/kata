@@ -336,3 +336,43 @@ func TestScheduleDueCutoffCoversEveryZone(t *testing.T) {
 		}
 	}
 }
+
+// Date readiness must stay open once the day's first instant is reached, even
+// when an offset change briefly turns the displayed local date back again.
+func TestScheduleDateReadinessUsesFirstDayBoundary(t *testing.T) {
+	for _, tt := range []struct {
+		name, date, zone, boundary string
+	}{
+		{"skipped midnight", "2026-09-06", "America/Santiago", "2026-09-06T04:00:00Z"},
+		{"skipped date", "2011-12-30", "Pacific/Apia", "2011-12-30T10:00:00Z"},
+		{"date rollback", "2010-11-07", "America/St_Johns", "2010-11-07T02:30:00Z"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			boundary, err := time.Parse(time.RFC3339, tt.boundary)
+			require.NoError(t, err)
+			for _, field := range []string{"scheduled_on", "deadline_on"} {
+				raw, err := json.Marshal(map[string]string{field: tt.date, "timezone": tt.zone})
+				require.NoError(t, err)
+				_, _, at, present, err := ScheduleFieldInstant(string(raw), field, "UTC")
+				require.NoError(t, err)
+				require.True(t, present)
+				assert.Equal(t, boundary, at)
+				for _, offset := range []time.Duration{-time.Nanosecond, 0, 30 * time.Minute, time.Hour} {
+					_, present, due, err := ScheduleFieldDue(string(raw), field, boundary.Add(offset), "UTC")
+					require.NoError(t, err)
+					require.True(t, present)
+					assert.Equal(t, offset >= 0, due, "%s after %s", field, offset)
+				}
+			}
+		})
+	}
+}
+
+func TestScheduleExistingAbbreviationRemainsReadable(t *testing.T) {
+	raw := `{"scheduled_on":"2026-09-01T09:00","timezone":"EST"}`
+	_, zone, at, present, err := ScheduleFieldInstant(raw, "scheduled_on", "UTC")
+	require.NoError(t, err)
+	require.True(t, present)
+	assert.Equal(t, "EST", zone)
+	assert.Equal(t, "2026-09-01T14:00:00Z", at.Format(time.RFC3339))
+}

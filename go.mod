@@ -3,6 +3,7 @@ module go.kenn.io/kata
 go 1.27.4
 
 require (
+	cloud.google.com/go v0.123.0
 	charm.land/bubbles/v2 v2.1.1
 	charm.land/bubbletea/v2 v2.0.8
 	charm.land/lipgloss/v2 v2.0.6
@@ -54,7 +55,6 @@ require (
 )
 
 require (
-	cloud.google.com/go v0.123.0 // indirect
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/42wim/httpsig v1.2.4 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 	_ "time/tzdata" // embed IANA tz database so LoadLocation works without system tzdata
 )
@@ -134,6 +135,9 @@ func validateTimezoneIANA(raw jsontext.Value) error {
 	var s string
 	if err := json.Unmarshal(raw, &s); err != nil {
 		return fmt.Errorf("%w: timezone must be a JSON string: %v", ErrInvalidValue, err)
+	}
+	if s != "UTC" && !strings.Contains(s, "/") {
+		return fmt.Errorf("%w: timezone %q must be UTC or an IANA name containing /", ErrInvalidValue, s)
 	}
 	if _, err := time.LoadLocation(s); err != nil {
 		return fmt.Errorf("%w: timezone %q is not a valid IANA name: %v", ErrInvalidValue, s, err)

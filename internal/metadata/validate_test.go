@@ -80,8 +80,17 @@ func TestValidateChecklist_MissingDoneRejected(t *testing.T) {
 }
 
 func TestValidateTimezone(t *testing.T) {
-	assert.NoError(t, Validate(IssueRegistry, "timezone", jsontext.Value(`"America/New_York"`)))
-	assert.Error(t, Validate(IssueRegistry, "timezone", jsontext.Value(`"NotAReal/Zone"`)))
+	for _, zone := range []string{"UTC", "America/New_York", "Etc/UTC", "Etc/GMT+12"} {
+		t.Run(zone, func(t *testing.T) {
+			assert.NoError(t, Validate(IssueRegistry, "timezone", jsontext.Value(fmt.Sprintf("%q", zone))))
+		})
+	}
+	for _, zone := range []string{"", "Local", "EST", "CET", "GMT", "EST5EDT", "+01:00", "NotAReal/Zone"} {
+		t.Run("reject_"+zone, func(t *testing.T) {
+			err := Validate(IssueRegistry, "timezone", jsontext.Value(fmt.Sprintf("%q", zone)))
+			assert.ErrorIs(t, err, ErrInvalidValue)
+		})
+	}
 }
 
 // TestValidate_UnknownKeysAcceptedOpaquely covers the contract that anything
