@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"cloud.google.com/go/civil"
+	"go.kenn.io/kit/civiltime"
 )
 
 type scheduledOnKind int
@@ -116,11 +119,11 @@ func ScheduleFieldInstant(raw, field, defaultTimezone string) (value, timezone s
 		return
 	}
 	timezone = location.String()
-	wall := value
 	if kind == scheduledOnDate {
-		wall, layout = value+"T00:00", localMinuteLayout
+		at = scheduleDateBoundary(value, location).UTC()
+		return
 	}
-	at, err = resolveLocalSchedule(wall, layout, location)
+	at, err = resolveLocalSchedule(value, layout, location)
 	at = at.UTC()
 	return
 }
@@ -136,7 +139,7 @@ func scheduleValueDue(value, issueTimezone string, now time.Time, defaultTimezon
 			return false, err
 		}
 		if kind == scheduledOnDate {
-			return value <= now.In(location).Format(layout), nil
+			return !now.Before(scheduleDateBoundary(value, location)), nil
 		}
 		resolved, err := resolveLocalSchedule(value, layout, location)
 		if err != nil {
@@ -273,6 +276,14 @@ func loadScheduleLocation(issueTimezone, defaultTimezone string) (*time.Location
 		return nil, fmt.Errorf("load schedule timezone %q: %w", zone, err)
 	}
 	return location, nil
+}
+
+// scheduleDateBoundary resolves an already validated date. A skipped date opens
+// at the next existing day's start, preserving the schedule's gap policy.
+func scheduleDateBoundary(value string, location *time.Location) time.Time {
+	date, _ := civil.ParseDate(value) // classifyScheduledOn has validated the date.
+	start, _, _ := civiltime.DayBounds(date, location)
+	return start
 }
 
 // resolveLocalSchedule maps a civil date-time to one instant. During a
