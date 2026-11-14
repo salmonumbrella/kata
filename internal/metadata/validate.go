@@ -136,7 +136,7 @@ func validateTimezoneIANA(raw jsontext.Value) error {
 	if err := json.Unmarshal(raw, &s); err != nil {
 		return fmt.Errorf("%w: timezone must be a JSON string: %v", ErrInvalidValue, err)
 	}
-	if s != "UTC" && !strings.Contains(s, "/") {
+	if s != "UTC" && (!strings.Contains(s, "/") || strings.HasPrefix(s, "posix/") || strings.HasPrefix(s, "right/")) {
 		return fmt.Errorf("%w: timezone %q must be UTC or an IANA name containing /", ErrInvalidValue, s)
 	}
 	if _, err := time.LoadLocation(s); err != nil {

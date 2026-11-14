@@ -85,7 +85,7 @@ func TestValidateTimezone(t *testing.T) {
 			assert.NoError(t, Validate(IssueRegistry, "timezone", jsontext.Value(fmt.Sprintf("%q", zone))))
 		})
 	}
-	for _, zone := range []string{"", "Local", "EST", "CET", "GMT", "EST5EDT", "+01:00", "NotAReal/Zone"} {
+	for _, zone := range []string{"", "Local", "EST", "CET", "GMT", "EST5EDT", "+01:00", "NotAReal/Zone", "posix/America/New_York", "right/America/New_York"} {
 		t.Run("reject_"+zone, func(t *testing.T) {
 			err := Validate(IssueRegistry, "timezone", jsontext.Value(fmt.Sprintf("%q", zone)))
 			assert.ErrorIs(t, err, ErrInvalidValue)
