@@ -1668,12 +1668,13 @@ the shared-vault trust boundary.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `url` | empty (disabled) | Docbank base URL; HTTPS or loopback HTTP, without userinfo, query, or fragment. |
+| `url` | empty (disabled) | Docbank base URL; HTTPS or loopback HTTP, without userinfo, query, or fragment. With `trust_private_network`, also plain HTTP to a private address or a host name. |
 | `api_key` | empty | Inline key, preferred over file and environment sources. |
 | `api_key_file` | empty | Key file, preferred over the environment source; it must follow the [key file rules](#credentials-and-batching). |
 | `api_key_env` | empty | Name of the environment variable containing the key. |
 | `folder` | `/kata` | Clean absolute Docbank folder; uploads go under a project-UID subfolder. |
 | `local` | `false` | Use the Docbank running on this machine, found through its runtime record. |
+| `trust_private_network` | `false` | Allow plain HTTP `url` to a private, link-local, or carrier-grade NAT address, or to a host name such as a container name (`http://docbank:8485`). Public addresses stay refused. |
 
 A configured URL requires a key source. If the selected source cannot supply a
 key, Kata does not fall back to another source and sends nothing to Docbank;
@@ -1683,6 +1684,11 @@ attachment requests fail with `docbank_key_unavailable` (see
 
 A `url` in the file or `KATA_DOCBANK_URL` wins over `local`. With `local`,
 `api_key`, `api_key_file`, and `api_key_env` are unused. `folder` still applies.
+
+Over plain HTTP the API key and attachment contents travel unencrypted, so set
+`trust_private_network` only for a network you trust, such as a private
+container network. Redirects stay refused and the key is still sent only in a
+header.
 
 `KATA_DOCBANK_URL`, `KATA_DOCBANK_API_KEY_FILE`, and `KATA_DOCBANK_FOLDER`
 override their corresponding file settings.
